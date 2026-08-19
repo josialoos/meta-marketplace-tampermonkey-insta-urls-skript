@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Creator Marketplace → Instagram-Profillinks
 // @namespace    local.creator-marketplace-links
-// @version      1.4
-// @description  Hängt an Creator-Handles im Meta Creator Marketplace ein ↗ an, das direkt zu instagram.com/<handle> führt
+// @version      1.5
+// @description  Blendet unter Creator-Handles im Meta Creator Marketplace eine Pille "zum Insta-Profil ↗" ein, die direkt zu instagram.com/<handle> führt
 // @match        https://business.facebook.com/*
 // @match        https://*.business.facebook.com/*
 // @match        https://www.facebook.com/*
@@ -32,14 +32,26 @@
 
   function makeBadge(handle) {
     const s = document.createElement('span');
-    s.textContent = ' \u2197'; // ↗
+    s.textContent = 'zum Insta-Profil \u2197'; // Pillen-Text + kleiner Pfeil
     s.setAttribute(MARKER, '1');
     s.title = 'Instagram-Profil von @' + handle + ' öffnen';
+    // Pillen-Optik: eigene Zeile unter dem Namen, pink, abgerundet
+    s.style.display = 'block';
+    s.style.width = 'fit-content';
+    s.style.marginTop = '3px';
+    s.style.padding = '1px 9px 2px';
+    s.style.borderRadius = '999px';
+    s.style.background = '#e1306c'; // Instagram-Pink
+    s.style.color = '#ffffff';
+    s.style.font = 'inherit';
+    s.style.fontSize = '11px';
+    s.style.fontWeight = '600';
+    s.style.lineHeight = '16px';
+    s.style.whiteSpace = 'nowrap';
     s.style.cursor = 'pointer';
-    s.style.color = '#0064e0';
-    s.style.fontWeight = '700';
-    s.style.marginLeft = '2px';
     s.style.userSelect = 'none';
+    s.addEventListener('mouseenter', () => { s.style.background = '#c1275a'; });
+    s.addEventListener('mouseleave', () => { s.style.background = '#e1306c'; });
     for (const evt of ['click', 'mousedown', 'mouseup', 'pointerdown', 'pointerup']) {
       s.addEventListener(evt, (e) => {
         e.stopPropagation();
