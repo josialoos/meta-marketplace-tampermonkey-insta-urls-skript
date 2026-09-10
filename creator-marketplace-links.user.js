@@ -39,7 +39,7 @@
 
   function makeBadge(handle) {
     const s = document.createElement('span');
-    s.textContent = 'zum Insta-Profil ↗'; // Pillen-Text + kleiner Pfeil
+    s.textContent = 'zum Insta-Profil \u2197'; // Pillen-Text + kleiner Pfeil
     s.setAttribute(MARKER, '1');
     s.title = 'Instagram-Profil von @' + handle + ' öffnen';
     // Pillen-Optik: eigene Zeile unter dem Namen, pink, abgerundet
