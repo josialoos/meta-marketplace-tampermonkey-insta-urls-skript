@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Creator Marketplace → Instagram-Profillinks
 // @namespace    local.creator-marketplace-links
-// @version      1.5
+// @version      1.6
 // @description  Blendet unter Creator-Handles im Meta Creator Marketplace eine Pille "zum Insta-Profil ↗" ein, die direkt zu instagram.com/<handle> führt
 // @match        https://business.facebook.com/*
 // @match        https://*.business.facebook.com/*
@@ -25,6 +25,13 @@
     'kontaktieren', 'responsive', 'relevanz',
   ]);
 
+  // Nur im Creator Marketplace aktiv werden. Die Business Suite ist eine
+  // Single-Page-App, deshalb wird der Pfad bei jeder Änderung neu geprüft.
+  // Im Postfach (/latest/inbox) darf das Skript NICHTS am DOM ändern, sonst
+  // setzt Meta als ungelesen markierte Nachrichten sofort wieder auf gelesen.
+  const ACTIVE_PATH = /^\/latest\/creator_marketplace(\/|$)/;
+  function isActivePage() { return ACTIVE_PATH.test(location.pathname); }
+
   const MARKER = 'data-igm-linked';
   const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'INPUT', 'TEXTAREA', 'SELECT', 'OPTION', 'NOSCRIPT', 'SVG']);
 
@@ -32,7 +39,7 @@
 
   function makeBadge(handle) {
     const s = document.createElement('span');
-    s.textContent = 'zum Insta-Profil \u2197'; // Pillen-Text + kleiner Pfeil
+    s.textContent = 'zum Insta-Profil ↗'; // Pillen-Text + kleiner Pfeil
     s.setAttribute(MARKER, '1');
     s.title = 'Instagram-Profil von @' + handle + ' öffnen';
     // Pillen-Optik: eigene Zeile unter dem Namen, pink, abgerundet
@@ -117,6 +124,7 @@
 
   function flush() {
     scheduled = false;
+    if (!isActivePage()) { queue.clear(); fullRescan = false; return; }
     const roots = fullRescan ? [document.body] : [...queue];
     queue.clear();
     fullRescan = false;
@@ -139,7 +147,13 @@
     }
   }
 
+  let wasActive = false;
+
   const observer = new MutationObserver((mutations) => {
+    // Außerhalb des Marketplace sofort aussteigen (billig, ändert nichts)
+    if (!isActivePage()) { wasActive = false; return; }
+    // Gerade per In-App-Navigation in den Marketplace gewechselt → einmal komplett scannen
+    if (!wasActive) { wasActive = true; fullRescan = true; queue.clear(); schedule(); return; }
     for (const m of mutations) {
       for (const n of m.addedNodes) {
         // Eigene Badges ignorieren
@@ -154,7 +168,10 @@
 
   observer.observe(document.body, { childList: true, subtree: true });
 
-  // Initialer Komplett-Scan (einmalig)
-  fullRescan = true;
-  schedule();
+  // Initialer Komplett-Scan, falls die Seite direkt im Marketplace geöffnet wurde
+  if (isActivePage()) {
+    wasActive = true;
+    fullRescan = true;
+    schedule();
+  }
 })();
