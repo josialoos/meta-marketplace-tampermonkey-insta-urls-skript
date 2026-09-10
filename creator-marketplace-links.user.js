@@ -1,12 +1,14 @@
 // ==UserScript==
 // @name         Creator Marketplace → Instagram-Profillinks
 // @namespace    local.creator-marketplace-links
-// @version      1.6
+// @version      1.7
 // @description  Blendet unter Creator-Handles im Meta Creator Marketplace eine Pille "zum Insta-Profil ↗" ein, die direkt zu instagram.com/<handle> führt
 // @match        https://business.facebook.com/*
 // @match        https://*.business.facebook.com/*
 // @match        https://www.facebook.com/*
 // @run-at       document-idle
+// @updateURL    https://raw.githubusercontent.com/josialoos/meta-marketplace-tampermonkey-insta-urls-skript/main/creator-marketplace-links.user.js
+// @downloadURL  https://raw.githubusercontent.com/josialoos/meta-marketplace-tampermonkey-insta-urls-skript/main/creator-marketplace-links.user.js
 // @grant        none
 // ==/UserScript==
 
@@ -29,7 +31,11 @@
   // Single-Page-App, deshalb wird der Pfad bei jeder Änderung neu geprüft.
   // Im Postfach (/latest/inbox) darf das Skript NICHTS am DOM ändern, sonst
   // setzt Meta als ungelesen markierte Nachrichten sofort wieder auf gelesen.
-  const ACTIVE_PATH = /^\/latest\/creator_marketplace(\/|$)/;
+  //
+  // Meta hat den Bereich im September 2026 umbenannt: /latest/creator_marketplace/
+  // leitet auf /creator_marketing_hub/creator_discovery/ um. Der alte Pfad bleibt
+  // in der Prüfung stehen, falls die Umstellung nicht überall ausgerollt ist.
+  const ACTIVE_PATH = /^\/(latest\/creator_marketplace|creator_marketing_hub)(\/|$)/;
   function isActivePage() { return ACTIVE_PATH.test(location.pathname); }
 
   const MARKER = 'data-igm-linked';
