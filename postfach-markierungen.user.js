@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      1.5
+// @version      1.6
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" (mit Wiedervorlage und Notiz) im Postfach der Meta Business Suite. Gespeichert in Tampermonkey, Meta kann sie nicht zurücksetzen.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -225,14 +225,16 @@
 
   const CU_TOKEN = 'clickup:token:v1';
   const CU_LIST = 'clickup:list:v1';
-  const CU_FIELDS = 'clickup:fields:v1';
+  const CU_SPACE = 'clickup:space:v1';
   const CU_TASKS = 'clickup:tasks:v1';
   const CU_QUEUE = 'clickup:queue:v1';
 
-  const FELD_THREAD = 'Thread-ID';
-  const FELD_FOLLOW = 'Follow-up';
-  const FELD_HANDLE = 'Instagram-Handle';
-  const FELD_LINK = 'Postfach-Link';
+  // Custom Fields sind bewusst nicht im Spiel: ClickUp Free erlaubt nur 60
+  // Befuellungen im gesamten Workspace, allein die Erstuebernahme braucht mehr.
+  // Die Thread-ID steht deshalb in der Beschreibung, das Follow-up ist ein Tag.
+  // Beschreibungen und Tags haben kein Kontingent.
+  const CU_TAG = 'follow-up';
+  const FELD_THREAD = 'Thread-ID';   // wird nur noch gelesen, falls vorhanden
 
   const cuListe = () => String(GM_getValue(CU_LIST, '') || '').trim();
   // scanRows laeuft mehrmals pro Sekunde ueber jede Zeile. Der Zustand wird
@@ -252,6 +254,18 @@
 
   const postfachLink = (tid) =>
     'https://business.facebook.com/latest/inbox/all/?partnership_messages=true#igfu=' + tid;
+
+  // Die Markerzeile ist die Verbindung zwischen Unterhaltung und Task. Sie steht
+  // sichtbar in der Beschreibung, damit jeder sieht, dass sie dazugehoert.
+  function beschreibung(tid, handle) {
+    const z = ['[Unterhaltung im Postfach öffnen](' + postfachLink(tid) + ')', ''];
+    if (handle) z.push('Instagram: @' + handle, '');
+    z.push('---', 'Vom Postfach-Skript verwaltet. Die folgende Zeile bitte nicht ändern.', 'igfu-thread: ' + tid);
+    return z.join('\n');
+  }
+  // Metas IDs sind zwar reine Ziffern, aber darauf sollte sich das Auslesen
+  // nicht verlassen.
+  const threadAusText = (text) => (String(text || '').match(/igfu-thread:\s*([A-Za-z0-9_-]+)/) || [])[1] || '';
 
   // Mittag als Uhrzeit, damit ein Datum nicht durch Zeitzonen auf den Vortag rutscht
   function msVonIso(iso) {
@@ -303,26 +317,46 @@
     });
   }
 
-  async function cuFelderLaden() {
-    const daten = await cuRequest('GET', '/list/' + encodeURIComponent(cuListe()) + '/field');
-    const karte = {};
-    for (const f of daten.fields || []) karte[f.name] = f.id;
-    GM_setValue(CU_FIELDS, karte);
-    return karte;
+  async function cuSpaceLaden() {
+    const daten = await cuRequest('GET', '/list/' + encodeURIComponent(cuListe()));
+    const id = daten && daten.space && daten.space.id;
+    if (!id) throw new Error('Zu dieser Liste liess sich kein Space ermitteln.');
+    GM_setValue(CU_SPACE, String(id));
+    return String(id);
   }
-  const cuFelder = () => GM_getValue(CU_FIELDS, {}) || {};
+  const cuSpace = () => String(GM_getValue(CU_SPACE, '') || '');
+
+  // Legt den Tag einmalig im Space an, falls er fehlt. Danach nur noch gelesen.
+  let tagGeprueft = false;
+  async function cuTagSichern() {
+    if (tagGeprueft) return;
+    const space = cuSpace() || (await cuSpaceLaden());
+    const daten = await cuRequest('GET', '/space/' + space + '/tag');
+    const da = (daten.tags || []).some((t) => (t.name || '').toLowerCase() === CU_TAG);
+    if (!da) {
+      await cuRequest('POST', '/space/' + space + '/tag', {
+        tag: { name: CU_TAG, tag_fg: '#1c1e21', tag_bg: YELLOW },
+      });
+    }
+    tagGeprueft = true;
+  }
 
   function taskAufbereiten(t) {
-    const werte = {};
-    for (const f of t.custom_fields || []) werte[f.name] = f.value;
-    const tid = werte[FELD_THREAD];
+    let tid = threadAusText(t.description) || threadAusText(t.text_content) || threadAusText(t.markdown_description);
+    if (!tid) {
+      // Rueckfall fuer Tasks, die noch aus der Zeit mit Custom Fields stammen
+      for (const f of t.custom_fields || []) {
+        if (f.name === FELD_THREAD && f.value) { tid = String(f.value); break; }
+      }
+    }
     if (!tid) return null;
+    const tags = (t.tags || []).map((x) => String(x.name || '').toLowerCase());
     return [String(tid), {
       taskId: t.id,
       titel: t.name,
       status: (t.status && t.status.status) || '',
       farbe: (t.status && t.status.color) || '#65676b',
-      follow: werte[FELD_FOLLOW] === true || werte[FELD_FOLLOW] === 'true',
+      follow: tags.includes(CU_TAG),
       due: isoVonMs(t.due_date),
       url: t.url,
     }];
@@ -344,15 +378,11 @@
     return gefunden;
   }
 
-  async function cuTaskSichern(tid, titel) {
+  async function cuTaskSichern(tid, titel, handle) {
     if (cuTasks[tid]) return cuTasks[tid];
-    const felder = cuFelder();
     const rumpf = {
       name: titel || 'Unbekannt',
-      custom_fields: [
-        { id: felder[FELD_THREAD], value: tid },
-        { id: felder[FELD_LINK], value: postfachLink(tid) },
-      ].filter((f) => f.id),
+      markdown_description: beschreibung(tid, handle),
     };
     const t = await cuRequest('POST', '/list/' + encodeURIComponent(cuListe()) + '/task', rumpf);
     const paar = taskAufbereiten(t) || [tid, {
@@ -364,16 +394,15 @@
     return cuTasks[tid];
   }
 
-  async function cuFeldSetzen(taskId, feldName, wert) {
-    const id = cuFelder()[feldName];
-    if (!id) throw new Error('Das Feld „' + feldName + '" fehlt in der ClickUp-Liste.');
+  async function cuFollowSetzen(taskId, an) {
+    await cuTagSichern();
+    const pfad = '/task/' + taskId + '/tag/' + encodeURIComponent(CU_TAG);
     try {
-      await cuRequest('POST', '/task/' + taskId + '/field/' + id, { value: wert });
+      await cuRequest(an ? 'POST' : 'DELETE', pfad);
     } catch (e) {
-      // ClickUp nimmt den Haken je nach Feldtyp als Wahrheitswert oder als Text
-      // entgegen. Die Dokumentation laesst das offen, deshalb der zweite Versuch.
-      if (typeof wert !== 'boolean' || e.wiederholbar || e.blockierend) throw e;
-      await cuRequest('POST', '/task/' + taskId + '/field/' + id, { value: wert ? 'true' : 'false' });
+      // Einen Tag zu entfernen, der gar nicht dran ist, ist kein Fehler.
+      if (!an && !e.wiederholbar && !e.blockierend) return;
+      throw e;
     }
   }
 
@@ -402,7 +431,6 @@
     cuLaeuft = true;
     let fehlgeschlagen = null;
     try {
-      if (!Object.keys(cuFelder()).length) await cuFelderLaden();
       while (warteschlange().length) {
         const alle = warteschlange();
         const auftrag = alle[0];
@@ -445,7 +473,7 @@
     if (a.art === 'due' && !a.wert && !cuTasks[a.tid]) return;
     const task = await cuTaskSichern(a.tid, a.titel);
     if (a.art === 'follow') {
-      await cuFeldSetzen(task.taskId, FELD_FOLLOW, !!a.wert);
+      await cuFollowSetzen(task.taskId, !!a.wert);
       task.follow = !!a.wert;
     } else if (a.art === 'due') {
       const ms = msVonIso(a.wert);
@@ -464,7 +492,6 @@
     if (!erzwingen && Date.now() - cuLetzterAbruf < 120000) return;
     cuLetzterAbruf = Date.now();
     try {
-      if (!Object.keys(cuFelder()).length) await cuFelderLaden();
       await cuTasksLaden();
       zusammenfuehren();
       scanRows();
@@ -622,7 +649,6 @@
     if (task && task.url) { window.open(task.url, '_blank', 'noopener'); return; }
     toast('Lege Task in ClickUp an …');
     try {
-      if (!Object.keys(cuFelder()).length) await cuFelderLaden();
       const neu = await cuTaskSichern(tid, titel);
       scanRows();
       toast('Task angelegt: ' + (neu.titel || titel));
@@ -830,18 +856,16 @@
   async function verbindungPruefen() {
     if (!cuEingerichtet()) { toast('Bitte erst Listen-ID und Token eintragen.'); return false; }
     try {
-      const felder = await cuFelderLaden();
-      const fehlend = [FELD_THREAD, FELD_FOLLOW].filter((n) => !felder[n]);
-      if (fehlend.length) {
-        toast('Verbunden, aber es fehlt das Feld: ' + fehlend.join(', '));
-        return false;
-      }
+      await cuSpaceLaden();
+      tagGeprueft = false;
+      await cuTagSichern();
       await cuTasksLaden();
       zusammenfuehren();
       scanRows();
       if (panelOpen) renderPanel();
       updateLauncher();
-      toast('Verbunden. ' + Object.keys(cuTasks).length + ' Unterhaltungen sind in ClickUp bekannt.');
+      toast('Verbunden. Tag „' + CU_TAG + '" liegt bereit, '
+        + Object.keys(cuTasks).length + ' Unterhaltungen sind in ClickUp bekannt.');
       return true;
     } catch (e) {
       toast('ClickUp: ' + e.message);
@@ -858,7 +882,7 @@
       // Immer erst den aktuellen Stand holen. Sonst legt ein zweiter Durchlauf
       // dieselben Unterhaltungen ein zweites Mal an.
       toast('Gleiche mit ClickUp ab …');
-      if (!Object.keys(cuFelder()).length) await cuFelderLaden();
+      await cuTagSichern();
       await cuTasksLaden();
     } catch (e) {
       toast('ClickUp: ' + e.message);
@@ -871,7 +895,7 @@
     try {
       for (const [tid, eintrag] of offen) {
         const task = await cuTaskSichern(tid, eintrag.title);
-        await cuFeldSetzen(task.taskId, FELD_FOLLOW, true);
+        await cuFollowSetzen(task.taskId, true);
         task.follow = true;
         if (eintrag.due) {
           const ms = msVonIso(eintrag.due);
