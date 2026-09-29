@@ -158,6 +158,91 @@ gruppe('Speicher übersteht ein Neuladen');
 }
 
 // ---------------------------------------------------------------
+const knopf = (doc, text) =>
+  [...doc.querySelectorAll('.igfu-form button')].find((b) => b.textContent === text);
+
+gruppe('Follow-up abräumen legt keinen leeren Task an');
+{
+  // T1 ist lokal markiert, in ClickUp gibt es dazu nichts.
+  const { doc, w, aufrufe } = await starte({
+    speicher: { ...MIT_CLICKUP, 'igfu:v1': { T1: { title: 'Anna Bolko', flaggedAt: 1, due: '', note: '' } } },
+  });
+  pruefe('Startet als markiert', chip(doc, 0, 'followup').classList.contains('on'));
+  klick(w, chip(doc, 0, 'followup'));
+  await warte(w, 400);
+  const angelegt = aufrufe.filter((a) => a.methode === 'POST' && /^\/list\/.+\/task$/.test(a.pfad));
+  pruefe('Kein Task wurde angelegt', angelegt.length === 0, JSON.stringify(angelegt));
+}
+
+gruppe('Übernahme der lokalen Follow-ups');
+{
+  const lokal = {
+    T1: { title: 'Anna Bolko', flaggedAt: 1, due: '2026-10-08', note: 'Rate offen' },
+    T2: { title: 'Corina Bösch', flaggedAt: 2, due: '', note: '' },
+    T3: { title: 'Willi', flaggedAt: 3, due: '', note: '' },
+  };
+  // T2 steht schon in ClickUp und darf kein zweites Mal entstehen.
+  const { doc, w, aufrufe, serverTasks } = await starte({
+    speicher: { ...MIT_CLICKUP, 'igfu:v1': lokal },
+    tasks: [{ id: 'vorhanden', name: 'Corina Bösch', status: 'angeschrieben', farbe: '#87909e',
+              felder: { 'f-thread': 'T2', 'f-follow': true }, due: null }],
+  });
+
+  klick(w, knopf(doc, 'Lokale Follow-ups übernehmen'));
+  await warte(w, 900);
+
+  const angelegt = aufrufe.filter((a) => a.methode === 'POST' && /^\/list\/.+\/task$/.test(a.pfad));
+  pruefe('Nur die zwei fehlenden werden angelegt', angelegt.length === 2,
+    JSON.stringify(angelegt.map((a) => a.data.name)));
+  pruefe('Der vorhandene bleibt unberührt', serverTasks.filter((t) => t.felder['f-thread'] === 'T2').length === 1);
+  pruefe('Haken wird bei beiden gesetzt',
+    aufrufe.filter((a) => /\/field\/f-follow$/.test(a.pfad) && a.data.value === true).length === 2);
+  pruefe('Datum wird übertragen',
+    aufrufe.some((a) => a.methode === 'PUT' && a.data && a.data.due_date),
+    JSON.stringify(aufrufe.filter((a) => a.methode === 'PUT').map((a) => a.data)));
+  pruefe('Notiz wird Kommentar',
+    aufrufe.some((a) => /\/comment$/.test(a.pfad) && a.data.comment_text === 'Rate offen'));
+
+  // Zweiter Durchlauf darf nichts verdoppeln
+  const vorher = aufrufe.filter((a) => a.methode === 'POST' && /^\/list\/.+\/task$/.test(a.pfad)).length;
+  klick(w, knopf(doc, 'Lokale Follow-ups übernehmen'));
+  await warte(w, 900);
+  const nachher = aufrufe.filter((a) => a.methode === 'POST' && /^\/list\/.+\/task$/.test(a.pfad)).length;
+  pruefe('Zweiter Durchlauf legt nichts doppelt an', nachher === vorher, vorher + ' → ' + nachher);
+  pruefe('Insgesamt drei Unterhaltungen in ClickUp', serverTasks.length === 3,
+    JSON.stringify(serverTasks.map((t) => t.name)));
+}
+
+gruppe('Checkbox: Rückfall auf Text, wenn ClickUp den Wahrheitswert ablehnt');
+{
+  let ersterVersuch = true;
+  const { doc, w, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    fehler: (m, p) => {
+      if (/\/field\/f-follow$/.test(p) && ersterVersuch) { ersterVersuch = false; return 'weg'; }
+      return null;
+    },
+  });
+  klick(w, chip(doc, 0, 'followup'));
+  await warte(w, 600);
+  const versuche = aufrufe.filter((a) => /\/field\/f-follow$/.test(a.pfad));
+  pruefe('Es wird ein zweites Mal versucht', versuche.length === 2, JSON.stringify(versuche.map((v) => v.data)));
+  pruefe('Erst Wahrheitswert', versuche[0] && versuche[0].data.value === true);
+  pruefe('Dann Text', versuche[1] && versuche[1].data.value === 'true');
+}
+
+gruppe('Token löschen schaltet ClickUp sauber ab');
+{
+  const { doc, w, store } = await starte({ speicher: MIT_CLICKUP });
+  pruefe('CRM-Pille ist sichtbar', chip(doc, 0, 'crm').hidden === false);
+  klick(w, knopf(doc, 'Token löschen'));
+  await warte(w, 200);
+  pruefe('Token ist weg', !store.get('clickup:token:v1'));
+  pruefe('CRM-Pille verschwindet sofort', chip(doc, 0, 'crm').hidden === true);
+  pruefe('Follow-up funktioniert weiter lokal', (klick(w, chip(doc, 1, 'followup')), !!store.get('igfu:v1').T2));
+}
+
+// ---------------------------------------------------------------
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));

@@ -62,6 +62,8 @@ export async function starte({
     if (f === 'netz') return { netz: true };
     if (f === 'limit') return { status: 429, responseText: '' };
     if (f === 'token') return { status: 401, responseText: '' };
+    if (f === 'weg') return { status: 404, responseText: '' };
+    if (f === 'ungueltig') return { status: 400, responseText: '' };
 
     if (methode === 'GET' && pfadTeil.endsWith('/field')) {
       return { status: 200, responseText: JSON.stringify({

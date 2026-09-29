@@ -235,7 +235,16 @@
   const FELD_LINK = 'Postfach-Link';
 
   const cuListe = () => String(GM_getValue(CU_LIST, '') || '').trim();
-  const cuEingerichtet = () => !!(cuListe() && String(GM_getValue(CU_TOKEN, '') || '').trim());
+  // scanRows laeuft mehrmals pro Sekunde ueber jede Zeile. Der Zustand wird
+  // deshalb gemerkt und nur nach Aenderungen an den Einstellungen neu gelesen.
+  let cuBereit = null;
+  function cuEingerichtet() {
+    if (cuBereit === null) {
+      cuBereit = !!(cuListe() && String(GM_getValue(CU_TOKEN, '') || '').trim());
+    }
+    return cuBereit;
+  }
+  const cuEinstellungenGeaendert = () => { cuBereit = null; };
 
   let cuTasks = (GM_getValue(CU_TASKS, {}) || {}).tasks || {};
   let cuLetzterAbruf = 0;
@@ -358,7 +367,14 @@
   async function cuFeldSetzen(taskId, feldName, wert) {
     const id = cuFelder()[feldName];
     if (!id) throw new Error('Das Feld „' + feldName + '" fehlt in der ClickUp-Liste.');
-    await cuRequest('POST', '/task/' + taskId + '/field/' + id, { value: wert });
+    try {
+      await cuRequest('POST', '/task/' + taskId + '/field/' + id, { value: wert });
+    } catch (e) {
+      // ClickUp nimmt den Haken je nach Feldtyp als Wahrheitswert oder als Text
+      // entgegen. Die Dokumentation laesst das offen, deshalb der zweite Versuch.
+      if (typeof wert !== 'boolean' || e.wiederholbar || e.blockierend) throw e;
+      await cuRequest('POST', '/task/' + taskId + '/field/' + id, { value: wert ? 'true' : 'false' });
+    }
   }
 
   // ---------- Warteschlange ----------
@@ -423,6 +439,10 @@
   }
 
   async function ausfuehren(a) {
+    // Ein abgeraeumtes Follow-up fuer eine Unterhaltung ohne Task ist nichts zu tun.
+    // Sonst entstuende in ClickUp ein leerer Eintrag allein durch An- und Abklicken.
+    if (a.art === 'follow' && !a.wert && !cuTasks[a.tid]) return;
+    if (a.art === 'due' && !a.wert && !cuTasks[a.tid]) return;
     const task = await cuTaskSichern(a.tid, a.titel);
     if (a.art === 'follow') {
       await cuFeldSetzen(task.taskId, FELD_FOLLOW, !!a.wert);
@@ -747,7 +767,6 @@
     f.hidden = true;
 
     const hinweis = el('p', 'igfu-form-hinweis');
-    f.appendChild(hinweis);
 
     const listenFeld = el('input');
     listenFeld.type = 'text';
@@ -779,6 +798,7 @@
         GM_setValue(CU_LIST, listenFeld.value.trim());
         if (tokenFeld.value.trim()) GM_setValue(CU_TOKEN, tokenFeld.value.trim());
         tokenFeld.value = '';
+        cuEinstellungenGeaendert();
         standAnzeigen();
         toast('Gespeichert. Ich prüfe die Verbindung …');
         await verbindungPruefen();
@@ -788,6 +808,7 @@
       button('igfu-link', 'Lokale Follow-ups übernehmen', async () => { await uebernehmen(); standAnzeigen(); }),
       button('igfu-link', 'Token löschen', () => {
         GM_setValue(CU_TOKEN, '');
+        cuEinstellungenGeaendert();
         standAnzeigen();
         scanRows();
         toast('Token gelöscht. Das Postfach arbeitet wieder rein lokal.');
@@ -832,12 +853,22 @@
   // wird dort angelegt. Bereits vorhandene Tasks bleiben unangetastet.
   async function uebernehmen() {
     if (!cuEingerichtet()) { toast('Bitte erst Listen-ID und Token eintragen.'); return; }
-    const offen = Object.entries(follow).filter(([tid]) => !cuTasks[tid]);
+    let offen;
+    try {
+      // Immer erst den aktuellen Stand holen. Sonst legt ein zweiter Durchlauf
+      // dieselben Unterhaltungen ein zweites Mal an.
+      toast('Gleiche mit ClickUp ab …');
+      if (!Object.keys(cuFelder()).length) await cuFelderLaden();
+      await cuTasksLaden();
+    } catch (e) {
+      toast('ClickUp: ' + e.message);
+      return;
+    }
+    offen = Object.entries(follow).filter(([tid]) => !cuTasks[tid]);
     if (!offen.length) { toast('In ClickUp fehlt nichts.'); return; }
     toast(offen.length + ' Follow-ups werden übertragen …');
     let fertig = 0;
     try {
-      if (!Object.keys(cuFelder()).length) await cuFelderLaden();
       for (const [tid, eintrag] of offen) {
         const task = await cuTaskSichern(tid, eintrag.title);
         await cuFeldSetzen(task.taskId, FELD_FOLLOW, true);
