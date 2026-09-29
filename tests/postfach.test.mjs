@@ -219,6 +219,57 @@ gruppe('Fehlermeldungen nennen ClickUps eigenen Grund');
   pruefe('Der Statuscode steht auch drin', meldung.includes('400'), meldung);
 }
 
+gruppe('Ein Task ohne Tag löscht keine Markierung, die nie übertragen wurde');
+{
+  // Genau der Fall vom 29.09.2026: Klick auf die CRM-Pille legte einen Task an,
+  // der Abgleich las den fehlenden Tag als "kein Follow-up" und loeschte lokal.
+  const { doc, w, store } = await starte({
+    speicher: { ...MIT_CLICKUP, 'igfu:v1': { T1: { title: 'Anna Bolko', flaggedAt: 1, due: '', note: '' } } },
+    tasks: [{ id: 'a1', name: 'Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1'), tags: [] }],
+  });
+  pruefe('Markierung überlebt den ersten Abgleich', !!store.get('igfu:v1').T1);
+  klick(w, knopf(doc, 'Verbindung prüfen'));
+  await warte(w, 700);
+  pruefe('Markierung überlebt auch den erzwungenen Abgleich', !!store.get('igfu:v1').T1,
+    JSON.stringify(store.get('igfu:v1')));
+  pruefe('Zeile bleibt markiert', doc.querySelectorAll('.row')[0].hasAttribute('data-igfu-follow'));
+}
+
+gruppe('Entfernt jemand den Tag in ClickUp, verschwindet die Markierung');
+{
+  const { doc, w, store } = await starte({
+    speicher: { ...MIT_CLICKUP,
+      'igfu:v1': { T1: { title: 'Anna Bolko', flaggedAt: 1, due: '', note: '', inCu: true } } },
+    tasks: [{ id: 'a1', name: 'Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1'), tags: [] }],
+  });
+  pruefe('Markierung ist weg', !store.get('igfu:v1').T1, JSON.stringify(store.get('igfu:v1')));
+  pruefe('Zeile ist nicht mehr markiert', !doc.querySelectorAll('.row')[0].hasAttribute('data-igfu-follow'));
+}
+
+gruppe('Ein Klick auf die CRM-Pille lässt das Follow-up in Ruhe');
+{
+  const { doc, w, store, serverTasks } = await starte({
+    speicher: { ...MIT_CLICKUP, 'igfu:v1': { T1: { title: 'Anna Bolko', flaggedAt: 1, due: '', note: '' } } },
+  });
+  klick(w, chip(doc, 0, 'crm'));
+  await warte(w, 600);
+  pruefe('Task wurde angelegt', serverTasks.length === 1, JSON.stringify(serverTasks.map((t) => t.name)));
+  klick(w, knopf(doc, 'Verbindung prüfen'));
+  await warte(w, 700);
+  pruefe('Markierung ist noch da', !!store.get('igfu:v1').T1, JSON.stringify(store.get('igfu:v1')));
+}
+
+gruppe('Nach der Übertragung ist die Markierung als übertragen vermerkt');
+{
+  const { doc, w, store } = await starte({ speicher: MIT_CLICKUP });
+  klick(w, chip(doc, 0, 'followup'));
+  await warte(w, 700);
+  const e = (store.get('igfu:v1') || {}).T1;
+  pruefe('Merkmal inCu ist gesetzt', e && e.inCu === true, JSON.stringify(e));
+}
+
 gruppe('Speicher übersteht ein Neuladen');
 {
   const erst = await starte({ speicher: MIT_CLICKUP });

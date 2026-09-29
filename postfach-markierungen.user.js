@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      1.7
+// @version      1.8
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" (mit Wiedervorlage und Notiz) im Postfach der Meta Business Suite. Gespeichert in Tampermonkey, Meta kann sie nicht zurücksetzen.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -490,6 +490,7 @@
     if (a.art === 'follow') {
       await cuFollowSetzen(task.taskId, !!a.wert);
       task.follow = !!a.wert;
+      if (a.wert && follow[a.tid]) { follow[a.tid].inCu = true; saveFollow(); }
     } else if (a.art === 'due') {
       const ms = msVonIso(a.wert);
       await cuRequest('PUT', '/task/' + task.taskId, ms ? { due_date: ms, due_date_time: false } : { due_date: null });
@@ -517,17 +518,26 @@
     }
   }
 
-  // ClickUp gewinnt, der lokale Spiegel wird nachgezogen.
+  // ClickUp gewinnt, aber nur fuer Markierungen, die dort auch wirklich schon
+  // einmal angekommen sind. Das Merkmal dafuer ist inCu.
+  //
+  // Ohne diese Bedingung passiert Folgendes: Es genuegt, dass zu einer
+  // Unterhaltung irgendein Task existiert, etwa durch einen Klick auf die
+  // CRM-Pille oder durch eine abgebrochene Uebernahme. Der Task traegt dann
+  // keinen Tag, der Abgleich liest das als „kein Follow-up" und loescht die
+  // lokale Markierung. Genau so sind am 29.09.2026 drei Markierungen
+  // verschwunden. Eine nie uebertragene Markierung darf ClickUp nicht anfassen.
   function zusammenfuehren() {
     let geaendert = false;
     for (const [tid, t] of Object.entries(cuTasks)) {
       if (t.follow && !follow[tid]) {
-        follow[tid] = { title: t.titel, flaggedAt: Date.now(), due: t.due || '', note: '' };
+        follow[tid] = { title: t.titel, flaggedAt: Date.now(), due: t.due || '', note: '', inCu: true };
         geaendert = true;
       } else if (t.follow && follow[tid]) {
         if (follow[tid].due !== (t.due || '')) { follow[tid].due = t.due || ''; geaendert = true; }
-      } else if (!t.follow && follow[tid]) {
-        delete follow[tid];
+        if (!follow[tid].inCu) { follow[tid].inCu = true; geaendert = true; }
+      } else if (!t.follow && follow[tid] && follow[tid].inCu) {
+        delete follow[tid];   // war drueben, wurde dort entfernt
         geaendert = true;
       }
     }
@@ -912,6 +922,7 @@
         const task = await cuTaskSichern(tid, eintrag.title);
         await cuFollowSetzen(task.taskId, true);
         task.follow = true;
+        if (follow[tid]) { follow[tid].inCu = true; saveFollow(); }
         if (eintrag.due) {
           const ms = msVonIso(eintrag.due);
           if (ms) { await cuRequest('PUT', '/task/' + task.taskId, { due_date: ms, due_date_time: false }); task.due = eintrag.due; }
@@ -1160,6 +1171,7 @@
             flaggedAt: Number(v.flaggedAt) || Date.now(),
             due: /^\d{4}-\d{2}-\d{2}$/.test(v.due || '') ? v.due : '',
             note: String(v.note || ''),
+            inCu: v.inCu === true,
           };
           n++;
         }
