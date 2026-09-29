@@ -71,6 +71,7 @@ export async function starte({
     if (f === 'token') return { status: 401, responseText: '' };
     if (f === 'weg') return { status: 404, responseText: '' };
     if (f === 'ungueltig') return { status: 400, responseText: '' };
+    if (f === 'mitGrund') return { status: 400, responseText: JSON.stringify({ err: 'Custom field usages exceeded for your plan', ECODE: 'FIELD_017' }) };
 
     const ok = (o) => ({ status: 200, responseText: JSON.stringify(o || {}) });
 

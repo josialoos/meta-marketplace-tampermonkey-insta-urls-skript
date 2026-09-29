@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      1.6
+// @version      1.7
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" (mit Wiedervorlage und Notiz) im Postfach der Meta Business Suite. Gespeichert in Tampermonkey, Meta kann sie nicht zurücksetzen.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -291,7 +291,10 @@
       // der Auftrag bleibt so lange in der Warteschlange stehen. Ohne beides gilt
       // der einzelne Auftrag als endgültig gescheitert und wird verworfen, damit
       // er die Warteschlange nicht dauerhaft verstopft.
-      const fehler = (text, art) => ablehnen(Object.assign(new Error(text), {
+      // ClickUp legt den Grund in das Feld err. Ohne den steht man bei einem 400
+      // voellig im Dunkeln, das hat schon einmal eine lange Suche gekostet.
+      let grund = '';
+      const fehler = (text, art) => ablehnen(Object.assign(new Error(text + grund), {
         wiederholbar: art === 'wiederholbar',
         blockierend: art === 'blockierend',
       }));
@@ -302,6 +305,12 @@
         data: rumpf ? JSON.stringify(rumpf) : undefined,
         timeout: 20000,
         onload: (a) => {
+          if (a.status < 200 || a.status >= 300) {
+            try {
+              const k = JSON.parse(a.responseText || '{}');
+              if (k && k.err) grund = ' (' + k.err + ')';
+            } catch (e) { /* kein lesbarer Grund, dann eben ohne */ }
+          }
           if (a.status === 401 || a.status === 403) {
             return fehler('Der Token wird abgelehnt. Änderungen bleiben gespeichert, bis er stimmt.', 'blockierend');
           }
@@ -334,9 +343,15 @@
     const daten = await cuRequest('GET', '/space/' + space + '/tag');
     const da = (daten.tags || []).some((t) => (t.name || '').toLowerCase() === CU_TAG);
     if (!da) {
-      await cuRequest('POST', '/space/' + space + '/tag', {
-        tag: { name: CU_TAG, tag_fg: '#1c1e21', tag_bg: YELLOW },
-      });
+      try {
+        await cuRequest('POST', '/space/' + space + '/tag', {
+          tag: { name: CU_TAG, tag_fg: '#1c1e21', tag_bg: YELLOW },
+        });
+      } catch (e) {
+        if (e.wiederholbar || e.blockierend) throw e;
+        throw new Error('Der Tag „' + CU_TAG + '" fehlt im Space und liess sich nicht anlegen. '
+          + 'Bitte einmal von Hand in ClickUp anlegen. ' + e.message);
+      }
     }
     tagGeprueft = true;
   }

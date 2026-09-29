@@ -205,6 +205,20 @@ gruppe('Übernahme der lokalen Follow-ups');
   pruefe('Insgesamt drei Unterhaltungen', serverTasks.length === 3, JSON.stringify(serverTasks.map((t) => t.name)));
 }
 
+gruppe('Fehlermeldungen nennen ClickUps eigenen Grund');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    fehler: (m, p) => (m === 'POST' && /^\/list\/[^/]+\/task$/.test(p) ? 'mitGrund' : null),
+  });
+  klick(w, chip(doc, 0, 'followup'));
+  await warte(w, 700);
+  const meldung = (doc.querySelector('#igfu-toast') || {}).textContent || '';
+  pruefe('Der Grund steht in der Meldung',
+    meldung.includes('Custom field usages exceeded for your plan'), meldung);
+  pruefe('Der Statuscode steht auch drin', meldung.includes('400'), meldung);
+}
+
 gruppe('Speicher übersteht ein Neuladen');
 {
   const erst = await starte({ speicher: MIT_CLICKUP });
