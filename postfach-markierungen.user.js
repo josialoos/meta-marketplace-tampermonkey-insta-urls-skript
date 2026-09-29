@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      1.4
+// @version      1.5
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" (mit Wiedervorlage und Notiz) im Postfach der Meta Business Suite. Gespeichert in Tampermonkey, Meta kann sie nicht zurücksetzen.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -10,6 +10,8 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_addValueChangeListener
+// @grant        GM_xmlhttpRequest
+// @connect      api.clickup.com
 // @sandbox      JavaScript
 // ==/UserScript==
 
@@ -21,6 +23,11 @@
 // Der Seitenspeicher (localStorage) wird von Meta beim Laden aufgeräumt und ist
 // deshalb ungeeignet. @sandbox JavaScript sorgt dafür, dass das Skript Metas
 // Seitendaten (die Thread-IDs) lesen kann.
+//
+// Hinweis zu ClickUp: Der API-Token liegt ausschliesslich in Tampermonkeys Speicher
+// und wird bei jeder Anfrage frisch von dort gelesen. Er landet nie am window-Objekt,
+// nie im DOM und nie in einer Fehlermeldung. Alle Anfragen laufen ueber
+// GM_xmlhttpRequest, nie ueber fetch, weil das Skript im Seitenkontext von Meta laeuft.
 //
 // Hinweis zu Updates: Tampermonkey holt neue Versionen automatisch von GitHub
 // (@updateURL). Manuell: Tampermonkey-Menü → „Nach Userscript-Updates suchen".
@@ -60,6 +67,13 @@
     .igfu-tag.on[data-kind="unread"] { background: ${BLACK}; border-color: ${BLACK}; color: #fff; }
     .igfu-tag.on[data-kind="unread"]::before { background: #fff; border-color: #fff; }
     .igfu-tag.on[data-kind="followup"] { background: ${YELLOW}; border-color: #e0b400; color: ${BLACK}; }
+    .igfu-tag[data-kind="crm"]::before {
+      content: ""; width: 7px; height: 7px; border-radius: 2px;
+      background: currentColor; box-sizing: border-box;
+    }
+    .igfu-tag[data-kind="crm"].on { color: #fff; }
+    .igfu-tag[data-kind="crm"].on::before { background: #fff; }
+    .igfu-tag[data-kind="crm"][hidden] { display: none; }
 
     /* Follow-up: gelber Balken links */
     [data-igfu-follow] { box-shadow: inset 3px 0 0 ${YELLOW}; }
@@ -133,6 +147,18 @@
     .igfu-close { font-size: 18px; line-height: 1; padding: 2px 8px; color: #65676b; }
     .igfu-link:focus-visible, .igfu-done:focus-visible, .igfu-close:focus-visible { outline: 2px solid ${PINK}; outline-offset: 1px; }
 
+    .igfu-form { padding: 14px 16px 16px; border-bottom: 1px solid #e4e6eb; background: #f7f8fa; }
+    .igfu-form[hidden] { display: none; }
+    .igfu-form label { display: block; margin-bottom: 10px; font-size: 12px; font-weight: 600; color: #65676b; }
+    .igfu-form input {
+      display: block; box-sizing: border-box; width: 100%; margin-top: 4px;
+      font: inherit; font-size: 12px; color: #1c2b33;
+      border: 1px solid #ccd0d5; border-radius: 6px; padding: 6px 8px;
+    }
+    .igfu-form input:focus { outline: 2px solid ${PINK}; outline-offset: 0; border-color: transparent; }
+    .igfu-form-hinweis { margin: 0 0 10px; font-size: 11px; line-height: 1.45; color: #8a8d91; }
+    .igfu-form-knoepfe { display: flex; flex-wrap: wrap; gap: 6px; }
+
     #igfu-toast {
       position: fixed; left: 88px; bottom: 54px; z-index: 2147483001;
       max-width: 340px; padding: 10px 14px; border-radius: 8px;
@@ -190,6 +216,260 @@
     }
   } else {
     window.addEventListener('storage', (e) => { if (e.key === KEY_FOLLOW || e.key === KEY_UNREAD) onExternalChange(); });
+  }
+
+  // ---------- ClickUp ----------
+  // Die Liste ist die gemeinsame Wahrheit, der lokale Speicher bleibt als Spiegel
+  // bestehen. Faellt ClickUp aus, arbeitet das Postfach unveraendert weiter und die
+  // offenen Schreibvorgaenge stehen in der Warteschlange.
+
+  const CU_TOKEN = 'clickup:token:v1';
+  const CU_LIST = 'clickup:list:v1';
+  const CU_FIELDS = 'clickup:fields:v1';
+  const CU_TASKS = 'clickup:tasks:v1';
+  const CU_QUEUE = 'clickup:queue:v1';
+
+  const FELD_THREAD = 'Thread-ID';
+  const FELD_FOLLOW = 'Follow-up';
+  const FELD_HANDLE = 'Instagram-Handle';
+  const FELD_LINK = 'Postfach-Link';
+
+  const cuListe = () => String(GM_getValue(CU_LIST, '') || '').trim();
+  const cuEingerichtet = () => !!(cuListe() && String(GM_getValue(CU_TOKEN, '') || '').trim());
+
+  let cuTasks = (GM_getValue(CU_TASKS, {}) || {}).tasks || {};
+  let cuLetzterAbruf = 0;
+  let cuLaeuft = false;
+
+  const postfachLink = (tid) =>
+    'https://business.facebook.com/latest/inbox/all/?partnership_messages=true#igfu=' + tid;
+
+  // Mittag als Uhrzeit, damit ein Datum nicht durch Zeitzonen auf den Vortag rutscht
+  function msVonIso(iso) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return null;
+    const [j, m, t] = iso.split('-').map(Number);
+    return new Date(j, m - 1, t, 12, 0, 0, 0).getTime();
+  }
+  function isoVonMs(ms) {
+    if (!ms) return '';
+    const d = new Date(Number(ms));
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  // Der Token wird pro Anfrage frisch gelesen und nirgends zwischengespeichert.
+  function cuRequest(methode, pfad, rumpf) {
+    return new Promise((erfuellen, ablehnen) => {
+      const token = String(GM_getValue(CU_TOKEN, '') || '').trim();
+      if (!token) return ablehnen(Object.assign(new Error('Kein ClickUp-Token hinterlegt.'), { blockierend: true }));
+      if (typeof GM_xmlhttpRequest !== 'function') {
+        return ablehnen(new Error('GM_xmlhttpRequest steht nicht bereit. Skript neu installieren.'));
+      }
+      // wiederholbar: geht von allein wieder. blockierend: Josia muss etwas tun,
+      // der Auftrag bleibt so lange in der Warteschlange stehen. Ohne beides gilt
+      // der einzelne Auftrag als endgültig gescheitert und wird verworfen, damit
+      // er die Warteschlange nicht dauerhaft verstopft.
+      const fehler = (text, art) => ablehnen(Object.assign(new Error(text), {
+        wiederholbar: art === 'wiederholbar',
+        blockierend: art === 'blockierend',
+      }));
+      GM_xmlhttpRequest({
+        method: methode,
+        url: 'https://api.clickup.com/api/v2' + pfad,
+        headers: { Authorization: token, 'Content-Type': 'application/json' },
+        data: rumpf ? JSON.stringify(rumpf) : undefined,
+        timeout: 20000,
+        onload: (a) => {
+          if (a.status === 401 || a.status === 403) {
+            return fehler('Der Token wird abgelehnt. Änderungen bleiben gespeichert, bis er stimmt.', 'blockierend');
+          }
+          if (a.status === 429) return fehler('Limit erreicht, ich versuche es gleich erneut.', 'wiederholbar');
+          if (a.status >= 500) return fehler('ClickUp antwortet gerade nicht.', 'wiederholbar');
+          if (a.status < 200 || a.status >= 300) return fehler('ClickUp meldet Fehler ' + a.status + '.');
+          try { erfuellen(a.responseText ? JSON.parse(a.responseText) : {}); }
+          catch (e) { fehler('Antwort von ClickUp war nicht lesbar.'); }
+        },
+        onerror: () => fehler('Keine Verbindung zu ClickUp.', 'wiederholbar'),
+        ontimeout: () => fehler('ClickUp hat zu lange gebraucht.', 'wiederholbar'),
+      });
+    });
+  }
+
+  async function cuFelderLaden() {
+    const daten = await cuRequest('GET', '/list/' + encodeURIComponent(cuListe()) + '/field');
+    const karte = {};
+    for (const f of daten.fields || []) karte[f.name] = f.id;
+    GM_setValue(CU_FIELDS, karte);
+    return karte;
+  }
+  const cuFelder = () => GM_getValue(CU_FIELDS, {}) || {};
+
+  function taskAufbereiten(t) {
+    const werte = {};
+    for (const f of t.custom_fields || []) werte[f.name] = f.value;
+    const tid = werte[FELD_THREAD];
+    if (!tid) return null;
+    return [String(tid), {
+      taskId: t.id,
+      titel: t.name,
+      status: (t.status && t.status.status) || '',
+      farbe: (t.status && t.status.color) || '#65676b',
+      follow: werte[FELD_FOLLOW] === true || werte[FELD_FOLLOW] === 'true',
+      due: isoVonMs(t.due_date),
+      url: t.url,
+    }];
+  }
+
+  async function cuTasksLaden() {
+    const liste = encodeURIComponent(cuListe());
+    const gefunden = {};
+    for (let seite = 0; seite < 25; seite++) {
+      const d = await cuRequest('GET', '/list/' + liste + '/task?include_closed=true&subtasks=false&page=' + seite);
+      for (const t of d.tasks || []) {
+        const paar = taskAufbereiten(t);
+        if (paar) gefunden[paar[0]] = paar[1];
+      }
+      if (d.last_page || !(d.tasks || []).length) break;
+    }
+    cuTasks = gefunden;
+    GM_setValue(CU_TASKS, { stand: Date.now(), tasks: gefunden });
+    return gefunden;
+  }
+
+  async function cuTaskSichern(tid, titel) {
+    if (cuTasks[tid]) return cuTasks[tid];
+    const felder = cuFelder();
+    const rumpf = {
+      name: titel || 'Unbekannt',
+      custom_fields: [
+        { id: felder[FELD_THREAD], value: tid },
+        { id: felder[FELD_LINK], value: postfachLink(tid) },
+      ].filter((f) => f.id),
+    };
+    const t = await cuRequest('POST', '/list/' + encodeURIComponent(cuListe()) + '/task', rumpf);
+    const paar = taskAufbereiten(t) || [tid, {
+      taskId: t.id, titel: t.name, status: (t.status && t.status.status) || '',
+      farbe: (t.status && t.status.color) || '#65676b', follow: false, due: '', url: t.url,
+    }];
+    cuTasks[tid] = paar[1];
+    GM_setValue(CU_TASKS, { stand: Date.now(), tasks: cuTasks });
+    return cuTasks[tid];
+  }
+
+  async function cuFeldSetzen(taskId, feldName, wert) {
+    const id = cuFelder()[feldName];
+    if (!id) throw new Error('Das Feld „' + feldName + '" fehlt in der ClickUp-Liste.');
+    await cuRequest('POST', '/task/' + taskId + '/field/' + id, { value: wert });
+  }
+
+  // ---------- Warteschlange ----------
+  // Jeder Klick wirkt sofort lokal und wird hier fuer ClickUp vorgemerkt. So bleibt
+  // das Postfach bedienbar, auch wenn ClickUp klemmt.
+
+  const warteschlange = () => GM_getValue(CU_QUEUE, []) || [];
+  const warteschlangeSetzen = (w) => GM_setValue(CU_QUEUE, w);
+
+  function vormerken(auftrag) {
+    if (!cuEingerichtet()) return;
+    const w = warteschlange();
+    // Gleichartige Auftraege zum selben Thread ersetzen statt anhaengen
+    const rest = w.filter((a) => !(a.art === auftrag.art && a.tid === auftrag.tid));
+    rest.push(Object.assign({ zeit: Date.now(), versuche: 0 }, auftrag));
+    warteschlangeSetzen(rest);
+    abarbeiten();
+  }
+
+  let abarbeitenGeplant = null;
+  async function abarbeiten() {
+    if (cuLaeuft || !cuEingerichtet()) return;
+    const w = warteschlange();
+    if (!w.length) return;
+    cuLaeuft = true;
+    let fehlgeschlagen = null;
+    try {
+      if (!Object.keys(cuFelder()).length) await cuFelderLaden();
+      while (warteschlange().length) {
+        const alle = warteschlange();
+        const auftrag = alle[0];
+        try {
+          await ausfuehren(auftrag);
+          warteschlangeSetzen(warteschlange().slice(1));
+        } catch (e) {
+          fehlgeschlagen = e;
+          if (e.blockierend) break;                    // stehen lassen, Josia muss ran
+          if (e.wiederholbar && auftrag.versuche < 5) { // gleich nochmal versuchen
+            alle[0] = Object.assign({}, auftrag, { versuche: auftrag.versuche + 1 });
+            warteschlangeSetzen(alle);
+            break;
+          }
+          warteschlangeSetzen(warteschlange().slice(1)); // aussichtslos, sonst blockiert er alles
+          break;
+        }
+      }
+    } catch (e) {
+      fehlgeschlagen = e;   // Felder liessen sich nicht laden, Warteschlange bleibt unangetastet
+    } finally {
+      cuLaeuft = false;
+    }
+    if (fehlgeschlagen) {
+      toast('ClickUp: ' + fehlgeschlagen.message);
+      if (fehlgeschlagen.wiederholbar) {
+        clearTimeout(abarbeitenGeplant);
+        abarbeitenGeplant = setTimeout(abarbeiten, 30000);
+      }
+    }
+    scanRows();
+    if (panelOpen) renderPanel();
+    updateLauncher();
+  }
+
+  async function ausfuehren(a) {
+    const task = await cuTaskSichern(a.tid, a.titel);
+    if (a.art === 'follow') {
+      await cuFeldSetzen(task.taskId, FELD_FOLLOW, !!a.wert);
+      task.follow = !!a.wert;
+    } else if (a.art === 'due') {
+      const ms = msVonIso(a.wert);
+      await cuRequest('PUT', '/task/' + task.taskId, ms ? { due_date: ms, due_date_time: false } : { due_date: null });
+      task.due = a.wert || '';
+    } else if (a.art === 'notiz') {
+      if (String(a.wert || '').trim()) {
+        await cuRequest('POST', '/task/' + task.taskId + '/comment', { comment_text: a.wert, notify_all: false });
+      }
+    }
+    GM_setValue(CU_TASKS, { stand: Date.now(), tasks: cuTasks });
+  }
+
+  async function cuAktualisieren(erzwingen) {
+    if (!cuEingerichtet() || cuLaeuft) return;
+    if (!erzwingen && Date.now() - cuLetzterAbruf < 120000) return;
+    cuLetzterAbruf = Date.now();
+    try {
+      if (!Object.keys(cuFelder()).length) await cuFelderLaden();
+      await cuTasksLaden();
+      zusammenfuehren();
+      scanRows();
+      if (panelOpen) renderPanel();
+      updateLauncher();
+    } catch (e) {
+      toast('ClickUp: ' + e.message);
+    }
+  }
+
+  // ClickUp gewinnt, der lokale Spiegel wird nachgezogen.
+  function zusammenfuehren() {
+    let geaendert = false;
+    for (const [tid, t] of Object.entries(cuTasks)) {
+      if (t.follow && !follow[tid]) {
+        follow[tid] = { title: t.titel, flaggedAt: Date.now(), due: t.due || '', note: '' };
+        geaendert = true;
+      } else if (t.follow && follow[tid]) {
+        if (follow[tid].due !== (t.due || '')) { follow[tid].due = t.due || ''; geaendert = true; }
+      } else if (!t.follow && follow[tid]) {
+        delete follow[tid];
+        geaendert = true;
+      }
+    }
+    if (geaendert) saveFollow();
   }
 
   // ---------- Thread-Daten aus Metas React-Zeilen lesen ----------
@@ -268,7 +548,7 @@
       if (!wrap) {
         wrap = document.createElement('div');
         wrap.className = 'igfu-tags';
-        wrap.append(makeChip('unread', 'Ungelesen'), makeChip('followup', 'Follow-up'));
+        wrap.append(makeChip('unread', 'Ungelesen'), makeChip('followup', 'Follow-up'), makeChip('crm', 'CRM'));
         if (getComputedStyle(row).position === 'static') row.style.position = 'relative';
         row.setAttribute('data-igfu-row', '');
         row.appendChild(wrap);
@@ -283,6 +563,7 @@
       const uOn = !!unread[tid];
       setChip(wrap.querySelector('[data-kind="unread"]'), uOn, 'Als gelesen markieren', 'Als ungelesen markieren');
       setChip(wrap.querySelector('[data-kind="followup"]'), fOn, 'Follow-up entfernen', 'Als Follow-up markieren');
+      setzeCrmChip(wrap.querySelector('[data-kind="crm"]'), tid);
       setAttr(row, 'data-igfu-follow', fOn);
       setAttr(row, 'data-igfu-unread', uOn);
 
@@ -291,6 +572,43 @@
     }
     if (followTitles) saveFollow();
     if (unreadTitles) saveUnread();
+  }
+
+  // Zeigt den Pipeline-Status aus ClickUp in der Farbe des Status. Ohne Task ein
+  // neutrales Pluszeichen, ohne eingerichtete Verbindung gar nichts.
+  function setzeCrmChip(chip, tid) {
+    if (!chip) return;
+    if (!cuEingerichtet()) { chip.hidden = true; return; }
+    chip.hidden = false;
+    const task = cuTasks[tid];
+    if (task) {
+      chip.textContent = task.status || 'im CRM';
+      chip.classList.add('on');
+      chip.style.background = task.farbe;
+      chip.style.borderColor = task.farbe;
+      chip.title = 'In ClickUp öffnen';
+    } else {
+      chip.textContent = 'CRM +';
+      chip.classList.remove('on');
+      chip.style.background = '';
+      chip.style.borderColor = '';
+      chip.title = 'Task in ClickUp anlegen';
+    }
+  }
+
+  async function crmKlick(tid, titel) {
+    if (!tid) return;
+    const task = cuTasks[tid];
+    if (task && task.url) { window.open(task.url, '_blank', 'noopener'); return; }
+    toast('Lege Task in ClickUp an …');
+    try {
+      if (!Object.keys(cuFelder()).length) await cuFelderLaden();
+      const neu = await cuTaskSichern(tid, titel);
+      scanRows();
+      toast('Task angelegt: ' + (neu.titel || titel));
+    } catch (e) {
+      toast('ClickUp: ' + e.message);
+    }
   }
 
   function toggle(kind, tid, title) {
@@ -303,6 +621,7 @@
       if (follow[tid]) delete follow[tid];
       else follow[tid] = { title: title || 'Unbekannt', flaggedAt: Date.now(), due: '', note: '' };
       saveFollow();
+      vormerken({ art: 'follow', tid, titel: title || (follow[tid] && follow[tid].title), wert: !!follow[tid] });
     }
     scanRows();
     updateLauncher();
@@ -320,7 +639,9 @@
       e.preventDefault();
       if (type === 'click') {
         const wrap = chip.closest('.igfu-tags');
-        if (wrap) toggle(chip.dataset.kind, wrap.dataset.tid, wrap.dataset.title);
+        if (!wrap) return;
+        if (chip.dataset.kind === 'crm') crmKlick(wrap.dataset.tid, wrap.dataset.title);
+        else toggle(chip.dataset.kind, wrap.dataset.tid, wrap.dataset.title);
       }
     }, true);
   }
@@ -328,7 +649,7 @@
   // ---------- Übersicht ----------
 
   let panelOpen = false;
-  let launcher, panel, bodyEl, toastEl;
+  let launcher, panel, bodyEl, toastEl, formEl;
 
   const todayStr = () => {
     const d = new Date();
@@ -398,6 +719,7 @@
     const closeBtn = button('igfu-close', '×', closePanel, 'Schließen');
     closeBtn.setAttribute('aria-label', 'Schließen');
     actions.append(
+      button('igfu-link', 'ClickUp', () => formularUmschalten(), 'Verbindung zu ClickUp einrichten'),
       button('igfu-link', 'Sichern', exportData, 'Alle Markierungen als Datei herunterladen'),
       button('igfu-link', 'Laden', () => fileInput.click(), 'Gesicherte Datei wieder einlesen'),
       fileInput,
@@ -405,8 +727,9 @@
     );
     head.appendChild(actions);
 
+    formEl = baueFormular();
     bodyEl = el('div', 'igfu-body');
-    panel.append(head, bodyEl);
+    panel.append(head, formEl, bodyEl);
     document.body.appendChild(panel);
 
     toastEl = el('div');
@@ -417,6 +740,127 @@
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && panelOpen) closePanel(); });
   }
 
+  // Der Token wird nur geschrieben, nie wieder ins Feld zurueckgeschrieben. Im
+  // Formular steht deshalb nur, ob einer hinterlegt ist.
+  function baueFormular() {
+    const f = el('div', 'igfu-form');
+    f.hidden = true;
+
+    const hinweis = el('p', 'igfu-form-hinweis');
+    f.appendChild(hinweis);
+
+    const listenFeld = el('input');
+    listenFeld.type = 'text';
+    listenFeld.placeholder = 'z. B. 1200250000007224';
+    listenFeld.value = cuListe();
+    const listenLabel = el('label', '', 'Listen-ID');
+    listenLabel.appendChild(listenFeld);
+
+    const tokenFeld = el('input');
+    tokenFeld.type = 'password';
+    tokenFeld.autocomplete = 'off';
+    tokenFeld.placeholder = 'pk_…';
+    const tokenLabel = el('label', '', 'API-Token');
+    tokenLabel.appendChild(tokenFeld);
+
+    const knoepfe = el('div', 'igfu-form-knoepfe');
+
+    const standAnzeigen = () => {
+      const teile = [];
+      teile.push(String(GM_getValue(CU_TOKEN, '') || '').trim() ? 'Token hinterlegt.' : 'Kein Token hinterlegt.');
+      teile.push(cuListe() ? 'Liste ' + cuListe() + '.' : 'Keine Liste gesetzt.');
+      const offen = warteschlange().length;
+      if (offen) teile.push(offen + ' Änderung(en) warten auf Übertragung.');
+      hinweis.textContent = teile.join(' ');
+    };
+
+    knoepfe.append(
+      button('igfu-done', 'Speichern', async () => {
+        GM_setValue(CU_LIST, listenFeld.value.trim());
+        if (tokenFeld.value.trim()) GM_setValue(CU_TOKEN, tokenFeld.value.trim());
+        tokenFeld.value = '';
+        standAnzeigen();
+        toast('Gespeichert. Ich prüfe die Verbindung …');
+        await verbindungPruefen();
+        standAnzeigen();
+      }),
+      button('igfu-link', 'Verbindung prüfen', async () => { await verbindungPruefen(); standAnzeigen(); }),
+      button('igfu-link', 'Lokale Follow-ups übernehmen', async () => { await uebernehmen(); standAnzeigen(); }),
+      button('igfu-link', 'Token löschen', () => {
+        GM_setValue(CU_TOKEN, '');
+        standAnzeigen();
+        scanRows();
+        toast('Token gelöscht. Das Postfach arbeitet wieder rein lokal.');
+      }),
+    );
+
+    f.append(hinweis, listenLabel, tokenLabel, knoepfe);
+    f.standAnzeigen = standAnzeigen;
+    standAnzeigen();
+    return f;
+  }
+
+  function formularUmschalten() {
+    if (!formEl) return;
+    formEl.hidden = !formEl.hidden;
+    if (!formEl.hidden && formEl.standAnzeigen) formEl.standAnzeigen();
+  }
+
+  async function verbindungPruefen() {
+    if (!cuEingerichtet()) { toast('Bitte erst Listen-ID und Token eintragen.'); return false; }
+    try {
+      const felder = await cuFelderLaden();
+      const fehlend = [FELD_THREAD, FELD_FOLLOW].filter((n) => !felder[n]);
+      if (fehlend.length) {
+        toast('Verbunden, aber es fehlt das Feld: ' + fehlend.join(', '));
+        return false;
+      }
+      await cuTasksLaden();
+      zusammenfuehren();
+      scanRows();
+      if (panelOpen) renderPanel();
+      updateLauncher();
+      toast('Verbunden. ' + Object.keys(cuTasks).length + ' Unterhaltungen sind in ClickUp bekannt.');
+      return true;
+    } catch (e) {
+      toast('ClickUp: ' + e.message);
+      return false;
+    }
+  }
+
+  // Einmaliger Abgleich: alles, was lokal als Follow-up steht und in ClickUp fehlt,
+  // wird dort angelegt. Bereits vorhandene Tasks bleiben unangetastet.
+  async function uebernehmen() {
+    if (!cuEingerichtet()) { toast('Bitte erst Listen-ID und Token eintragen.'); return; }
+    const offen = Object.entries(follow).filter(([tid]) => !cuTasks[tid]);
+    if (!offen.length) { toast('In ClickUp fehlt nichts.'); return; }
+    toast(offen.length + ' Follow-ups werden übertragen …');
+    let fertig = 0;
+    try {
+      if (!Object.keys(cuFelder()).length) await cuFelderLaden();
+      for (const [tid, eintrag] of offen) {
+        const task = await cuTaskSichern(tid, eintrag.title);
+        await cuFeldSetzen(task.taskId, FELD_FOLLOW, true);
+        task.follow = true;
+        if (eintrag.due) {
+          const ms = msVonIso(eintrag.due);
+          if (ms) { await cuRequest('PUT', '/task/' + task.taskId, { due_date: ms, due_date_time: false }); task.due = eintrag.due; }
+        }
+        if (String(eintrag.note || '').trim()) {
+          await cuRequest('POST', '/task/' + task.taskId + '/comment', { comment_text: eintrag.note, notify_all: false });
+        }
+        fertig++;
+        GM_setValue(CU_TASKS, { stand: Date.now(), tasks: cuTasks });
+      }
+      toast(fertig + ' von ' + offen.length + ' übertragen.');
+    } catch (e) {
+      toast('Nach ' + fertig + ' von ' + offen.length + ' abgebrochen. ' + e.message);
+    }
+    scanRows();
+    if (panelOpen) renderPanel();
+    updateLauncher();
+  }
+
   function updateLauncher() {
     if (!launcher) return;
     const nUnread = Object.keys(unread).length;
@@ -425,6 +869,8 @@
     launcher.textContent = '';
     launcher.append(el('span', '', 'Ungelesen ' + nUnread), el('span', '', 'Follow-ups ' + all.length));
     if (due) launcher.append(el('span', 'igfu-due-badge', due + ' fällig'));
+    const offen = cuEingerichtet() ? warteschlange().length : 0;
+    if (offen) launcher.append(el('span', 'igfu-due-badge', offen + ' offen'));
     launcher.classList.toggle('has', nUnread + all.length > 0);
     launcher.setAttribute('aria-expanded', panelOpen ? 'true' : 'false');
     positionUI();
@@ -479,7 +925,9 @@
         date.addEventListener('change', () => {
           if (!follow[tid]) return;
           follow[tid].due = date.value;
-          saveFollow(); renderPanel(); updateLauncher();
+          saveFollow();
+          vormerken({ art: 'due', tid, titel: follow[tid].title, wert: date.value });
+          renderPanel(); updateLauncher();
         });
         dateLabel.appendChild(date);
         row.append(
@@ -498,6 +946,14 @@
           clearTimeout(t);
           t = setTimeout(() => { if (follow[tid]) { follow[tid].note = note.value; saveFollow(); } }, 300);
         });
+        // Erst beim Verlassen des Feldes als Kommentar nach ClickUp, nicht bei jedem Tastendruck
+        note.addEventListener('blur', () => {
+          const text = note.value.trim();
+          if (text && text !== (note.dataset.gesendet || '')) {
+            note.dataset.gesendet = text;
+            vormerken({ art: 'notiz', tid, titel: follow[tid] && follow[tid].title, wert: text });
+          }
+        });
         li.appendChild(note);
 
         li.appendChild(el('div', 'igfu-meta', 'Markiert am ' + new Date(f.flaggedAt).toLocaleDateString('de-DE')));
@@ -508,6 +964,7 @@
   }
 
   function toast(msg) {
+    if (!toastEl) { console.warn('[Markierungen]', msg); return; }
     toastEl.textContent = msg;
     toastEl.classList.add('show');
     clearTimeout(toast.t);
@@ -660,6 +1117,8 @@
     wasInbox = now;
     if (now) {
       buildUI(); launcher.hidden = false; updateLauncher(); scanRows();
+      cuAktualisieren(true);
+      abarbeiten();
       setTimeout(() => {
         // Läuft noch eine zweite Version dieses Skripts (z. B. die alte 1.0)?
         if (document.querySelectorAll('#igfu-launch').length > 1) {
@@ -688,5 +1147,8 @@
   });
   observer.observe(document.body, { childList: true, subtree: true });
   setInterval(syncActive, 1500);
+  // Alle zwei Minuten nachsehen, was in ClickUp passiert ist. cuAktualisieren
+  // bremst sich selbst, haeufigere Aufrufe kosten also keine Anfragen.
+  setInterval(() => { if (isInbox()) { cuAktualisieren(false); abarbeiten(); } }, 120000);
   syncActive();
 })();
