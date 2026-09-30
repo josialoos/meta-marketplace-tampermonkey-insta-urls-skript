@@ -662,6 +662,11 @@ gruppe('Der Aktualisieren-Knopf und sein Tooltip');
   pruefe('Tooltip nennt das Startdatum', /Startdatum/.test(tipp.textContent));
   pruefe('Tooltip nennt die Handles', /Handles/.test(tipp.textContent));
   pruefe('Tooltip sagt, was er nicht tut', /Legt keine neuen Tasks an/.test(tipp.textContent));
+  pruefe('Tooltip nennt das Abschichten', /letzten Lauf/.test(tipp.textContent), tipp.textContent.slice(0, 120));
+  pruefe('Tooltip nennt beide Richtungen', /beide Richtungen/.test(tipp.textContent));
+  pruefe('Tooltip nennt urgent', /urgent/.test(tipp.textContent));
+  pruefe('Tooltip nennt UpPromote', /UpPromote/.test(tipp.textContent));
+  pruefe('Tooltip verweist auf den vollen Durchlauf', /vollständigen Durchlauf/.test(tipp.textContent));
   b.dispatchEvent(new w.MouseEvent('mouseleave', { bubbles: false }));
   pruefe('Tooltip verschwindet wieder', !tipp.classList.contains('show'));
 }

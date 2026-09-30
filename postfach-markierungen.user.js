@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      3.2
+// @version      3.3
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -1834,16 +1834,22 @@
     const zeigen = (text) => { if (refreshBtn) refreshBtn.textContent = text; };
     if (refreshBtn) refreshBtn.disabled = true;
     const gesehen = new Set();
-    // Drei Zeilen hinter der Grenze statt einer: falls beim Nachrendern kurz
-    // eine Zeile aus der Reihe taenzelt, bricht der Lauf nicht zu frueh ab.
+    // Erst nach drei Runden in Folge, die ausschliesslich Aelteres gebracht
+    // haben, ist Schluss. Eine einzelne Zeile, die beim Nachrendern aus der
+    // Reihe taenzelt, beendet den Lauf damit nicht. Gezaehlt werden nur Runden
+    // mit neuen Funden, sonst wuerde blosses Warten den Lauf abwuergen.
     let hinterGrenze = 0;
     const erfassen = () => {
+      let neu = 0, aktuelle = 0;
       for (const [, t] of threadRows()) {
         if (gesehen.has(t.threadID)) continue;
         gesehen.add(t.threadID);
-        if (!voll && t.timestamp && t.timestamp < grenze) hinterGrenze++;
+        neu++;
+        if (!t.timestamp || t.timestamp >= grenze) aktuelle++;
       }
-      return !voll && hinterGrenze >= 3;
+      if (voll || !neu) return false;
+      if (aktuelle) { hinterGrenze = 0; return false; }
+      return ++hinterGrenze >= 3;
     };
 
     try {
