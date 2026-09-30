@@ -17,6 +17,32 @@
 // @sandbox      JavaScript
 // ==/UserScript==
 
+// ==========================================================================
+// ACHTUNG, DIESER LADER IST ZURUECKGESTELLT UND DARF NICHT INSTALLIERT WERDEN.
+//
+// Am 30.09.2026 stand er versehentlich auf dem Windows-Rechner. Ergebnis: im
+// Postfach gab es keine einzige Pille mehr, und die Ursache war von aussen
+// nicht zu sehen. Der Grund ist die Kennung unten:
+//
+//   @name und @namespace sind absichtlich identisch mit dem Kernskript.
+//   Im Tampermonkey-Dashboard heisst der Lader deshalb genauso und steht
+//   auf aktiv. Unterscheiden lassen sich beide nur an der Versionsnummer:
+//     2.8  = dieser Lader (zeigt nichts an)
+//     2.9+ = das Kernskript postfach-markierungen.user.js (funktioniert)
+//
+//   Dazu zeigt die @updateURL hier auf die Lader-Datei. Der Lader bleibt
+//   damit fuer immer auf 2.8 und zieht nie auf eine neuere Kernversion nach.
+//
+// Zurueck auf den Kern kommt man, indem man dessen Rohadresse aufruft und die
+// Installation bestaetigt. Weil Name und Namespace gleich sind, ersetzt das den
+// Lader und der Tampermonkey-Speicher mit Token und Markierungen bleibt erhalten.
+// Nicht loeschen und neu installieren, das nimmt den Speicher mit.
+//
+// Bevor der Lader wiederbelebt wird: erst die fehlende Oberflaeche klaeren und
+// ihm eine eigene Kennung geben, damit er nie wieder unbemerkt den Kern ersetzt.
+// Der gemeinsame Speicher muss dann bewusst uebernommen werden.
+// ==========================================================================
+
 // Warum dieser Lader:
 // Jede Änderung am Skript bedeutete bisher: Adresse aufrufen, Installation
 // bestätigen. Bei der Menge an Korrekturen ist das lästig. Der Lader holt den
