@@ -362,6 +362,79 @@ gruppe('Zwei Übernahmen gleichzeitig legen nichts doppelt an');
   pruefe('Keine doppelten Unterhaltungen', serverTasks.length === 2);
 }
 
+const marktPille = (doc, handle) =>
+  [...doc.querySelectorAll('.igfu-crm-pille')].find((p) => p.dataset.handle === handle);
+
+gruppe('Marketplace: Creator erfassen');
+{
+  const { doc, w, aufrufe, serverTasks } = await starte({
+    pfad: '/creator_marketing_hub/creator_discovery/',
+    speicher: MIT_CLICKUP,
+    markt: [{ handle: 'hey.luzi', bild: '573134618' }, { handle: 'theveganberlin', bild: '610648384' }],
+  });
+  await warte(w, 600);
+  pruefe('An jeder Karte eine Pille', doc.querySelectorAll('.igfu-crm-pille').length === 2,
+    String(doc.querySelectorAll('.igfu-crm-pille').length));
+  const p = marktPille(doc, 'hey.luzi');
+  pruefe('Pille lädt zum Erfassen ein', p && p.textContent === 'ins CRM +', p && p.textContent);
+  klick(w, p);
+  await warte(w, 600);
+  const neu = angelegte(aufrufe)[0];
+  pruefe('Genau ein Task', angelegte(aufrufe).length === 1);
+  pruefe('Name ist das Handle', neu && neu.data.name === 'hey.luzi', neu && neu.data.name);
+  pruefe('Status ist recherchiert', neu && neu.data.status === 'recherchiert', neu && neu.data.status);
+  pruefe('Bild-ID in der Beschreibung', neu && /igfu-bild:\s*573134618/.test(neu.data.markdown_description));
+  pruefe('Noch keine Thread-Zeile', neu && !/igfu-thread:/.test(neu.data.markdown_description));
+  pruefe('Pille zeigt danach den Status', p.textContent === 'recherchiert', p.textContent);
+  pruefe('Die andere Karte bleibt unberührt', serverTasks.length === 1);
+}
+
+gruppe('Marketplace: schon erfasster Creator zeigt seinen Status');
+{
+  const { doc, w } = await starte({
+    pfad: '/creator_marketing_hub/creator_discovery/',
+    speicher: MIT_CLICKUP,
+    markt: [{ handle: 'hey.luzi', bild: '573134618' }],
+    tasks: [{ id: 'm1', name: 'hey.luzi', status: 'verhandlung', farbe: '#b660e0',
+              beschreibung: 'igfu-bild: 573134618', tags: [] }],
+  });
+  await warte(w, 700);
+  const p = marktPille(doc, 'hey.luzi');
+  pruefe('Status steht auf der Pille', p && p.textContent === 'verhandlung', p && p.textContent);
+  klick(w, p);
+  await warte(w, 300);
+  pruefe('Klick öffnet den Task', (w.__geoeffnet || [])[0] === 'https://app.clickup.com/t/m1');
+}
+
+gruppe('Die Unterhaltung findet ihren Marketplace-Task über das Profilbild');
+{
+  // T1 traegt die Bild-ID 111111111, dazu gibt es schon einen erfassten Creator
+  const { w, serverTasks, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'm1', name: 'annabolko.runs', status: 'recherchiert', farbe: '#656f7d',
+              beschreibung: 'Instagram: @annabolko.runs\n\nigfu-bild: 111111111', tags: [] }],
+  });
+  await warte(w, 1200);
+  pruefe('Kein neuer Task', angelegte(aufrufe).length === 0, JSON.stringify(angelegte(aufrufe)));
+  pruefe('Thread-Zeile wurde ergänzt', /igfu-thread:\s*T1/.test(serverTasks[0].beschreibung), serverTasks[0].beschreibung);
+  pruefe('Handle in der Beschreibung blieb erhalten', /@annabolko\.runs/.test(serverTasks[0].beschreibung));
+  pruefe('Status steht jetzt auf angeschrieben', serverTasks[0].status === 'angeschrieben', serverTasks[0].status);
+  pruefe('Name trägt Handle und Anzeigenamen',
+    serverTasks[0].name === 'annabolko.runs — Anna Bolko', serverTasks[0].name);
+}
+
+gruppe('Ein bereits verbundener Task wird nicht nochmal verbunden');
+{
+  const { w, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'm1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1') + '\nigfu-bild: 111111111', tags: [] }],
+  });
+  await warte(w, 1200);
+  pruefe('Kein neuer Task', angelegte(aufrufe).length === 0);
+  pruefe('Keine zweite Verknüpfung', !aufrufe.some((a) => a.methode === 'PUT' && a.data && a.data.markdown_description));
+}
+
 gruppe('Speicher übersteht ein Neuladen');
 {
   const erst = await starte({ speicher: MIT_CLICKUP });

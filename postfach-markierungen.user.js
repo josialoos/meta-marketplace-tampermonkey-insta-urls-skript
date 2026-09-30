@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      1.9
-// @description  Eigene Markierungen „Ungelesen" und „Follow-up" (mit Wiedervorlage und Notiz) im Postfach der Meta Business Suite. Gespeichert in Tampermonkey, Meta kann sie nicht zurücksetzen.
+// @version      2.0
+// @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
 // @updateURL    https://raw.githubusercontent.com/josialoos/meta-marketplace-tampermonkey-insta-urls-skript/main/postfach-markierungen.user.js
@@ -147,6 +147,14 @@
     .igfu-close { font-size: 18px; line-height: 1; padding: 2px 8px; color: #65676b; }
     .igfu-link:focus-visible, .igfu-done:focus-visible, .igfu-close:focus-visible { outline: 2px solid ${PINK}; outline-offset: 1px; }
 
+    .igfu-crm-pille {
+      display: block; width: fit-content; margin-top: 3px; padding: 1px 9px 2px;
+      border-radius: 999px; border: 1px solid #ccd0d5; background: #fff; color: #65676b;
+      font: inherit; font-size: 11px; font-weight: 600; line-height: 16px;
+      white-space: nowrap; cursor: pointer; user-select: none;
+    }
+    .igfu-crm-pille[data-an="1"] { color: #fff; border-color: transparent; }
+
     .igfu-form { padding: 14px 16px 16px; border-bottom: 1px solid #e4e6eb; background: #f7f8fa; }
     .igfu-form[hidden] { display: none; }
     .igfu-form label { display: block; margin-bottom: 10px; font-size: 12px; font-weight: 600; color: #65676b; }
@@ -175,6 +183,10 @@
 
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   const isInbox = () => INBOX_PATH.test(location.pathname);
+  // Der Marketplace ist die Stelle, an der das Handle sicher bekannt ist. Wer hier
+  // erfasst wird, hat es von Anfang an im Task stehen.
+  const MARKT_PATH = /^\/(latest\/creator_marketplace|creator_marketing_hub)(\/|$)/;
+  const isMarkt = () => MARKT_PATH.test(location.pathname);
 
   // ---------- Speicher ----------
   // Follow-ups: { [threadID]: { title, flaggedAt, due: 'YYYY-MM-DD' | '', note } }
@@ -241,6 +253,7 @@
   // Anlegen. Eine Unterhaltung im Postfach heisst aber, dass schon geschrieben
   // wurde, deshalb wird der Status hier ausdruecklich gesetzt.
   const CU_STATUS_NEU = 'angeschrieben';
+  const CU_STATUS_MARKT = 'recherchiert';
 
   const cuListe = () => String(GM_getValue(CU_LIST, '') || '').trim();
   // scanRows laeuft mehrmals pro Sekunde ueber jede Zeile. Der Zustand wird
@@ -255,6 +268,7 @@
   const cuEinstellungenGeaendert = () => { cuBereit = null; };
 
   let cuTasks = (GM_getValue(CU_TASKS, {}) || {}).tasks || {};
+  let cuBilder = (GM_getValue(CU_TASKS, {}) || {}).bilder || {};
   let cuLetzterAbruf = 0;
   let cuLaeuft = false;
 
@@ -368,6 +382,13 @@
     if (h) handleMerken(tid, h, 'karte');
   }
 
+  function beschreibungMarkt(handle, bildID) {
+    const z = ['Instagram: [@' + handle + '](https://www.instagram.com/' + handle + '/)', ''];
+    z.push('---', 'Im Creator Marketplace erfasst. Die folgende Zeile bitte nicht ändern.');
+    if (bildID) z.push('igfu-bild: ' + bildID);
+    return z.join('\n');
+  }
+
   const threadAusText = (text) => (String(text || '').match(/igfu-thread:\s*([A-Za-z0-9_-]+)/) || [])[1] || '';
 
   // Mittag als Uhrzeit, damit ein Datum nicht durch Zeitzonen auf den Vortag rutscht
@@ -459,17 +480,24 @@
     tagGeprueft = true;
   }
 
+  const bildAusText = (text) => (String(text || '').match(/igfu-bild:\s*([0-9]{6,})/) || [])[1] || '';
+
   function taskAufbereiten(t) {
-    let tid = threadAusText(t.description) || threadAusText(t.text_content) || threadAusText(t.markdown_description);
+    const texte = [t.description, t.text_content, t.markdown_description];
+    let tid = '';
+    for (const x of texte) { tid = tid || threadAusText(x); }
     if (!tid) {
       // Rueckfall fuer Tasks, die noch aus der Zeit mit Custom Fields stammen
       for (const f of t.custom_fields || []) {
         if (f.name === FELD_THREAD && f.value) { tid = String(f.value); break; }
       }
     }
-    if (!tid) return null;
+    let bild = '';
+    for (const x of texte) { bild = bild || bildAusText(x); }
     const tags = (t.tags || []).map((x) => String(x.name || '').toLowerCase());
-    return [String(tid), {
+    return {
+      tid: tid ? String(tid) : '',
+      bild,
       taskId: t.id,
       titel: t.name,
       status: (t.status && t.status.status) || '',
@@ -477,28 +505,30 @@
       follow: tags.includes(CU_TAG),
       due: isoVonMs(t.due_date),
       url: t.url,
-    }];
+    };
   }
 
   async function cuTasksLaden() {
     const liste = encodeURIComponent(cuListe());
     const gefunden = {};
+    const nachBild = {};
     for (let seite = 0; seite < 25; seite++) {
       const d = await cuRequest('GET', '/list/' + liste + '/task?include_closed=true&subtasks=false&page=' + seite);
       for (const t of d.tasks || []) {
-        const paar = taskAufbereiten(t);
-        if (!paar) continue;
-        const [tid, neu] = paar;
+        const neu = taskAufbereiten(t);
+        if (neu.bild && !nachBild[neu.bild]) nachBild[neu.bild] = neu;
+        if (!neu.tid) continue;
         // Zu einer Unterhaltung kann versehentlich ein zweiter Task existieren.
         // Dann gewinnt der getaggte, sonst loescht ein leerer Doppelgaenger die
         // Markierung. Bei Gleichstand der zuletzt gefundene.
-        const alt = gefunden[tid];
-        if (!alt || neu.follow || !alt.follow) gefunden[tid] = neu;
+        const alt = gefunden[neu.tid];
+        if (!alt || neu.follow || !alt.follow) gefunden[neu.tid] = neu;
       }
       if (d.last_page || !(d.tasks || []).length) break;
     }
     cuTasks = gefunden;
-    GM_setValue(CU_TASKS, { stand: Date.now(), tasks: gefunden });
+    cuBilder = nachBild;
+    GM_setValue(CU_TASKS, { stand: Date.now(), tasks: gefunden, bilder: nachBild });
     return gefunden;
   }
 
@@ -512,12 +542,14 @@
       markdown_description: beschreibung(tid, h, w && w.bild),
     };
     const t = await cuRequest('POST', '/list/' + encodeURIComponent(cuListe()) + '/task', rumpf);
-    const paar = taskAufbereiten(t) || [tid, {
-      taskId: t.id, titel: t.name, status: (t.status && t.status.status) || '',
-      farbe: (t.status && t.status.color) || '#65676b', follow: false, due: '', url: t.url,
-    }];
-    cuTasks[tid] = paar[1];
-    GM_setValue(CU_TASKS, { stand: Date.now(), tasks: cuTasks });
+    const angelegt = taskAufbereiten(t);
+    // Die Antwort auf das Anlegen enthaelt die Beschreibung nicht immer zurueck,
+    // deshalb Thread und Bild aus dem, was wir gerade geschickt haben.
+    angelegt.tid = tid;
+    angelegt.bild = angelegt.bild || (w && w.bild) || '';
+    cuTasks[tid] = angelegt;
+    if (angelegt.bild) cuBilder[angelegt.bild] = angelegt;
+    GM_setValue(CU_TASKS, { stand: Date.now(), tasks: cuTasks, bilder: cuBilder });
     return cuTasks[tid];
   }
 
@@ -602,6 +634,33 @@
     if (a.art === 'follow' && !a.wert && !cuTasks[a.tid]) return;
     if (a.art === 'due' && !a.wert && !cuTasks[a.tid]) return;
     if (a.art === 'name' && !cuTasks[a.tid]) return;   // umbenennen legt nichts an
+
+    if (a.art === 'verbinden') {
+      // Im Marketplace erfasster Task bekommt jetzt seine Unterhaltung. Die
+      // Beschreibung wird nur ergaenzt, nicht ersetzt, damit eigene Notizen
+      // darin erhalten bleiben.
+      const ziel = cuBilder[a.bild];
+      if (!ziel || ziel.tid || cuTasks[a.tid]) return;
+      const voll = await cuRequest('GET', '/task/' + ziel.taskId + '?include_markdown_description=true');
+      const bisher = voll.markdown_description || voll.description || '';
+      if (!threadAusText(bisher)) {
+        const ergaenzt = bisher.replace(/\s*$/, '')
+          + '\n\n[Unterhaltung im Postfach öffnen](' + postfachLink(a.tid) + ')\n'
+          + 'igfu-thread: ' + a.tid;
+        await cuRequest('PUT', '/task/' + ziel.taskId, { markdown_description: ergaenzt });
+      }
+      const w = handleVon(a.tid);
+      const neuerName = taskName((w && w.handle) || ziel.titel, a.titel);
+      const aenderung = { status: CU_STATUS_NEU };
+      if (neuerName && neuerName !== ziel.titel) aenderung.name = neuerName;
+      await cuRequest('PUT', '/task/' + ziel.taskId, aenderung);
+      ziel.tid = a.tid;
+      ziel.status = CU_STATUS_NEU;
+      if (aenderung.name) ziel.titel = aenderung.name;
+      cuTasks[a.tid] = ziel;
+      GM_setValue(CU_TASKS, { stand: Date.now(), tasks: cuTasks, bilder: cuBilder });
+      return;
+    }
     const task = await cuTaskSichern(a.tid, a.titel);
     if (a.art === 'follow') {
       await cuFollowSetzen(task.taskId, !!a.wert);
@@ -766,6 +825,12 @@
       const bild = bildIDVon(t);
       if (vorschau || bild) handleMerken(tid, vorschau, 'vorschau', bild);
 
+      // Gibt es zu dieser Unterhaltung noch keinen Task, aber einen im
+      // Marketplace erfassten mit demselben Profilbild, gehoeren sie zusammen.
+      if (!cuTasks[tid] && bild && cuBilder[bild] && !cuBilder[bild].tid) {
+        vormerken({ art: 'verbinden', tid, titel: t.title, bild });
+      }
+
       if (fOn && follow[tid].title !== t.title) { follow[tid].title = t.title; followTitles = true; }
       if (uOn && unread[tid].title !== t.title) { unread[tid].title = t.title; unreadTitles = true; }
     }
@@ -844,6 +909,110 @@
     }, true);
   }
 
+  // ---------- Creator Marketplace ----------
+  // Hier ist das Handle sicher bekannt. Wer hier erfasst wird, hat es im Task,
+  // lange bevor eine Unterhaltung existiert. Die Bild-ID des Profilfotos ist
+  // der Schluessel, ueber den beides spaeter zusammenfindet.
+
+  const MARKT_BLOCK = new Set([
+    'follower', 'aufrufe', 'interaktionen', 'entdecken', 'listen', 'kampagnen',
+    'trends', 'suchen', 'mehr', 'zielgruppe', 'creator', 'kontaktieren',
+    'responsive', 'relevanz', 'partnership', 'reels',
+  ]);
+
+  function karteZu(knoten) {
+    let e = knoten.parentElement;
+    for (let i = 0; i < 8 && e; i++, e = e.parentElement) {
+      const img = e.querySelector && e.querySelector('img[src*="cdninstagram"], img[src*="fbcdn"]');
+      if (img) return { box: e, bild: bildIDAusUrl(img.src) };
+    }
+    return null;
+  }
+
+  function bildIDAusUrl(url) {
+    try {
+      const u = new URL(url);
+      const m = u.pathname.match(/\/([0-9]{6,})_/);
+      return m ? m[1] : '';
+    } catch (e) { return ''; }
+  }
+
+  function scanMarkt() {
+    if (!isMarkt() || !cuEingerichtet()) return;
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const treffer = [];
+    let n;
+    while ((n = walker.nextNode())) {
+      const t = (n.nodeValue || '').trim();
+      if (t.length < 3 || t.length > 30 || !HANDLE_MUSTER.test(t) || MARKT_BLOCK.has(t)) continue;
+      const p = n.parentElement;
+      if (!p || p.hasAttribute('data-igfu-crm')) continue;
+      treffer.push([n, t]);
+    }
+    for (const [knoten, handle] of treffer) {
+      const eltern = knoten.parentNode;
+      if (!eltern) continue;
+      const karte = karteZu(knoten);
+      const pille = document.createElement('button');
+      pille.type = 'button';
+      pille.className = 'igfu-crm-pille';
+      pille.dataset.handle = handle;
+      pille.dataset.bild = (karte && karte.bild) || '';
+      eltern.insertBefore(pille, knoten.nextSibling);
+      eltern.setAttribute('data-igfu-crm', '1');
+    }
+    for (const pille of document.querySelectorAll('.igfu-crm-pille')) setzeMarktPille(pille);
+  }
+
+  function setzeMarktPille(pille) {
+    const task = pille.dataset.bild && cuBilder[pille.dataset.bild];
+    if (task) {
+      pille.textContent = task.status || 'im CRM';
+      pille.dataset.an = '1';
+      pille.style.background = task.farbe;
+      pille.title = 'In ClickUp öffnen';
+    } else {
+      pille.textContent = 'ins CRM +';
+      pille.dataset.an = '0';
+      pille.style.background = '';
+      pille.title = 'Creator als „recherchiert" in ClickUp anlegen';
+    }
+  }
+
+  async function marktKlick(pille) {
+    const handle = pille.dataset.handle;
+    const bild = pille.dataset.bild;
+    const vorhanden = bild && cuBilder[bild];
+    if (vorhanden) { window.open(vorhanden.url, '_blank', 'noopener'); return; }
+    pille.textContent = 'lege an …';
+    try {
+      const t = await cuRequest('POST', '/list/' + encodeURIComponent(cuListe()) + '/task', {
+        name: handle,
+        status: CU_STATUS_MARKT,
+        markdown_description: beschreibungMarkt(handle, bild),
+      });
+      const neu = taskAufbereiten(t);
+      neu.bild = neu.bild || bild;
+      if (neu.bild) cuBilder[neu.bild] = neu;
+      GM_setValue(CU_TASKS, { stand: Date.now(), tasks: cuTasks, bilder: cuBilder });
+      setzeMarktPille(pille);
+    } catch (e) {
+      setzeMarktPille(pille);
+      console.warn('[Markierungen] ClickUp:', e.message);
+    }
+  }
+
+  for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'dblclick']) {
+    window.addEventListener(type, (e) => {
+      const pille = e.target instanceof Element && e.target.closest('.igfu-crm-pille');
+      if (!pille) return;
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      if (type === 'click') marktKlick(pille);
+    }, true);
+  }
+
   // ---------- Übersicht ----------
 
   let panelOpen = false;
@@ -890,12 +1059,17 @@
     return b;
   }
 
-  function buildUI() {
-    if (launcher) return;
-    const style = el('style');
+  function stilEinspielen() {
+    if (document.getElementById('igfu-style')) return;
+    const style = document.createElement('style');
     style.id = 'igfu-style';
     style.textContent = CSS;
     document.head.appendChild(style);
+  }
+
+  function buildUI() {
+    if (launcher) return;
+    stilEinspielen();
 
     launcher = button('', '', () => { panelOpen ? closePanel() : openPanel(); });
     launcher.id = 'igfu-launch';
@@ -1327,7 +1501,7 @@
   let wasInbox = null;
   function syncActive() {
     const now = isInbox();
-    if (now === wasInbox) return;
+    if (now === wasInbox) { if (isMarkt()) { stilEinspielen(); scanMarkt(); } return; }
     wasInbox = now;
     if (now) {
       buildUI(); launcher.hidden = false; updateLauncher(); scanRows();
@@ -1348,6 +1522,7 @@
       launcher.hidden = true;
       closePanel();
     }
+    if (isMarkt()) { stilEinspielen(); cuAktualisieren(false); scanMarkt(); }
   }
 
   let scheduled = null;
@@ -1357,6 +1532,7 @@
       scheduled = null;
       syncActive();
       if (isInbox()) { scanRows(); positionUI(); }
+      if (isMarkt()) scanMarkt();
     }, 250);
   });
   observer.observe(document.body, { childList: true, subtree: true });

@@ -32,11 +32,17 @@ export async function starte({
   tags = [TAG],            // im Space vorhandene Tags
   fehler = null,           // (methode, pfad) => 'netz'|'limit'|'token'|'weg'|'ungueltig'|null
   karte = null,            // { handle } fuer die Kontaktkarte der geoeffneten Unterhaltung
+  markt = null,            // [{ handle, bild }] baut stattdessen Marketplace-Karten
 } = {}) {
   const seitenleiste = karte
     ? '<aside><div>Instagram-Profil</div><div><a href="https://l.facebook.com/l.php">' + karte.handle + '</a></div></aside>'
     : '';
-  const body = '<body><div id="liste">' + THREADS.map((t) => zeile(t.title, 'Hallo')).join('') + '</div>' + seitenleiste + '</body>';
+  const karten = (markt || []).map((c) =>
+    '<div class="karte"><img src="https://scontent-muc2-1.cdninstagram.com/v/t51.2885-19/' + c.bild + '_9_n.jpg">'
+    + '<div class="h">' + c.handle + '</div><div class="meta">1234 Follower</div></div>').join('');
+  const body = markt
+    ? '<body><div id="markt">' + karten + '</div></body>'
+    : '<body><div id="liste">' + THREADS.map((t) => zeile(t.title, 'Hallo')).join('') + '</div>' + seitenleiste + '</body>';
   const dom = new JSDOM(body, {
     url: 'https://business.facebook.com' + pfad,
     runScripts: 'outside-only',
@@ -86,6 +92,11 @@ export async function starte({
     const ok = (o) => ({ status: 200, responseText: JSON.stringify(o || {}) });
 
     if (methode === 'GET' && /^\/list\/[^/]+$/.test(pf)) return ok({ id: LISTE, space: { id: SPACE } });
+    if (methode === 'GET' && /^\/task\/[^/?]+/.test(pf)) {
+      const id = pf.split('/')[2].split('?')[0];
+      const t = serverTasks.find((x) => x.id === id);
+      return t ? ok(alsApiTask(t)) : { status: 404, responseText: '' };
+    }
     if (methode === 'GET' && /^\/space\/[^/]+\/tag$/.test(pf)) return ok({ tags: spaceTags.map((n) => ({ name: n })) });
     if (methode === 'POST' && /^\/space\/[^/]+\/tag$/.test(pf)) {
       spaceTags.push(JSON.parse(data).tag.name);
@@ -119,6 +130,8 @@ export async function starte({
       const k = JSON.parse(data);
       if (t && 'due_date' in k) t.due = k.due_date;
       if (t && k.name) t.name = k.name;
+      if (t && k.status) t.status = k.status;
+      if (t && k.markdown_description) t.beschreibung = k.markdown_description;
       return ok();
     }
     if (methode === 'POST' && /\/comment$/.test(pf)) return ok({ id: 'k1' });
