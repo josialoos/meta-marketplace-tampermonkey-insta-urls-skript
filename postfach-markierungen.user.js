@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      2.4
+// @version      2.5
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -48,6 +48,10 @@
       position: absolute; bottom: 7px; z-index: 2;
       display: flex; flex-direction: row; flex-wrap: nowrap; gap: 6px;
       width: max-content;
+      /* Der Streifen darf keine Klicks abfangen, sonst laesst sich das untere
+         Drittel der Zeile nicht anklicken und Meta oeffnet die Unterhaltung
+         nicht. Nur sichtbare Knoepfe nehmen Klicks an, siehe unten. */
+      pointer-events: none;
     }
     .igfu-tags > .igfu-tag {
       position: static; flex: none;
@@ -56,15 +60,16 @@
       border: 1px solid #ccd0d5; background: #fff; color: #65676b;
       font-family: inherit; font-size: 11px; font-weight: 600; line-height: 1;
       cursor: pointer; opacity: 0; transition: opacity .12s;
+      pointer-events: none;
     }
     .igfu-tag[data-kind="followup"]::before { content: "⚑"; font-size: 11px; }
     .igfu-tag[data-kind="unread"]::before {
       content: ""; width: 7px; height: 7px; border-radius: 50%;
       border: 1.5px solid currentColor; box-sizing: border-box;
     }
-    [data-igfu-row]:hover .igfu-tag, .igfu-tag:focus-visible { opacity: 1; }
+    [data-igfu-row]:hover .igfu-tag, .igfu-tag:focus-visible { opacity: 1; pointer-events: auto; }
     .igfu-tag:focus-visible { outline: 2px solid ${PINK}; outline-offset: 1px; }
-    .igfu-tag.on { opacity: 1; }
+    .igfu-tag.on { opacity: 1; pointer-events: auto; }
     .igfu-tag.on[data-kind="unread"] { background: ${BLACK}; border-color: ${BLACK}; color: #fff; }
     .igfu-tag.on[data-kind="unread"]::before { background: #fff; border-color: #fff; }
     .igfu-tag.on[data-kind="followup"] { background: ${YELLOW}; border-color: #e0b400; color: ${BLACK}; }

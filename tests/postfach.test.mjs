@@ -600,6 +600,20 @@ gruppe('Der Aktualisieren-Knopf und sein Tooltip');
   pruefe('Tooltip verschwindet wieder', !tipp.classList.contains('show'));
 }
 
+gruppe('Unsichtbare Knöpfe fangen keine Klicks ab');
+{
+  const { doc } = await starte({ speicher: MIT_CLICKUP });
+  const stil = doc.getElementById('igfu-style').textContent;
+  pruefe('Der Knopfstreifen ist klickdurchlässig',
+    /\.igfu-tags \{[^}]*pointer-events: none/s.test(stil));
+  pruefe('Unsichtbare Knöpfe nehmen keine Klicks an',
+    /\.igfu-tags > \.igfu-tag \{[^}]*pointer-events: none/s.test(stil));
+  pruefe('Beim Überfahren nehmen sie wieder Klicks an',
+    /:hover \.igfu-tag[^{]*\{[^}]*pointer-events: auto/.test(stil));
+  pruefe('Aktive Knöpfe bleiben klickbar',
+    /\.igfu-tag\.on \{[^}]*pointer-events: auto/.test(stil));
+}
+
 gruppe('Speicher übersteht ein Neuladen');
 {
   const erst = await starte({ speicher: MIT_CLICKUP });
