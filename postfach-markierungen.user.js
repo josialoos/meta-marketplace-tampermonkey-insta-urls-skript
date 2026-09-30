@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      2.2
+// @version      2.3
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -100,6 +100,20 @@
     #igfu-launch.has { background: ${PINK}; border-color: ${PINK}; color: #fff; }
     #igfu-launch:focus-visible { outline: 2px solid #1c2b33; outline-offset: 2px; }
     .igfu-due-badge { background: #fff; color: #b4103a; border-radius: 9px; padding: 2px 7px; font-size: 11px; }
+
+    #igfu-refresh {
+      position: fixed; left: 88px; bottom: 14px; z-index: 2147483000;
+      display: inline-flex; align-items: center; gap: 8px;
+      height: 32px; padding: 0 14px; border-radius: 16px;
+      border: 1px solid ${PINK}; background: #fff; color: ${PINK};
+      font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,.12);
+    }
+    #igfu-refresh:hover { background: #fff0f5; }
+    #igfu-refresh[disabled] { cursor: default; opacity: .75; }
+    #igfu-refresh:focus-visible { outline: 2px solid ${PINK}; outline-offset: 2px; }
+    #igfu-refresh::before { content: "⟳"; font-size: 15px; line-height: 1; }
+    #igfu-refresh[hidden] { display: none; }
 
     #igfu-panel {
       position: fixed; left: 88px; bottom: 54px; z-index: 2147483000;
@@ -1165,7 +1179,7 @@
   // ---------- Übersicht ----------
 
   let panelOpen = false;
-  let launcher, panel, bodyEl, toastEl, formEl;
+  let launcher, panel, bodyEl, toastEl, formEl, refreshBtn;
 
   const todayStr = () => {
     const d = new Date();
@@ -1223,6 +1237,11 @@
     launcher = button('', '', () => { panelOpen ? closePanel() : openPanel(); });
     launcher.id = 'igfu-launch';
     document.body.appendChild(launcher);
+
+    refreshBtn = button('', 'Aktualisieren', () => allesAktualisieren(),
+      'Ganze Liste durchgehen und Daten in ClickUp nachziehen');
+    refreshBtn.id = 'igfu-refresh';
+    document.body.appendChild(refreshBtn);
 
     panel = el('section');
     panel.id = 'igfu-panel';
@@ -1589,6 +1608,55 @@
     }
   }
 
+  // Geht die ganze Liste von oben nach unten durch, damit jede Zeile einmal
+  // gesehen wird. Nur dabei erfaehrt das Skript neue Zeitstempel, Handles und
+  // Unterhaltungen, denn Meta haelt immer nur die sichtbaren Zeilen im Seitencode.
+  let laeuftDurchlauf = false;
+  async function allesAktualisieren() {
+    if (laeuftDurchlauf) return;
+    const sc = listScroller();
+    if (!sc) { toast('Die Unterhaltungsliste wurde nicht gefunden.'); return; }
+    laeuftDurchlauf = true;
+    const merke = refreshBtn ? refreshBtn.textContent : '';
+    const zeigen = (text) => { if (refreshBtn) refreshBtn.textContent = text; };
+    if (refreshBtn) refreshBtn.disabled = true;
+    const gesehen = new Set();
+    try {
+      setScrollTop(sc, 0);
+      await sleep(700);
+      let ohneZuwachs = 0;
+      for (let i = 0; i < 400; i++) {
+        scanRows();
+        for (const [, t] of threadRows()) gesehen.add(t.threadID);
+        zeigen(gesehen.size + ' geprüft');
+        const vorher = gesehen.size;
+        const obenVorher = sc.scrollTop;
+        setScrollTop(sc, sc.scrollTop + Math.max(200, Math.round(sc.clientHeight * 0.6)));
+        // Metas Liste laedt teilweise erst auf ein echtes Rad-Ereignis nach
+        sc.dispatchEvent(new WheelEvent('wheel', { deltaY: 300, bubbles: true }));
+        await sleep(500);
+        const amEnde = sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 6;
+        if (amEnde || sc.scrollTop === obenVorher) {
+          await sleep(1600);
+          scanRows();
+          for (const [, t] of threadRows()) gesehen.add(t.threadID);
+        }
+        if (gesehen.size === vorher) { if (++ohneZuwachs >= 10) break; } else ohneZuwachs = 0;
+      }
+      setScrollTop(sc, 0);
+      await sleep(400);
+      scanRows();
+      const offen = warteschlange().length;
+      toast(gesehen.size + ' Unterhaltungen durchgesehen'
+        + (offen ? ', ' + offen + ' Änderung(en) gehen noch raus.' : ', alles auf Stand.'));
+      abarbeiten();
+    } finally {
+      laeuftDurchlauf = false;
+      if (refreshBtn) { refreshBtn.disabled = false; refreshBtn.textContent = merke || 'Aktualisieren'; }
+      updateLauncher();
+    }
+  }
+
   // Zähler rechtsbündig unter die Unterhaltungsliste setzen, Übersicht darüber
   function positionUI() {
     if (!launcher || launcher.hidden) return;
@@ -1599,6 +1667,10 @@
     const bottom = Math.max(8, window.innerHeight - r.bottom + 12);
     launcher.style.left = Math.round(Math.max(r.left + 8, r.right - launcher.offsetWidth - 20)) + 'px';
     launcher.style.bottom = bottom + 'px';
+    if (refreshBtn) {
+      refreshBtn.style.left = Math.round(r.left + 8) + 'px';
+      refreshBtn.style.bottom = bottom + 'px';
+    }
     panel.style.left = Math.round(r.left + 8) + 'px';
     panel.style.width = Math.round(Math.min(360, r.width - 16)) + 'px';
     panel.style.bottom = (bottom + 42) + 'px';
@@ -1666,7 +1738,7 @@
     if (now === wasInbox) { if (isMarkt()) { stilEinspielen(); scanMarkt(); } return; }
     wasInbox = now;
     if (now) {
-      buildUI(); launcher.hidden = false; updateLauncher(); scanRows();
+      buildUI(); launcher.hidden = false; refreshBtn.hidden = false; updateLauncher(); scanRows();
       cuAktualisieren(true);
       abarbeiten();
       setTimeout(() => {
@@ -1682,6 +1754,7 @@
       }, 8000);
     } else if (launcher) {
       launcher.hidden = true;
+      if (refreshBtn) refreshBtn.hidden = true;
       closePanel();
     }
     if (isMarkt()) { stilEinspielen(); cuAktualisieren(false); scanMarkt(); }
