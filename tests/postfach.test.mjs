@@ -453,6 +453,135 @@ gruppe('Ein bereits verbundener Task wird nicht nochmal verbunden');
   pruefe('Keine zweite Verknüpfung', !aufrufe.some((a) => a.methode === 'PUT' && a.data && a.data.markdown_description));
 }
 
+const MIT_UP = { ...MIT_CLICKUP, 'uppromote:token:v1': 'up_geheim_999' };
+
+gruppe('UpPromote: bestätigte Affiliates werden ongeboardet');
+{
+  const { doc, w, serverTasks, aufrufe } = await starte({
+    speicher: MIT_UP,
+    tasks: [
+      { id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+        beschreibung: beschreibungMit('T1'), tags: [TAG] },
+      { id: 'a2', name: 'Corina Bösch', status: 'angeschrieben', farbe: '#87909e',
+        beschreibung: beschreibungMit('T2'), tags: [TAG] },
+    ],
+    affiliates: [
+      { first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de', instagram: 'https://www.instagram.com/annabolko.runs/' },
+      { first_name: 'Fremd', last_name: 'Person', email: 'x@y.de', instagram: '@jemand.anders' },
+    ],
+  });
+  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await warte(w, 1200);
+  pruefe('Der passende Task wird ongeboardet', serverTasks[0].status === 'ongeboardet', serverTasks[0].status);
+  pruefe('Der Task ohne Handle bleibt unberührt', serverTasks[1].status === 'angeschrieben', serverTasks[1].status);
+  pruefe('UpPromote wurde nach aktiven gefragt',
+    aufrufe.some((a) => a.pfad.startsWith('UP/affiliates') && a.pfad.includes('status=active')));
+  pruefe('Der UpPromote-Token steht in keiner Nutzlast',
+    !aufrufe.some((a) => JSON.stringify(a.data || '').includes('up_geheim')));
+}
+
+gruppe('UpPromote: Handle wird aus allen Schreibweisen gelesen');
+{
+  const faelle = [
+    ['https://www.instagram.com/annabolko.runs/', 'volle URL'],
+    ['@annabolko.runs', 'mit At-Zeichen'],
+    ['annabolko.runs', 'nackt'],
+  ];
+  for (const [wert, name] of faelle) {
+    const { doc, w, serverTasks } = await starte({
+      speicher: MIT_UP,
+      tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+                beschreibung: beschreibungMit('T1'), tags: [TAG] }],
+      affiliates: [{ first_name: 'Anna', last_name: 'B', email: 'a@b.de', instagram: wert }],
+    });
+    klick(w, knopf(doc, 'UpPromote abgleichen'));
+    await warte(w, 1000);
+    pruefe('Erkennt ' + name, serverTasks[0].status === 'ongeboardet', serverTasks[0].status);
+  }
+}
+
+gruppe('UpPromote: Handle auch aus einem Anmeldefeld');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_UP,
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1'), tags: [TAG] }],
+    affiliates: [{ first_name: 'Anna', last_name: 'B', email: 'a@b.de', instagram: '',
+                   custom_fields: [{ name: 'Dein Instagram-Handle', value: 'annabolko.runs' }] }],
+  });
+  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await warte(w, 1000);
+  pruefe('Anmeldefeld wird gelesen', serverTasks[0].status === 'ongeboardet', serverTasks[0].status);
+}
+
+gruppe('UpPromote: bereits ongeboardet wird nicht erneut geschrieben');
+{
+  const { doc, w, aufrufe } = await starte({
+    speicher: MIT_UP,
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: beschreibungMit('T1'), tags: [TAG] }],
+    affiliates: [{ first_name: 'Anna', last_name: 'B', email: 'a@b.de', instagram: 'annabolko.runs' }],
+  });
+  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await warte(w, 1000);
+  pruefe('Kein Statuswechsel', !aufrufe.some((a) => a.methode === 'PUT' && a.data && a.data.status));
+}
+
+gruppe('UpPromote: ohne Token passiert nichts');
+{
+  const { doc, w, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1'), tags: [TAG] }],
+  });
+  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await warte(w, 700);
+  pruefe('Keine Anfrage an UpPromote', !aufrufe.some((a) => a.pfad.startsWith('UP/')));
+  pruefe('Hinweis erscheint',
+    (doc.querySelector('#igfu-toast') || {}).textContent.includes('UpPromote-Token'),
+    (doc.querySelector('#igfu-toast') || {}).textContent);
+}
+
+const alsDatum = (ms) => ms ? new Date(Number(ms)).toISOString().slice(0, 10) : null;
+
+gruppe('Datum der letzten Nachricht landet im Startdatum');
+{
+  const { w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1'), tags: [TAG] }],
+  });
+  await warte(w, 1200);
+  pruefe('Startdatum entspricht der letzten Nachricht',
+    alsDatum(serverTasks[0].start) === '2026-09-14', String(serverTasks[0].start) + ' -> ' + alsDatum(serverTasks[0].start));
+}
+
+gruppe('Stimmt das Startdatum schon, wird nicht geschrieben');
+{
+  const passend = new Date(2026, 8, 14, 12, 0, 0).getTime();
+  const { w, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1'), tags: [TAG], start: passend }],
+  });
+  await warte(w, 1200);
+  pruefe('Kein überflüssiger Schreibvorgang',
+    !aufrufe.some((a) => a.methode === 'PUT' && a.data && 'start_date' in a.data),
+    JSON.stringify(aufrufe.filter((a) => a.methode === 'PUT').map((a) => a.data)));
+}
+
+gruppe('Neuer Task bekommt das Datum gleich mit');
+{
+  const { doc, w, aufrufe } = await starte({ speicher: MIT_CLICKUP });
+  await warte(w, 600);
+  klick(w, chip(doc, 1, 'followup'));   // Corina, letzte Nachricht 20.09.2026
+  await warte(w, 900);
+  const neu = angelegte(aufrufe)[0];
+  pruefe('Startdatum ist beim Anlegen dabei',
+    neu && alsDatum(neu.data.start_date) === '2026-09-20',
+    neu && String(neu.data.start_date));
+}
+
 gruppe('Speicher übersteht ein Neuladen');
 {
   const erst = await starte({ speicher: MIT_CLICKUP });

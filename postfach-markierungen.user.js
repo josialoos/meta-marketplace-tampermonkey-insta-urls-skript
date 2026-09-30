@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      2.1
+// @version      2.2
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -12,6 +12,7 @@
 // @grant        GM_addValueChangeListener
 // @grant        GM_xmlhttpRequest
 // @connect      api.clickup.com
+// @connect      aff-api.uppromote.com
 // @sandbox      JavaScript
 // ==/UserScript==
 
@@ -254,6 +255,13 @@
   // wurde, deshalb wird der Status hier ausdruecklich gesetzt.
   const CU_STATUS_NEU = 'angeschrieben';
   const CU_STATUS_MARKT = 'recherchiert';
+  const CU_STATUS_ONBOARD = 'ongeboardet';
+
+  // UpPromote kennt den Freigabestatus der Affiliates. Shopify kennt ihn nicht,
+  // dort steht nur ein Tag ohne Aussage. Die Zuordnung laeuft ueber das
+  // Instagram-Profil, das UpPromote bei jedem Affiliate mitliefert.
+  const UP_TOKEN = 'uppromote:token:v1';
+  const upToken = () => String(GM_getValue(UP_TOKEN, '') || '').trim();
 
   const cuListe = () => String(GM_getValue(CU_LIST, '') || '').trim();
   // scanRows laeuft mehrmals pro Sekunde ueber jede Zeile. Der Zustand wird
@@ -307,11 +315,12 @@
     return handle + ' — ' + t;
   }
 
-  function handleMerken(tid, handle, quelle, bild) {
+  function handleMerken(tid, handle, quelle, bild, letzte) {
     if (!tid) return;
     const alle = handles();
     const alt = alle[tid] || {};
     let geaendert = false;
+    if (letzte && alt.letzte !== letzte) { alt.letzte = letzte; geaendert = true; }
     if (bild && alt.bild !== bild) { alt.bild = bild; geaendert = true; }
     const besser = handle && (!alt.handle || (GUETE[quelle] || 0) > (GUETE[alt.quelle] || 0));
     if (besser && alt.handle !== handle) { alt.handle = handle; alt.quelle = quelle; geaendert = true; }
@@ -450,6 +459,117 @@
     });
   }
 
+  function upRequest(pfad) {
+    return new Promise((erfuellen, ablehnen) => {
+      const token = upToken();
+      if (!token) return ablehnen(Object.assign(new Error('Kein UpPromote-Token hinterlegt.'), { blockierend: true }));
+      let grund = '';
+      const fehler = (text, art) => ablehnen(Object.assign(new Error(text + grund), {
+        wiederholbar: art === 'wiederholbar', blockierend: art === 'blockierend',
+      }));
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url: 'https://aff-api.uppromote.com/api/v2' + pfad,
+        headers: { Authorization: token, Accept: 'application/json', 'Content-Type': 'application/json' },
+        timeout: 20000,
+        onload: (a) => {
+          if (a.status < 200 || a.status >= 300) {
+            try { const k = JSON.parse(a.responseText || '{}'); if (k && (k.message || k.error)) grund = ' (' + (k.message || k.error) + ')'; }
+            catch (e) { /* ohne Grund weiter */ }
+          }
+          if (a.status === 401 || a.status === 403) return fehler('UpPromote lehnt den Token ab.', 'blockierend');
+          if (a.status === 429) return fehler('UpPromote-Limit erreicht.', 'wiederholbar');
+          if (a.status >= 500) return fehler('UpPromote antwortet gerade nicht.', 'wiederholbar');
+          if (a.status < 200 || a.status >= 300) return fehler('UpPromote meldet Fehler ' + a.status + '.');
+          try { erfuellen(a.responseText ? JSON.parse(a.responseText) : {}); }
+          catch (e) { fehler('Antwort von UpPromote war nicht lesbar.'); }
+        },
+        onerror: () => fehler('Keine Verbindung zu UpPromote.', 'wiederholbar'),
+        ontimeout: () => fehler('UpPromote hat zu lange gebraucht.', 'wiederholbar'),
+      });
+    });
+  }
+
+  // Aus „https://instagram.com/handle/", „@handle" oder „handle" wird „handle"
+  function handleAusFeld(wert) {
+    let t = String(wert || '').trim();
+    if (!t) return '';
+    const m = t.match(/instagram\.com\/([^/?#]+)/i);
+    if (m) t = m[1];
+    t = t.replace(/^@/, '').replace(/\/+$/, '').trim().toLowerCase();
+    return HANDLE_MUSTER.test(t) ? t : '';
+  }
+
+  function handleAusAffiliate(a) {
+    const kandidaten = [a.instagram, a.instagram_url, a.social_instagram];
+    for (const f of (a.custom_fields || [])) {
+      if (!f) continue;
+      const name = String(f.name || f.label || f.key || '').toLowerCase();
+      if (name.includes('instagram') || name.includes('handle')) kandidaten.push(f.value);
+    }
+    for (const k of kandidaten) { const h = handleAusFeld(k); if (h) return h; }
+    return '';
+  }
+
+  async function upAktive() {
+    const gefunden = {};
+    for (let seite = 1; seite <= 20; seite++) {
+      const d = await upRequest('/affiliates?status=active&per_page=100&page=' + seite);
+      const liste = d.data || d.affiliates || (Array.isArray(d) ? d : []);
+      for (const a of liste) {
+        const h = handleAusAffiliate(a);
+        if (h) gefunden[h] = { name: [a.first_name, a.last_name].filter(Boolean).join(' '), email: a.email };
+      }
+      if (!liste.length || liste.length < 100) break;
+    }
+    return gefunden;
+  }
+
+  // Das Handle eines Tasks steht im Namen vor dem Gedankenstrich, sonst ist der
+  // ganze Name das Handle.
+  function handleAusTaskname(name) {
+    const n = String(name || '').trim();
+    const m = n.match(/^([a-z0-9._]{2,30})\s+—\s+/);
+    if (m) return m[1].toLowerCase();
+    return HANDLE_MUSTER.test(n.toLowerCase()) ? n.toLowerCase() : '';
+  }
+
+  async function upAbgleichen() {
+    if (!cuEingerichtet()) { toast('Bitte erst ClickUp einrichten.'); return; }
+    if (!upToken()) { toast('Bitte erst den UpPromote-Token eintragen.'); return; }
+    if (cuLaeuft) { toast('Es läuft gerade eine Übertragung, bitte kurz warten.'); return; }
+    cuLaeuft = true;
+    try {
+      toast('Frage UpPromote ab …');
+      const aktive = await upAktive();
+      await cuTasksLaden();
+      const treffer = [];
+      for (const t of Object.values(cuTasks)) {
+        const h = handleAusTaskname(t.titel);
+        if (!h || !aktive[h]) continue;
+        if (t.status === CU_STATUS_ONBOARD) continue;
+        treffer.push([t, h]);
+      }
+      if (!treffer.length) {
+        toast(Object.keys(aktive).length + ' bestätigte Affiliates bei UpPromote, keiner davon neu im CRM.');
+        return;
+      }
+      let fertig = 0;
+      for (const [t] of treffer) {
+        await cuRequest('PUT', '/task/' + t.taskId, { status: CU_STATUS_ONBOARD });
+        t.status = CU_STATUS_ONBOARD;
+        fertig++;
+      }
+      GM_setValue(CU_TASKS, { stand: Date.now(), tasks: cuTasks, bilder: cuBilder });
+      toast(fertig + ' auf „' + CU_STATUS_ONBOARD + '" gesetzt, von ' + Object.keys(aktive).length + ' bestätigten Affiliates.');
+      scanRows();
+    } catch (e) {
+      toast('UpPromote: ' + e.message);
+    } finally {
+      cuLaeuft = false;
+    }
+  }
+
   async function cuSpaceLaden() {
     const daten = await cuRequest('GET', '/list/' + encodeURIComponent(cuListe()));
     const id = daten && daten.space && daten.space.id;
@@ -504,6 +624,10 @@
       farbe: (t.status && t.status.color) || '#65676b',
       follow: tags.includes(CU_TAG),
       due: isoVonMs(t.due_date),
+      // Das Startdatum traegt bei uns das Datum der letzten Nachricht. Ein
+      // eigenes Custom Field waere im Free-Plan nicht bezahlbar, und im
+      // Gegensatz zu einer Zeile in der Beschreibung laesst sich danach sortieren.
+      letzte: isoVonMs(t.start_date),
       url: t.url,
     };
   }
@@ -541,6 +665,8 @@
       status: CU_STATUS_NEU,
       markdown_description: beschreibung(tid, h, w && w.bild),
     };
+    const letzte = w && w.letzte ? msVonIso(w.letzte) : null;
+    if (letzte) { rumpf.start_date = letzte; rumpf.start_date_time = false; }
     const t = await cuRequest('POST', '/list/' + encodeURIComponent(cuListe()) + '/task', rumpf);
     const angelegt = taskAufbereiten(t);
     // Die Antwort auf das Anlegen enthaelt die Beschreibung nicht immer zurueck,
@@ -634,6 +760,7 @@
     if (a.art === 'follow' && !a.wert && !cuTasks[a.tid]) return;
     if (a.art === 'due' && !a.wert && !cuTasks[a.tid]) return;
     if (a.art === 'name' && !cuTasks[a.tid]) return;   // umbenennen legt nichts an
+    if (a.art === 'letzte' && !cuTasks[a.tid]) return; // Datum legt nichts an
 
     if (a.art === 'verbinden') {
       // Im Marketplace erfasster Task bekommt jetzt seine Unterhaltung. Die
@@ -670,6 +797,12 @@
       const ms = msVonIso(a.wert);
       await cuRequest('PUT', '/task/' + task.taskId, ms ? { due_date: ms, due_date_time: false } : { due_date: null });
       task.due = a.wert || '';
+    } else if (a.art === 'letzte') {
+      const ms = msVonIso(a.wert);
+      if (ms) {
+        await cuRequest('PUT', '/task/' + task.taskId, { start_date: ms, start_date_time: false });
+        task.letzte = a.wert;
+      }
     } else if (a.art === 'name') {
       const w = handleVon(a.tid);
       const neu = taskName(w && w.handle, a.titel || rohTitel(task.titel));
@@ -824,6 +957,16 @@
       const vorschau = handleAusVorschau(t);
       const bild = bildIDVon(t);
       if (vorschau || bild) handleMerken(tid, vorschau, 'vorschau', bild);
+
+      // Datum der letzten Nachricht ins Startdatum des Tasks, damit in ClickUp
+      // sichtbar und sortierbar ist, wie lange nichts mehr passiert ist.
+      const letzte = isoVonMs(t.timestamp);
+      if (letzte) {
+        const w = handleVon(tid) || {};
+        if (w.letzte !== letzte) handleMerken(tid, '', 'vorschau', null, letzte);
+        const task = cuTasks[tid];
+        if (task && task.letzte !== letzte) vormerken({ art: 'letzte', tid, titel: t.title, wert: letzte });
+      }
 
       // Gibt es zu dieser Unterhaltung noch keinen Task, aber einen im
       // Marketplace erfassten mit demselben Profilbild, gehoeren sie zusammen.
@@ -1137,8 +1280,15 @@
     tokenFeld.type = 'password';
     tokenFeld.autocomplete = 'off';
     tokenFeld.placeholder = 'pk_…';
-    const tokenLabel = el('label', '', 'API-Token');
+    const tokenLabel = el('label', '', 'ClickUp-Token');
     tokenLabel.appendChild(tokenFeld);
+
+    const upFeld = el('input');
+    upFeld.type = 'password';
+    upFeld.autocomplete = 'off';
+    upFeld.placeholder = 'Schlüssel aus UpPromote, Einstellungen › Integrationen';
+    const upLabel = el('label', '', 'UpPromote-Token');
+    upLabel.appendChild(upFeld);
 
     const knoepfe = el('div', 'igfu-form-knoepfe');
 
@@ -1146,6 +1296,7 @@
       const teile = [];
       teile.push(String(GM_getValue(CU_TOKEN, '') || '').trim() ? 'Token hinterlegt.' : 'Kein Token hinterlegt.');
       teile.push(cuListe() ? 'Liste ' + cuListe() + '.' : 'Keine Liste gesetzt.');
+      teile.push(upToken() ? 'UpPromote verbunden.' : 'UpPromote nicht verbunden.');
       const offen = warteschlange().length;
       if (offen) teile.push(offen + ' Änderung(en) warten auf Übertragung.');
       hinweis.textContent = teile.join(' ');
@@ -1155,7 +1306,9 @@
       button('igfu-done', 'Speichern', async () => {
         GM_setValue(CU_LIST, listenFeld.value.trim());
         if (tokenFeld.value.trim()) GM_setValue(CU_TOKEN, tokenFeld.value.trim());
+        if (upFeld.value.trim()) GM_setValue(UP_TOKEN, upFeld.value.trim());
         tokenFeld.value = '';
+        upFeld.value = '';
         cuEinstellungenGeaendert();
         standAnzeigen();
         toast('Gespeichert. Ich prüfe die Verbindung …');
@@ -1164,16 +1317,19 @@
       }),
       button('igfu-link', 'Verbindung prüfen', async () => { await verbindungPruefen(); standAnzeigen(); }),
       button('igfu-link', 'Lokale Follow-ups übernehmen', async () => { await uebernehmen(); standAnzeigen(); }),
+      button('igfu-link', 'UpPromote abgleichen', async () => { await upAbgleichen(); standAnzeigen(); },
+        'Bestätigte Affiliates aus UpPromote auf „' + CU_STATUS_ONBOARD + '" setzen'),
       button('igfu-link', 'Token löschen', () => {
         GM_setValue(CU_TOKEN, '');
+        GM_setValue(UP_TOKEN, '');
         cuEinstellungenGeaendert();
         standAnzeigen();
         scanRows();
-        toast('Token gelöscht. Das Postfach arbeitet wieder rein lokal.');
+        toast('Beide Token gelöscht. Das Postfach arbeitet wieder rein lokal.');
       }),
     );
 
-    f.append(hinweis, listenLabel, tokenLabel, knoepfe);
+    f.append(hinweis, listenLabel, tokenLabel, upLabel, knoepfe);
     f.standAnzeigen = standAnzeigen;
     standAnzeigen();
     return f;
