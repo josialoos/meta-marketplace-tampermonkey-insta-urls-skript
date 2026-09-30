@@ -582,6 +582,24 @@ gruppe('Neuer Task bekommt das Datum gleich mit');
     neu && String(neu.data.start_date));
 }
 
+gruppe('Der Aktualisieren-Knopf und sein Tooltip');
+{
+  const { doc, w } = await starte({ speicher: MIT_CLICKUP });
+  const b = doc.querySelector('#igfu-refresh');
+  pruefe('Knopf ist da und sichtbar', !!b && b.hidden === false);
+  pruefe('Knopf ist beschriftet', b && b.textContent === 'Aktualisieren', b && b.textContent);
+  const tipp = doc.querySelector('#igfu-tipp');
+  pruefe('Tooltip existiert', !!tipp);
+  pruefe('Tooltip ist zunächst unsichtbar', tipp && !tipp.classList.contains('show'));
+  b.dispatchEvent(new w.MouseEvent('mouseenter', { bubbles: false }));
+  pruefe('Tooltip erscheint beim Überfahren', tipp.classList.contains('show'));
+  pruefe('Tooltip nennt das Startdatum', /Startdatum/.test(tipp.textContent));
+  pruefe('Tooltip nennt die Handles', /Handles/.test(tipp.textContent));
+  pruefe('Tooltip sagt, was er nicht tut', /Legt keine neuen Tasks an/.test(tipp.textContent));
+  b.dispatchEvent(new w.MouseEvent('mouseleave', { bubbles: false }));
+  pruefe('Tooltip verschwindet wieder', !tipp.classList.contains('show'));
+}
+
 gruppe('Speicher übersteht ein Neuladen');
 {
   const erst = await starte({ speicher: MIT_CLICKUP });

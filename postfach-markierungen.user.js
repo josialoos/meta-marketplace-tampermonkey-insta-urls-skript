@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      2.3
+// @version      2.4
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -114,6 +114,20 @@
     #igfu-refresh:focus-visible { outline: 2px solid ${PINK}; outline-offset: 2px; }
     #igfu-refresh::before { content: "⟳"; font-size: 15px; line-height: 1; }
     #igfu-refresh[hidden] { display: none; }
+
+    #igfu-tipp {
+      position: fixed; z-index: 2147483002;
+      width: 320px; padding: 12px 14px; border-radius: 10px;
+      background: #1c2b33; color: #fff;
+      font-family: inherit; font-size: 12px; line-height: 1.5;
+      box-shadow: 0 8px 24px rgba(0,0,0,.24);
+      opacity: 0; pointer-events: none; transition: opacity .12s;
+    }
+    #igfu-tipp.show { opacity: 1; }
+    #igfu-tipp b { display: block; margin-bottom: 6px; font-size: 13px; }
+    #igfu-tipp ul { margin: 0; padding-left: 16px; }
+    #igfu-tipp li { margin: 2px 0; }
+    #igfu-tipp .igfu-tipp-fuss { margin-top: 8px; color: #b9c3c9; }
 
     #igfu-panel {
       position: fixed; left: 88px; bottom: 54px; z-index: 2147483000;
@@ -1179,7 +1193,7 @@
   // ---------- Übersicht ----------
 
   let panelOpen = false;
-  let launcher, panel, bodyEl, toastEl, formEl, refreshBtn;
+  let launcher, panel, bodyEl, toastEl, formEl, refreshBtn, tippEl;
 
   const todayStr = () => {
     const d = new Date();
@@ -1238,10 +1252,40 @@
     launcher.id = 'igfu-launch';
     document.body.appendChild(launcher);
 
-    refreshBtn = button('', 'Aktualisieren', () => allesAktualisieren(),
-      'Ganze Liste durchgehen und Daten in ClickUp nachziehen');
+    refreshBtn = button('', 'Aktualisieren', () => allesAktualisieren());
     refreshBtn.id = 'igfu-refresh';
     document.body.appendChild(refreshBtn);
+
+    // Erklaerung als eigener Tooltip. Die eingebaute Sprechblase des Browsers
+    // kommt zu spaet und laesst sich nicht lesbar gliedern.
+    tippEl = el('div');
+    tippEl.id = 'igfu-tipp';
+    tippEl.setAttribute('role', 'tooltip');
+    const kopf = el('b', '', 'Geht die ganze Liste einmal durch');
+    const liste = el('ul');
+    for (const t of [
+      'Datum der letzten Nachricht ins Startdatum des Tasks, damit du in ClickUp nach Dringlichkeit sortieren kannst',
+      'Instagram-Handles aus den Vorschautexten, und benennt die Tasks entsprechend um',
+      'Unterhaltungen, die zu einem im Marketplace erfassten Creator gehören, werden mit ihm verbunden',
+      'geänderte Anzeigenamen in deinen Markierungen',
+    ]) liste.appendChild(el('li', '', t));
+    const fuss = el('div', 'igfu-tipp-fuss',
+      'Legt keine neuen Tasks an und ändert keine Follow-ups. Nötig, weil Meta immer nur die '
+      + 'sichtbaren Zeilen lädt und das Skript nur sieht, woran es vorbeikommt.');
+    tippEl.append(kopf, liste, fuss);
+    document.body.appendChild(tippEl);
+
+    const tippZeigen = () => {
+      const r = refreshBtn.getBoundingClientRect();
+      tippEl.style.left = Math.round(Math.max(8, r.left)) + 'px';
+      tippEl.style.bottom = Math.round(window.innerHeight - r.top + 10) + 'px';
+      tippEl.classList.add('show');
+    };
+    const tippVerstecken = () => tippEl.classList.remove('show');
+    refreshBtn.addEventListener('mouseenter', tippZeigen);
+    refreshBtn.addEventListener('focus', tippZeigen);
+    refreshBtn.addEventListener('mouseleave', tippVerstecken);
+    refreshBtn.addEventListener('blur', tippVerstecken);
 
     panel = el('section');
     panel.id = 'igfu-panel';
@@ -1755,6 +1799,7 @@
     } else if (launcher) {
       launcher.hidden = true;
       if (refreshBtn) refreshBtn.hidden = true;
+      if (tippEl) tippEl.classList.remove('show');
       closePanel();
     }
     if (isMarkt()) { stilEinspielen(); cuAktualisieren(false); scanMarkt(); }
