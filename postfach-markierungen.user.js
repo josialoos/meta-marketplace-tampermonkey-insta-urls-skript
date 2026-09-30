@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      2.9
+// @version      3.0
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -306,6 +306,9 @@
   // dort steht nur ein Tag ohne Aussage. Die Zuordnung laeuft ueber das
   // Instagram-Profil, das UpPromote bei jedem Affiliate mitliefert.
   const UP_TOKEN = 'uppromote:token:v1';
+  // Mehr als das braucht keine realistische Affiliate-Liste. Schuetzt davor,
+  // minutenlang gegen eine Schnittstelle zu laufen, die nicht blaettert.
+  const UP_MAX_SEITEN = 10;
   const upToken = () => String(GM_getValue(UP_TOKEN, '') || '').trim();
 
   const cuListe = () => String(GM_getValue(CU_LIST, '') || '').trim();
@@ -560,16 +563,29 @@
     return '';
   }
 
-  async function upAktive() {
+  // melden(text) zeigt den Fortschritt an. Ohne das sieht ein langer Lauf aus
+  // wie ein Haenger, genau so ist es am 30.09. passiert.
+  //
+  // Die Schleife bricht ab, sobald eine Seite dieselben Eintraege liefert wie die
+  // vorige. Liefert UpPromote den Parameter page nicht aus, kaeme sonst immer
+  // wieder dieselbe erste Seite und die Schleife liefe bis zum Seitenlimit,
+  // bei 20 Seiten und 20 Sekunden Zeitlimit ueber sechs Minuten lang.
+  async function upAktive(melden) {
     const gefunden = {};
-    for (let seite = 1; seite <= 20; seite++) {
+    let vorige = '';
+    for (let seite = 1; seite <= UP_MAX_SEITEN; seite++) {
+      if (melden) melden('Frage UpPromote ab, Seite ' + seite + ' \u2026');
       const d = await upRequest('/affiliates?status=active&per_page=100&page=' + seite);
       const liste = d.data || d.affiliates || (Array.isArray(d) ? d : []);
+      if (!liste.length) break;
+      const kennung = liste.map((a) => (a && (a.id || a.email)) || '').join(',');
+      if (kennung === vorige) break;
+      vorige = kennung;
       for (const a of liste) {
         const h = handleAusAffiliate(a);
         if (h) gefunden[h] = { name: [a.first_name, a.last_name].filter(Boolean).join(' '), email: a.email };
       }
-      if (!liste.length || liste.length < 100) break;
+      if (liste.length < 100) break;
     }
     return gefunden;
   }
@@ -590,7 +606,7 @@
     cuLaeuft = true;
     try {
       toast('Frage UpPromote ab …');
-      const aktive = await upAktive();
+      const aktive = await upAktive(toast);
       await cuTasksLaden();
       const treffer = [];
       for (const t of Object.values(cuTasks)) {
@@ -605,6 +621,7 @@
       }
       let fertig = 0;
       for (const [t] of treffer) {
+        toast('Setze ' + (fertig + 1) + ' von ' + treffer.length + ' auf „' + CU_STATUS_ONBOARD + '" …');
         await cuRequest('PUT', '/task/' + t.taskId, { status: CU_STATUS_ONBOARD });
         t.status = CU_STATUS_ONBOARD;
         fertig++;
