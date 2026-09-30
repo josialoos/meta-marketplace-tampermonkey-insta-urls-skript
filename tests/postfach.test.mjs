@@ -389,6 +389,24 @@ gruppe('Marketplace: Creator erfassen');
   pruefe('Die andere Karte bleibt unberührt', serverTasks.length === 1);
 }
 
+gruppe('Die eigene Pille wird nicht selbst zur Karte');
+{
+  const { doc, w } = await starte({
+    pfad: '/creator_marketing_hub/creator_discovery/',
+    speicher: MIT_CLICKUP,
+    markt: [{ handle: 'hey.luzi', bild: '573134618' }],
+  });
+  await warte(w, 600);
+  const p = marktPille(doc, 'hey.luzi');
+  klick(w, p);
+  await warte(w, 800);
+  pruefe('Status steht auf der Pille', p.textContent === 'recherchiert', p.textContent);
+  pruefe('Keine zweite Pille in der ersten', p.querySelectorAll('.igfu-crm-pille').length === 0);
+  pruefe('Insgesamt nur eine Pille', doc.querySelectorAll('.igfu-crm-pille').length === 1,
+    String(doc.querySelectorAll('.igfu-crm-pille').length));
+  pruefe('Merkmal für das Marketplace-Skript ist gesetzt', p.getAttribute('data-igm-linked') === '1');
+}
+
 gruppe('Marketplace: schon erfasster Creator zeigt seinen Status');
 {
   const { doc, w } = await starte({

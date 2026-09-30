@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      2.0
+// @version      2.1
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -947,6 +947,8 @@
       if (t.length < 3 || t.length > 30 || !HANDLE_MUSTER.test(t) || MARKT_BLOCK.has(t)) continue;
       const p = n.parentElement;
       if (!p || p.hasAttribute('data-igfu-crm')) continue;
+      // Nicht in die eigene Pille hinein: „recherchiert" sieht aus wie ein Handle
+      if (p.closest('.igfu-crm-pille')) continue;
       treffer.push([n, t]);
     }
     for (const [knoten, handle] of treffer) {
@@ -956,6 +958,10 @@
       const pille = document.createElement('button');
       pille.type = 'button';
       pille.className = 'igfu-crm-pille';
+      // Das Marketplace-Skript ueberspringt alles mit diesem Merkmal. Ohne das
+      // haelt es den Status „recherchiert" fuer ein Handle und haengt seine
+      // pinke Pille in diese hier hinein.
+      pille.setAttribute('data-igm-linked', '1');
       pille.dataset.handle = handle;
       pille.dataset.bild = (karte && karte.bild) || '';
       eltern.insertBefore(pille, knoten.nextSibling);
