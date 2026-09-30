@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      2.7
+// @version      2.8
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -42,7 +42,12 @@
   // lange bevor die Unterhaltungsliste ueberhaupt existiert. Deshalb wird es
   // hier als Allererstes festgehalten.
   const HASH_MUSTER = /igfu=([A-Za-z0-9_-]+)/;
-  let gemerkterThread = (String(location.hash || '').match(HASH_MUSTER) || [])[1] || '';
+  // Laeuft dieser Kern ueber den Lader, hat der das Fragment schon vor uns
+  // gelesen und reicht es als IGFU_START_HASH herein. Laeuft er allein
+  // installiert, gibt es die Variable nicht.
+  const vomLader = typeof IGFU_START_HASH === 'string' ? IGFU_START_HASH : '';
+  let gemerkterThread = (String(location.hash || vomLader).match(HASH_MUSTER) || [])[1]
+    || (String(vomLader).match(HASH_MUSTER) || [])[1] || '';
 
   // ---------- Aussehen ----------
 
