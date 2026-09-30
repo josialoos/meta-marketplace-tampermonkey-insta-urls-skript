@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      2.8
+// @version      2.9
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -325,8 +325,12 @@
   let cuLetzterAbruf = 0;
   let cuLaeuft = false;
 
+  // Metas eigener Link auf eine Unterhaltung. Das Briefing sagte, so etwas
+  // gebe es nicht, inzwischen gibt es das: selected_item_id oeffnet die
+  // Unterhaltung direkt, ganz ohne Zutun des Skripts. Live geprueft.
   const postfachLink = (tid) =>
-    'https://business.facebook.com/latest/inbox/all/?partnership_messages=true#igfu=' + tid;
+    'https://business.facebook.com/latest/inbox/all/?partnership_messages=true'
+    + '&selected_item_id=' + tid + '&thread_type=IG_MESSAGE';
 
   // Die Markerzeile ist die Verbindung zwischen Unterhaltung und Task. Sie steht
   // sichtbar in der Beschreibung, damit jeder sieht, dass sie dazugehoert.

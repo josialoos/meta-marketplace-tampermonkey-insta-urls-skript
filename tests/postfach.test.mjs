@@ -78,7 +78,8 @@ gruppe('Follow-up-Klick legt Task an und setzt den Tag');
   pruefe('Task trägt den Anzeigenamen', neu[0] && neu[0].data.name === 'Corina Bösch');
   const b = neu[0] ? neu[0].data.markdown_description : '';
   pruefe('Markerzeile steht in der Beschreibung', /igfu-thread:\s*T2/.test(b), b);
-  pruefe('Rücksprung-Link steht in der Beschreibung', b.includes('#igfu=T2'), b);
+  pruefe('Rücksprung-Link zeigt direkt auf die Unterhaltung',
+    b.includes('selected_item_id=T2') && b.includes('thread_type=IG_MESSAGE'), b);
   pruefe('Tag wurde gesetzt', serverTasks[0] && serverTasks[0].tags.includes(TAG),
     JSON.stringify(serverTasks[0] && serverTasks[0].tags));
 }
