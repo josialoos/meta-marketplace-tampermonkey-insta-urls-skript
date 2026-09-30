@@ -76,6 +76,7 @@ export async function starte({
     description: t.beschreibung || '',
     text_content: t.beschreibung || '',
     tags: (t.tags || []).map((n) => ({ name: n })),
+    priority: t.prio ? { priority: t.prio, color: '#f50000' } : null,
     custom_fields: t.custom_fields || [],
   });
 
@@ -144,6 +145,7 @@ export async function starte({
       if (t && k.status) t.status = k.status;
       if (t && k.markdown_description) t.beschreibung = k.markdown_description;
       if (t && 'start_date' in k) t.start = k.start_date;
+      if (t && 'priority' in k) t.prio = k.priority === 1 ? 'urgent' : '';
       return ok();
     }
     if (methode === 'POST' && /\/comment$/.test(pf)) return ok({ id: 'k1' });

@@ -583,6 +583,55 @@ gruppe('Neuer Task bekommt das Datum gleich mit');
     neu && String(neu.data.start_date));
 }
 
+gruppe('Liegt die Antwort bei uns, wird der Task dringend');
+{
+  // T2 = Corina, Vorschau „Corina: Hallo Josia, danke dir!" — sie hat zuletzt geschrieben
+  const { w, serverTasks, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'Corina Bösch', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T2'), tags: [TAG] }],
+  });
+  await warte(w, 1200);
+  pruefe('Prioritaet wird auf urgent gesetzt', serverTasks[0].prio === 'urgent', String(serverTasks[0].prio));
+  pruefe('Als urgent uebertragen',
+    aufrufe.some((a) => a.methode === 'PUT' && a.data && a.data.priority === 1));
+}
+
+gruppe('Haben wir zuletzt geschrieben, faellt urgent wieder weg');
+{
+  // T3 = Willi, Vorschau „Du: Melde dich gern nochmal"
+  const { w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'Willi', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T3'), tags: [TAG], prio: 'urgent' }],
+  });
+  await warte(w, 1200);
+  pruefe('Prioritaet ist wieder leer', !serverTasks[0].prio, String(serverTasks[0].prio));
+}
+
+gruppe('Eine blosse Reaktion aendert die Prioritaet nicht');
+{
+  // T1 = Anna, Vorschau „annabolko.runs gefällt eine Nachricht" — keine offene Nachricht
+  const { w, serverTasks, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1'), tags: [TAG], prio: 'urgent' }],
+  });
+  await warte(w, 1200);
+  pruefe('urgent bleibt unangetastet', serverTasks[0].prio === 'urgent', String(serverTasks[0].prio));
+  pruefe('Keine Prioritaets-Uebertragung',
+    !aufrufe.some((a) => a.methode === 'PUT' && a.data && 'priority' in a.data),
+    JSON.stringify(aufrufe.filter((a) => a.methode === 'PUT').map((a) => a.data)));
+}
+
+gruppe('Ohne Task legt die Prioritaet nichts an');
+{
+  const { w, aufrufe } = await starte({ speicher: MIT_CLICKUP });
+  await warte(w, 1200);
+  pruefe('Kein Task nur wegen der Prioritaet',
+    !aufrufe.some((a) => a.methode === 'POST' && a.data && a.data.name));
+}
+
 gruppe('Der Aktualisieren-Knopf und sein Tooltip');
 {
   const { doc, w } = await starte({ speicher: MIT_CLICKUP });

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      3.0
+// @version      3.1
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -285,6 +285,9 @@
   const CU_LIST = 'clickup:list:v1';
   const CU_SPACE = 'clickup:space:v1';
   const CU_TASKS = 'clickup:tasks:v1';
+  // Zeitpunkt des letzten erfolgreichen Durchlaufs. Daran erkennt der schnelle
+  // Lauf, wie weit er nach unten muss.
+  const LETZTER_LAUF = 'igfu:letzterlauf:v1';
   const CU_QUEUE = 'clickup:queue:v1';
 
   // Custom Fields sind bewusst nicht im Spiel: ClickUp Free erlaubt nur 60
@@ -406,6 +409,19 @@
     try { text = textAusSnippet(thread.snippet, 0, []).join(' '); } catch (e) { return ''; }
     const m = text.match(/^([a-z0-9._]{2,30})\s+gefällt\b/) || text.match(/^([a-z0-9._]{2,30}):/);
     return m && HANDLE_MUSTER.test(m[1]) ? m[1] : '';
+  }
+
+  // Meta stellt eigenen Nachrichten „Du: " voran. Das ist der einzige
+  // verlaessliche Hinweis darauf, bei wem die Antwort gerade liegt.
+  // Eine blosse Reaktion steht als „<handle> gefaellt eine Nachricht" da und
+  // ist keine offene Nachricht, siehe die Regeln der Chat-Durchsicht.
+  function werZuletzt(thread) {
+    let text = '';
+    try { text = textAusSnippet(thread.snippet, 0, []).join(' ').trim(); } catch (e) { return ''; }
+    if (!text) return '';
+    if (/^Du:/.test(text)) return 'ich';
+    if (/gefällt\s+(eine|deine)\s+Nachricht/i.test(text)) return 'reaktion';
+    return 'gegenueber';
   }
 
   function bildIDVon(thread) {
@@ -689,6 +705,7 @@
       status: (t.status && t.status.status) || '',
       farbe: (t.status && t.status.color) || '#65676b',
       follow: tags.includes(CU_TAG),
+      prio: (t.priority && t.priority.priority) || '',
       due: isoVonMs(t.due_date),
       // Das Startdatum traegt bei uns das Datum der letzten Nachricht. Ein
       // eigenes Custom Field waere im Free-Plan nicht bezahlbar, und im
@@ -827,6 +844,7 @@
     if (a.art === 'due' && !a.wert && !cuTasks[a.tid]) return;
     if (a.art === 'name' && !cuTasks[a.tid]) return;   // umbenennen legt nichts an
     if (a.art === 'letzte' && !cuTasks[a.tid]) return; // Datum legt nichts an
+    if (a.art === 'prio' && !cuTasks[a.tid]) return;   // Prioritaet legt nichts an
 
     if (a.art === 'verbinden') {
       // Im Marketplace erfasster Task bekommt jetzt seine Unterhaltung. Die
@@ -869,6 +887,10 @@
         await cuRequest('PUT', '/task/' + task.taskId, { start_date: ms, start_date_time: false });
         task.letzte = a.wert;
       }
+    } else if (a.art === 'prio') {
+      const urgent = a.wert === 'urgent';
+      await cuRequest('PUT', '/task/' + task.taskId, { priority: urgent ? 1 : null });
+      task.prio = urgent ? 'urgent' : '';
     } else if (a.art === 'name') {
       const w = handleVon(a.tid);
       const neu = taskName(w && w.handle, a.titel || rohTitel(task.titel));
@@ -1032,6 +1054,20 @@
         if (w.letzte !== letzte) handleMerken(tid, '', 'vorschau', null, letzte);
         const task = cuTasks[tid];
         if (task && task.letzte !== letzte) vormerken({ art: 'letzte', tid, titel: t.title, wert: letzte });
+      }
+
+      // „urgent" heisst hier: die Antwort liegt bei uns. Sobald Josia
+      // geantwortet hat, faellt die Markierung wieder weg. Eine Reaktion
+      // aendert nichts, die ist keine offene Nachricht.
+      const wer = werZuletzt(t);
+      if (wer === 'ich' || wer === 'gegenueber') {
+        const task = cuTasks[tid];
+        if (task) {
+          const soll = wer === 'gegenueber';
+          if (soll !== (task.prio === 'urgent')) {
+            vormerken({ art: 'prio', tid, titel: t.title, wert: soll ? 'urgent' : '' });
+          }
+        }
       }
 
       // Gibt es zu dieser Unterhaltung noch keinen Task, aber einen im
@@ -1299,17 +1335,20 @@
     tippEl = el('div');
     tippEl.id = 'igfu-tipp';
     tippEl.setAttribute('role', 'tooltip');
-    const kopf = el('b', '', 'Geht die ganze Liste einmal durch');
+    const kopf = el('b', '', 'Holt nach, was seit dem letzten Lauf passiert ist');
     const liste = el('ul');
     for (const t of [
+      'neue Nachrichten in beide Richtungen, auch die, die du selbst geschrieben hast',
       'Datum der letzten Nachricht ins Startdatum des Tasks, damit du in ClickUp nach Dringlichkeit sortieren kannst',
+      'Priorität „urgent", solange die Antwort bei dir liegt, und wieder weg, sobald du geantwortet hast',
       'Instagram-Handles aus den Vorschautexten, und benennt die Tasks entsprechend um',
       'Unterhaltungen, die zu einem im Marketplace erfassten Creator gehören, werden mit ihm verbunden',
-      'geänderte Anzeigenamen in deinen Markierungen',
+      'bestätigte Affiliates aus UpPromote auf „' + CU_STATUS_ONBOARD + '"',
     ]) liste.appendChild(el('li', '', t));
     const fuss = el('div', 'igfu-tipp-fuss',
-      'Legt keine neuen Tasks an und ändert keine Follow-ups. Nötig, weil Meta immer nur die '
-      + 'sichtbaren Zeilen lädt und das Skript nur sieht, woran es vorbeikommt.');
+      'Läuft nur so weit nach unten, bis er am letzten Lauf vorbei ist, meist ein paar Zeilen. '
+      + 'Beim allerersten Mal geht er einmal komplett durch. Legt keine neuen Tasks an und ändert '
+      + 'keine Follow-ups. Den vollständigen Durchlauf findest du im Panel unter ClickUp.');
     tippEl.append(kopf, liste, fuss);
     document.body.appendChild(tippEl);
 
@@ -1420,6 +1459,9 @@
       button('igfu-link', 'Lokale Follow-ups übernehmen', async () => { await uebernehmen(); standAnzeigen(); }),
       button('igfu-link', 'UpPromote abgleichen', async () => { await upAbgleichen(); standAnzeigen(); },
         'Bestätigte Affiliates aus UpPromote auf „' + CU_STATUS_ONBOARD + '" setzen'),
+      button('igfu-link', 'Ganze Liste durchgehen', () => { closePanel(); allesAktualisieren(true); },
+        'Scrollt die komplette Unterhaltungsliste durch statt nur bis zum letzten Lauf. '
+        + 'Dauert deutlich länger. Nötig nach längerer Abwesenheit oder wenn etwas fehlt.'),
       button('igfu-link', 'Token löschen', () => {
         GM_setValue(CU_TOKEN, '');
         GM_setValue(UP_TOKEN, '');
@@ -1755,23 +1797,53 @@
   // Geht die ganze Liste von oben nach unten durch, damit jede Zeile einmal
   // gesehen wird. Nur dabei erfaehrt das Skript neue Zeitstempel, Handles und
   // Unterhaltungen, denn Meta haelt immer nur die sichtbaren Zeilen im Seitencode.
+  // Der normale Lauf holt nur nach, was seit dem letzten Mal passiert ist.
+  // Er filtert bewusst NICHT nach ungelesen: was Josia selbst geschrieben hat,
+  // ist gelesen und wuerde sonst durchrutschen. Stattdessen zaehlt die
+  // Aktualitaet. Metas Liste ist streng nach Zeitstempel absteigend sortiert
+  // (am 30.09.2026 in der Seite nachgemessen), und jede Aktivitaet schiebt eine
+  // Unterhaltung nach oben, egal in welche Richtung. Auch eine Antwort vom
+  // Handy taucht also oben wieder auf.
+  //
+  // vollstaendig = true geht die komplette Liste durch. Das braucht es beim
+  // ersten Mal, nach laengerer Abwesenheit und zum Reparieren.
   let laeuftDurchlauf = false;
-  async function allesAktualisieren() {
+  async function allesAktualisieren(vollstaendig) {
     if (laeuftDurchlauf) return;
     const sc = listScroller();
     if (!sc) { toast('Die Unterhaltungsliste wurde nicht gefunden.'); return; }
+
+    const letzterLauf = Number(GM_getValue(LETZTER_LAUF, 0)) || 0;
+    // Ohne vorherigen Lauf fehlt die Grenze, dann bleibt nur der volle Weg.
+    const voll = !!vollstaendig || !letzterLauf;
+    // Ein Tag Puffer, falls zwischen zwei Laeufen etwas knapp hineinrutscht
+    // oder die Uhren auseinanderlaufen.
+    const grenze = voll ? 0 : letzterLauf - 86400000;
+
     laeuftDurchlauf = true;
     const merke = refreshBtn ? refreshBtn.textContent : '';
     const zeigen = (text) => { if (refreshBtn) refreshBtn.textContent = text; };
     if (refreshBtn) refreshBtn.disabled = true;
     const gesehen = new Set();
+    // Drei Zeilen hinter der Grenze statt einer: falls beim Nachrendern kurz
+    // eine Zeile aus der Reihe taenzelt, bricht der Lauf nicht zu frueh ab.
+    let hinterGrenze = 0;
+    const erfassen = () => {
+      for (const [, t] of threadRows()) {
+        if (gesehen.has(t.threadID)) continue;
+        gesehen.add(t.threadID);
+        if (!voll && t.timestamp && t.timestamp < grenze) hinterGrenze++;
+      }
+      return !voll && hinterGrenze >= 3;
+    };
+
     try {
       setScrollTop(sc, 0);
       await sleep(700);
       let ohneZuwachs = 0;
       for (let i = 0; i < 400; i++) {
         scanRows();
-        for (const [, t] of threadRows()) gesehen.add(t.threadID);
+        if (erfassen()) break;
         zeigen(gesehen.size + ' geprüft');
         const vorher = gesehen.size;
         const obenVorher = sc.scrollTop;
@@ -1783,17 +1855,29 @@
         if (amEnde || sc.scrollTop === obenVorher) {
           await sleep(1600);
           scanRows();
-          for (const [, t] of threadRows()) gesehen.add(t.threadID);
+          if (erfassen()) break;
         }
         if (gesehen.size === vorher) { if (++ohneZuwachs >= 10) break; } else ohneZuwachs = 0;
       }
       setScrollTop(sc, 0);
       await sleep(400);
       scanRows();
+
+      zeigen('überträgt …');
+      await abarbeiten();
       const offen = warteschlange().length;
-      toast(gesehen.size + ' Unterhaltungen durchgesehen'
+      toast(gesehen.size + (voll ? ' Unterhaltungen durchgesehen' : ' Unterhaltungen seit dem letzten Lauf')
         + (offen ? ', ' + offen + ' Änderung(en) gehen noch raus.' : ', alles auf Stand.'));
-      abarbeiten();
+
+      // Der Stand gilt erst als aktuell, wenn der Lauf auch durchgekommen ist.
+      GM_setValue(LETZTER_LAUF, Date.now());
+
+      // UpPromote haengt mit dran, damit bestaetigte Affiliates ohne zweiten
+      // Knopfdruck auf „ongeboardet" kommen. Ohne Schluessel still uebergehen.
+      if (upToken() && cuEingerichtet()) {
+        zeigen('UpPromote …');
+        await upAbgleichen();
+      }
     } finally {
       laeuftDurchlauf = false;
       if (refreshBtn) { refreshBtn.disabled = false; refreshBtn.textContent = merke || 'Aktualisieren'; }
