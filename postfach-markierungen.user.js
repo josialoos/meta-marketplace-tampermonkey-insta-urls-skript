@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      1.8
+// @version      1.9
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" (mit Wiedervorlage und Notiz) im Postfach der Meta Business Suite. Gespeichert in Tampermonkey, Meta kann sie nicht zurücksetzen.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -235,6 +235,12 @@
   // Beschreibungen und Tags haben kein Kontingent.
   const CU_TAG = 'follow-up';
   const FELD_THREAD = 'Thread-ID';   // wird nur noch gelesen, falls vorhanden
+  const CU_HANDLES = 'clickup:handles:v1';
+
+  // Seit „recherchiert" der erste Status der Liste ist, waere er die Vorgabe beim
+  // Anlegen. Eine Unterhaltung im Postfach heisst aber, dass schon geschrieben
+  // wurde, deshalb wird der Status hier ausdruecklich gesetzt.
+  const CU_STATUS_NEU = 'angeschrieben';
 
   const cuListe = () => String(GM_getValue(CU_LIST, '') || '').trim();
   // scanRows laeuft mehrmals pro Sekunde ueber jede Zeile. Der Zustand wird
@@ -257,14 +263,111 @@
 
   // Die Markerzeile ist die Verbindung zwischen Unterhaltung und Task. Sie steht
   // sichtbar in der Beschreibung, damit jeder sieht, dass sie dazugehoert.
-  function beschreibung(tid, handle) {
+  function beschreibung(tid, handle, bildID) {
     const z = ['[Unterhaltung im Postfach öffnen](' + postfachLink(tid) + ')', ''];
-    if (handle) z.push('Instagram: @' + handle, '');
-    z.push('---', 'Vom Postfach-Skript verwaltet. Die folgende Zeile bitte nicht ändern.', 'igfu-thread: ' + tid);
+    if (handle) z.push('Instagram: [@' + handle + '](https://www.instagram.com/' + handle + '/)', '');
+    z.push('---', 'Vom Postfach-Skript verwaltet. Die folgenden Zeilen bitte nicht ändern.', 'igfu-thread: ' + tid);
+    // Die Bild-ID des Profilfotos ist der Schluessel, ueber den sich ein im
+    // Marketplace angelegter Task spaeter mit dieser Unterhaltung verbinden laesst.
+    if (bildID) z.push('igfu-bild: ' + bildID);
     return z.join('\n');
   }
   // Metas IDs sind zwar reine Ziffern, aber darauf sollte sich das Auslesen
   // nicht verlassen.
+  // ---------- Instagram-Handles ----------
+  // Zwei Quellen, unterschiedlich verlaesslich. Die Kontaktkarte der geoeffneten
+  // Unterhaltung nennt das echte Handle. Der Vorschautext nennt es nur in der
+  // Form „handle gefällt eine Nachricht"; in der Form „Name: Text" steht dort der
+  // Anzeigename. Deshalb werden nur kleingeschriebene Treffer akzeptiert, sonst
+  // landen Vornamen wie „Laura" als vermeintliches Handle im CRM.
+  const HANDLE_MUSTER = /^(?=.*[a-z])[a-z0-9_][a-z0-9._]{1,28}[a-z0-9_]$/;
+  const GUETE = { vorschau: 1, karte: 2 };
+
+  const handles = () => GM_getValue(CU_HANDLES, {}) || {};
+  const handleVon = (tid) => handles()[tid] || null;
+
+  function taskName(handle, titel) {
+    const t = String(titel || 'Unbekannt').trim();
+    if (!handle) return t;
+    if (handle.toLowerCase() === t.toLowerCase()) return t;
+    return handle + ' — ' + t;
+  }
+
+  function handleMerken(tid, handle, quelle, bild) {
+    if (!tid) return;
+    const alle = handles();
+    const alt = alle[tid] || {};
+    let geaendert = false;
+    if (bild && alt.bild !== bild) { alt.bild = bild; geaendert = true; }
+    const besser = handle && (!alt.handle || (GUETE[quelle] || 0) > (GUETE[alt.quelle] || 0));
+    if (besser && alt.handle !== handle) { alt.handle = handle; alt.quelle = quelle; geaendert = true; }
+    else if (besser) { alt.quelle = quelle; geaendert = true; }
+    if (!geaendert) return;
+    alle[tid] = alt;
+    GM_setValue(CU_HANDLES, alle);
+    // Hat die Unterhaltung schon einen Task, den Namen nachziehen
+    const task = cuTasks[tid];
+    if (task && alt.handle && task.titel !== taskName(alt.handle, rohTitel(task.titel))) {
+      vormerken({ art: 'name', tid, titel: rohTitel(task.titel) });
+    }
+  }
+
+  // „handle — Anzeigename" wieder auf den Anzeigenamen zurueckfuehren
+  const rohTitel = (name) => String(name || '').replace(/^[a-z0-9._]{2,30}\s+—\s+/, '');
+
+  function textAusSnippet(node, tiefe, raus) {
+    if (tiefe > 6 || node == null) return raus;
+    if (typeof node === 'string') { if (node.trim()) raus.push(node.trim()); return raus; }
+    if (Array.isArray(node)) { node.forEach((n) => textAusSnippet(n, tiefe + 1, raus)); return raus; }
+    if (typeof node === 'object') {
+      const p = node.props || node;
+      for (const k of Object.keys(p)) if (k === 'children' || k === 'text' || k === 'content') textAusSnippet(p[k], tiefe + 1, raus);
+    }
+    return raus;
+  }
+
+  function handleAusVorschau(thread) {
+    let text = '';
+    try { text = textAusSnippet(thread.snippet, 0, []).join(' '); } catch (e) { return ''; }
+    const m = text.match(/^([a-z0-9._]{2,30})\s+gefällt\b/) || text.match(/^([a-z0-9._]{2,30}):/);
+    return m && HANDLE_MUSTER.test(m[1]) ? m[1] : '';
+  }
+
+  function bildIDVon(thread) {
+    const uri = (thread.participantProfileURIs || [])[0] || '';
+    try {
+      const u = new URL(uri);
+      const m = u.pathname.match(/\/([0-9]{6,})_/);
+      return m ? m[1] : '';
+    } catch (e) { return ''; }
+  }
+
+  // Die geoeffnete Unterhaltung steht als selected_item_id in der Adresse, die
+  // Kontaktkarte daneben nennt das Handle als Linktext unter „Instagram-Profil".
+  const offenerThread = () => new URLSearchParams(location.search).get('selected_item_id') || '';
+
+  function handleAusKarte() {
+    const marke = [...document.querySelectorAll('span, div, h2, h3')]
+      .find((e) => !e.children.length && (e.textContent || '').trim() === 'Instagram-Profil');
+    if (!marke) return '';
+    let box = marke.parentElement;
+    for (let i = 0; i < 5 && box; i++, box = box.parentElement) {
+      const a = [...box.querySelectorAll('a')].find((x) => HANDLE_MUSTER.test((x.textContent || '').trim()));
+      if (a) return a.textContent.trim();
+    }
+    return '';
+  }
+
+  function karteAuslesen() {
+    if (!isInbox()) return;
+    const tid = offenerThread();
+    if (!tid) return;
+    const vorhanden = handleVon(tid);
+    if (vorhanden && vorhanden.quelle === 'karte') return;
+    const h = handleAusKarte();
+    if (h) handleMerken(tid, h, 'karte');
+  }
+
   const threadAusText = (text) => (String(text || '').match(/igfu-thread:\s*([A-Za-z0-9_-]+)/) || [])[1] || '';
 
   // Mittag als Uhrzeit, damit ein Datum nicht durch Zeitzonen auf den Vortag rutscht
@@ -384,7 +487,13 @@
       const d = await cuRequest('GET', '/list/' + liste + '/task?include_closed=true&subtasks=false&page=' + seite);
       for (const t of d.tasks || []) {
         const paar = taskAufbereiten(t);
-        if (paar) gefunden[paar[0]] = paar[1];
+        if (!paar) continue;
+        const [tid, neu] = paar;
+        // Zu einer Unterhaltung kann versehentlich ein zweiter Task existieren.
+        // Dann gewinnt der getaggte, sonst loescht ein leerer Doppelgaenger die
+        // Markierung. Bei Gleichstand der zuletzt gefundene.
+        const alt = gefunden[tid];
+        if (!alt || neu.follow || !alt.follow) gefunden[tid] = neu;
       }
       if (d.last_page || !(d.tasks || []).length) break;
     }
@@ -395,9 +504,12 @@
 
   async function cuTaskSichern(tid, titel, handle) {
     if (cuTasks[tid]) return cuTasks[tid];
+    const w = handleVon(tid);
+    const h = handle || (w && w.handle) || '';
     const rumpf = {
-      name: titel || 'Unbekannt',
-      markdown_description: beschreibung(tid, handle),
+      name: taskName(h, titel),
+      status: CU_STATUS_NEU,
+      markdown_description: beschreibung(tid, h, w && w.bild),
     };
     const t = await cuRequest('POST', '/list/' + encodeURIComponent(cuListe()) + '/task', rumpf);
     const paar = taskAufbereiten(t) || [tid, {
@@ -438,6 +550,9 @@
     abarbeiten();
   }
 
+  // Uebernahme und Warteschlange duerfen nie gleichzeitig laufen, sonst legen
+  // beide fuer dieselbe Unterhaltung einen Task an. Genau so entstand am
+  // 30.09.2026 ein doppelter Eintrag, der anschliessend eine Markierung loeschte.
   let abarbeitenGeplant = null;
   async function abarbeiten() {
     if (cuLaeuft || !cuEingerichtet()) return;
@@ -486,6 +601,7 @@
     // Sonst entstuende in ClickUp ein leerer Eintrag allein durch An- und Abklicken.
     if (a.art === 'follow' && !a.wert && !cuTasks[a.tid]) return;
     if (a.art === 'due' && !a.wert && !cuTasks[a.tid]) return;
+    if (a.art === 'name' && !cuTasks[a.tid]) return;   // umbenennen legt nichts an
     const task = await cuTaskSichern(a.tid, a.titel);
     if (a.art === 'follow') {
       await cuFollowSetzen(task.taskId, !!a.wert);
@@ -495,6 +611,13 @@
       const ms = msVonIso(a.wert);
       await cuRequest('PUT', '/task/' + task.taskId, ms ? { due_date: ms, due_date_time: false } : { due_date: null });
       task.due = a.wert || '';
+    } else if (a.art === 'name') {
+      const w = handleVon(a.tid);
+      const neu = taskName(w && w.handle, a.titel || rohTitel(task.titel));
+      if (neu && neu !== task.titel) {
+        await cuRequest('PUT', '/task/' + task.taskId, { name: neu });
+        task.titel = neu;
+      }
     } else if (a.art === 'notiz') {
       if (String(a.wert || '').trim()) {
         await cuRequest('POST', '/task/' + task.taskId + '/comment', { comment_text: a.wert, notify_all: false });
@@ -638,6 +761,10 @@
       setzeCrmChip(wrap.querySelector('[data-kind="crm"]'), tid);
       setAttr(row, 'data-igfu-follow', fOn);
       setAttr(row, 'data-igfu-unread', uOn);
+
+      const vorschau = handleAusVorschau(t);
+      const bild = bildIDVon(t);
+      if (vorschau || bild) handleMerken(tid, vorschau, 'vorschau', bild);
 
       if (fOn && follow[tid].title !== t.title) { follow[tid].title = t.title; followTitles = true; }
       if (uOn && unread[tid].title !== t.title) { unread[tid].title = t.title; unreadTitles = true; }
@@ -902,6 +1029,8 @@
   // wird dort angelegt. Bereits vorhandene Tasks bleiben unangetastet.
   async function uebernehmen() {
     if (!cuEingerichtet()) { toast('Bitte erst Listen-ID und Token eintragen.'); return; }
+    if (cuLaeuft) { toast('Es läuft gerade eine Übertragung, bitte kurz warten.'); return; }
+    cuLaeuft = true;
     let offen;
     try {
       // Immer erst den aktuellen Stand holen. Sonst legt ein zweiter Durchlauf
@@ -910,10 +1039,11 @@
       await cuTagSichern();
       await cuTasksLaden();
     } catch (e) {
+      cuLaeuft = false;
       toast('ClickUp: ' + e.message);
       return;
     }
-    offen = Object.entries(follow).filter(([tid]) => !cuTasks[tid]);
+    offen = Object.entries(follow).filter(([tid]) => !cuTasks[tid] || !cuTasks[tid].follow);
     if (!offen.length) { toast('In ClickUp fehlt nichts.'); return; }
     toast(offen.length + ' Follow-ups werden übertragen …');
     let fertig = 0;
@@ -936,6 +1066,8 @@
       toast(fertig + ' von ' + offen.length + ' übertragen.');
     } catch (e) {
       toast('Nach ' + fertig + ' von ' + offen.length + ' abgebrochen. ' + e.message);
+    } finally {
+      cuLaeuft = false;
     }
     scanRows();
     if (panelOpen) renderPanel();
@@ -1232,5 +1364,8 @@
   // Alle zwei Minuten nachsehen, was in ClickUp passiert ist. cuAktualisieren
   // bremst sich selbst, haeufigere Aufrufe kosten also keine Anfragen.
   setInterval(() => { if (isInbox()) { cuAktualisieren(false); abarbeiten(); } }, 120000);
+  // Die Kontaktkarte der geoeffneten Unterhaltung nebenbei auslesen. Kostet nichts
+  // und fuellt die fehlenden Handles waehrend der normalen Arbeit nach.
+  setInterval(karteAuslesen, 3000);
   syncActive();
 })();

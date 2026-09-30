@@ -270,6 +270,98 @@ gruppe('Nach der Übertragung ist die Markierung als übertragen vermerkt');
   pruefe('Merkmal inCu ist gesetzt', e && e.inCu === true, JSON.stringify(e));
 }
 
+gruppe('Handle aus der Vorschau landet im Task-Namen');
+{
+  const { doc, w, aufrufe } = await starte({ speicher: MIT_CLICKUP });
+  klick(w, chip(doc, 0, 'followup'));
+  await warte(w, 700);
+  const neu = angelegte(aufrufe)[0];
+  pruefe('Name ist „handle — Anzeigename"', neu && neu.data.name === 'annabolko.runs — Anna Bolko', neu && neu.data.name);
+  pruefe('Status wird ausdrücklich gesetzt', neu && neu.data.status === 'angeschrieben', neu && neu.data.status);
+  pruefe('Bild-ID steht in der Beschreibung',
+    neu && /igfu-bild:\s*111111111/.test(neu.data.markdown_description), neu && neu.data.markdown_description);
+  pruefe('Instagram-Link steht in der Beschreibung',
+    neu && neu.data.markdown_description.includes('instagram.com/annabolko.runs'));
+}
+
+gruppe('Großgeschriebener Vorname wird nicht als Handle genommen');
+{
+  const { doc, w, aufrufe } = await starte({ speicher: MIT_CLICKUP });
+  klick(w, chip(doc, 1, 'followup'));   // Corina, Vorschau „Corina: Hallo Josia"
+  await warte(w, 700);
+  const neu = angelegte(aufrufe)[0];
+  pruefe('Name bleibt der Anzeigename', neu && neu.data.name === 'Corina Bösch', neu && neu.data.name);
+  pruefe('Kein Handle in der Beschreibung', neu && !/Instagram: \[@/.test(neu.data.markdown_description));
+}
+
+gruppe('Ohne Handle bleibt es beim Anzeigenamen');
+{
+  const { doc, w, aufrufe } = await starte({ speicher: MIT_CLICKUP });
+  klick(w, chip(doc, 2, 'followup'));   // Willi, Vorschau „Du: …"
+  await warte(w, 700);
+  const neu = angelegte(aufrufe)[0];
+  pruefe('Name ist nur der Anzeigename', neu && neu.data.name === 'Willi', neu && neu.data.name);
+}
+
+gruppe('Die Kontaktkarte schlägt die Vorschau und benennt um');
+{
+  const { w, serverTasks, aufrufe } = await starte({
+    pfad: '/latest/inbox/all/?selected_item_id=T1',
+    speicher: MIT_CLICKUP,
+    karte: { handle: 'die.echte.anna' },
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1'), tags: [TAG] }],
+  });
+  await warte(w, 4000);   // der Kartenleser läuft alle drei Sekunden
+  const umbenannt = aufrufe.filter((a) => a.methode === 'PUT' && a.data && a.data.name);
+  pruefe('Es wird umbenannt', umbenannt.length === 1, JSON.stringify(umbenannt.map((u) => u.data.name)));
+  pruefe('Neuer Name nutzt das Handle aus der Karte',
+    serverTasks[0].name === 'die.echte.anna — Anna Bolko', serverTasks[0].name);
+  pruefe('Kein zusätzlicher Task', angelegte(aufrufe).length === 0);
+}
+
+gruppe('Umbenennen legt keinen Task an');
+{
+  const { w, aufrufe } = await starte({
+    pfad: '/latest/inbox/all/?selected_item_id=T3',
+    speicher: MIT_CLICKUP,
+    karte: { handle: 'willi.unterwegs' },
+  });
+  await warte(w, 4000);
+  pruefe('Kein Task entstanden', angelegte(aufrufe).length === 0, JSON.stringify(angelegte(aufrufe)));
+  pruefe('Keine Umbenennung ins Leere', !aufrufe.some((a) => a.methode === 'PUT' && a.data && a.data.name));
+}
+
+gruppe('Doppelter Task: der getaggte gewinnt');
+{
+  const { doc, store } = await starte({
+    speicher: { ...MIT_CLICKUP,
+      'igfu:v1': { T1: { title: 'Anna Bolko', flaggedAt: 1, due: '', note: '', inCu: true } } },
+    tasks: [
+      { id: 'mitTag', name: 'Anna Bolko', status: 'angeschrieben', farbe: '#87909e', beschreibung: beschreibungMit('T1'), tags: [TAG] },
+      { id: 'ohneTag', name: 'Anna Bolko', status: 'angeschrieben', farbe: '#87909e', beschreibung: beschreibungMit('T1'), tags: [] },
+    ],
+  });
+  pruefe('Markierung überlebt den Doppelgänger', !!store.get('igfu:v1').T1, JSON.stringify(store.get('igfu:v1')));
+  pruefe('Zeile bleibt markiert', doc.querySelectorAll('.row')[0].hasAttribute('data-igfu-follow'));
+}
+
+gruppe('Zwei Übernahmen gleichzeitig legen nichts doppelt an');
+{
+  const lokal = {
+    T1: { title: 'Anna Bolko', flaggedAt: 1, due: '', note: '' },
+    T2: { title: 'Corina Bösch', flaggedAt: 2, due: '', note: '' },
+  };
+  const { doc, w, aufrufe, serverTasks } = await starte({ speicher: { ...MIT_CLICKUP, 'igfu:v1': lokal } });
+  const b = knopf(doc, 'Lokale Follow-ups übernehmen');
+  klick(w, b);
+  klick(w, b);      // sofort ein zweites Mal
+  await warte(w, 1500);
+  pruefe('Genau zwei Tasks', angelegte(aufrufe).length === 2,
+    JSON.stringify(angelegte(aufrufe).map((a) => a.data.name)));
+  pruefe('Keine doppelten Unterhaltungen', serverTasks.length === 2);
+}
+
 gruppe('Speicher übersteht ein Neuladen');
 {
   const erst = await starte({ speicher: MIT_CLICKUP });

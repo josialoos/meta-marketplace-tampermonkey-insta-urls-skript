@@ -9,10 +9,16 @@ export const TAG = 'follow-up';
 const zeile = (name, vorschau) =>
   `<div class="row" role="presentation"><div class="n">${name}</div><div class="p">${vorschau}</div><span class="t">12:30</span></div>`;
 
+const vorschau = (text) => ({ props: { children: text } });
+const avatar = (id) => ['https://scontent-muc2-1.cdninstagram.com/v/t51.2885-19/' + id + '_1234_n.jpg?stp=x'];
+
 export const THREADS = [
-  { threadID: 'T1', title: 'Anna Bolko' },
-  { threadID: 'T2', title: 'Corina Bösch' },
-  { threadID: 'T3', title: 'Willi' },
+  // Handle in der Vorschau, „gefällt"-Form
+  { threadID: 'T1', title: 'Anna Bolko', snippet: vorschau('annabolko.runs gefällt eine Nachricht'), participantProfileURIs: avatar('111111111') },
+  // Grossgeschriebener Vorname vor dem Doppelpunkt, das ist kein Handle
+  { threadID: 'T2', title: 'Corina Bösch', snippet: vorschau('Corina: Hallo Josia, danke dir!'), participantProfileURIs: avatar('222222222') },
+  // Du hast zuletzt geschrieben, kein Handle zu holen
+  { threadID: 'T3', title: 'Willi', snippet: vorschau('Du: Melde dich gern nochmal'), participantProfileURIs: avatar('333333333') },
 ];
 
 // Baut die Beschreibung so, wie das Skript sie schreibt.
@@ -25,8 +31,12 @@ export async function starte({
   tasks = [],
   tags = [TAG],            // im Space vorhandene Tags
   fehler = null,           // (methode, pfad) => 'netz'|'limit'|'token'|'weg'|'ungueltig'|null
+  karte = null,            // { handle } fuer die Kontaktkarte der geoeffneten Unterhaltung
 } = {}) {
-  const body = '<body><div id="liste">' + THREADS.map((t) => zeile(t.title, 'Hallo')).join('') + '</div></body>';
+  const seitenleiste = karte
+    ? '<aside><div>Instagram-Profil</div><div><a href="https://l.facebook.com/l.php">' + karte.handle + '</a></div></aside>'
+    : '';
+  const body = '<body><div id="liste">' + THREADS.map((t) => zeile(t.title, 'Hallo')).join('') + '</div>' + seitenleiste + '</body>';
   const dom = new JSDOM(body, {
     url: 'https://business.facebook.com' + pfad,
     runScripts: 'outside-only',
@@ -87,7 +97,7 @@ export async function starte({
     }
     if (methode === 'POST' && /^\/list\/[^/]+\/task$/.test(pf)) {
       const k = JSON.parse(data);
-      const neu = { id: 'neu' + (naechste++), name: k.name, status: 'angeschrieben', farbe: '#87909e',
+      const neu = { id: 'neu' + (naechste++), name: k.name, status: k.status || 'recherchiert', farbe: '#87909e',
                     beschreibung: k.markdown_description || '', tags: [], due: null };
       serverTasks.push(neu);
       return ok(alsApiTask(neu));
@@ -106,7 +116,9 @@ export async function starte({
     }
     if (methode === 'PUT' && /^\/task\/[^/]+$/.test(pf)) {
       const t = serverTasks.find((x) => x.id === pf.split('/')[2]);
-      if (t) t.due = JSON.parse(data).due_date;
+      const k = JSON.parse(data);
+      if (t && 'due_date' in k) t.due = k.due_date;
+      if (t && k.name) t.name = k.name;
       return ok();
     }
     if (methode === 'POST' && /\/comment$/.test(pf)) return ok({ id: 'k1' });
