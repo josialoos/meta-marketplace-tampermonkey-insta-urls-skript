@@ -614,6 +614,28 @@ gruppe('Unsichtbare Knöpfe fangen keine Klicks ab');
     /\.igfu-tag\.on \{[^}]*pointer-events: auto/.test(stil));
 }
 
+gruppe('Rücksprung aus ClickUp öffnet die richtige Unterhaltung');
+{
+  const { doc, w } = await starte({ pfad: '/latest/inbox/all/#igfu=T2', speicher: MIT_CLICKUP });
+  const geklickt = [];
+  [...doc.querySelectorAll('.row')].forEach((r, i) => r.addEventListener('click', () => geklickt.push(i)));
+  await warte(w, 1600);
+  pruefe('Genau eine Zeile wurde angeklickt', geklickt.length === 1, JSON.stringify(geklickt));
+  pruefe('Es ist die aus dem Link', geklickt[0] === 1, JSON.stringify(geklickt));
+  pruefe('Die Zeile wird hervorgehoben',
+    doc.querySelectorAll('.row')[1].hasAttribute('data-igfu-flash'));
+  pruefe('Das Fragment ist danach weg', !w.location.hash, w.location.hash);
+}
+
+gruppe('Ohne Rücksprung-Link wird nichts geöffnet');
+{
+  const { doc, w } = await starte({ speicher: MIT_CLICKUP });
+  const geklickt = [];
+  [...doc.querySelectorAll('.row')].forEach((r, i) => r.addEventListener('click', () => geklickt.push(i)));
+  await warte(w, 1600);
+  pruefe('Keine Zeile angeklickt', geklickt.length === 0, JSON.stringify(geklickt));
+}
+
 gruppe('Speicher übersteht ein Neuladen');
 {
   const erst = await starte({ speicher: MIT_CLICKUP });

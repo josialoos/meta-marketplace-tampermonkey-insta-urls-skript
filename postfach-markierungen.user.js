@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      2.5
+// @version      2.6
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -1617,20 +1617,31 @@
   }
 
   function highlight(row) {
-    row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (typeof row.scrollIntoView === 'function') row.scrollIntoView({ block: 'center', behavior: 'smooth' });
     row.removeAttribute('data-igfu-flash');
     void row.offsetWidth;
     row.setAttribute('data-igfu-flash', '');
     setTimeout(() => row.removeAttribute('data-igfu-flash'), 2000);
   }
 
+  // Klickt die Zeile so an, dass Meta die Unterhaltung oeffnet. Der eigene
+  // Klickabfang greift nicht, weil die Zeile selbst kein Knopf ist.
+  function zeileOeffnen(row) {
+    highlight(row);
+    const ziel = row.querySelector('[role="button"], a') || row;
+    for (const art of ['pointerdown', 'mousedown', 'mouseup', 'click']) {
+      ziel.dispatchEvent(new MouseEvent(art, { bubbles: true, cancelable: true, view: window }));
+    }
+  }
+
   let revealing = false;
-  async function reveal(tid) {
+  async function reveal(tid, oeffnen) {
     if (revealing) return;
     revealing = true;
+    const fertig = (row) => (oeffnen ? zeileOeffnen(row) : highlight(row));
     try {
       let row = findRow(tid);
-      if (row) return highlight(row);
+      if (row) return fertig(row);
       const sc = listScroller();
       if (!sc) return toast('Die Unterhaltungsliste wurde nicht gefunden.');
       toast('Suche in der Liste …');
@@ -1639,7 +1650,7 @@
       let stuck = 0;
       for (let i = 0; i < 200; i++) {
         row = findRow(tid);
-        if (row) { toastEl.classList.remove('show'); return highlight(row); }
+        if (row) { toastEl.classList.remove('show'); return fertig(row); }
         const atBottom = sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 4;
         if (atBottom) {
           // Am Ende warten, ob Meta ältere Unterhaltungen nachlädt
@@ -1656,6 +1667,27 @@
       revealing = false;
     }
   }
+
+  // ---------- Rücksprung aus ClickUp ----------
+  // Die Tasks tragen eine Adresse mit #igfu=<threadID>. Ohne Auswertung landet
+  // man nur im Postfach, ohne dass sich etwas oeffnet. Genau das war bisher so.
+
+  const hashThread = () => (String(location.hash || '').match(/igfu=([A-Za-z0-9_-]+)/) || [])[1] || '';
+
+  let hashErledigt = '';
+  async function hashOeffnen() {
+    if (!isInbox()) return;
+    const tid = hashThread();
+    if (!tid || tid === hashErledigt) return;
+    hashErledigt = tid;
+    toast('Öffne die Unterhaltung aus ClickUp …');
+    await sleep(600);
+    await reveal(tid, true);
+    // Fragment entfernen, damit ein Neuladen nicht erneut oeffnet
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* egal */ }
+  }
+
+  window.addEventListener('hashchange', () => { hashErledigt = ''; hashOeffnen(); });
 
   // Geht die ganze Liste von oben nach unten durch, damit jede Zeile einmal
   // gesehen wird. Nur dabei erfaehrt das Skript neue Zeitstempel, Handles und
@@ -1790,6 +1822,7 @@
       buildUI(); launcher.hidden = false; refreshBtn.hidden = false; updateLauncher(); scanRows();
       cuAktualisieren(true);
       abarbeiten();
+      hashOeffnen();
       setTimeout(() => {
         // Läuft noch eine zweite Version dieses Skripts (z. B. die alte 1.0)?
         if (document.querySelectorAll('#igfu-launch').length > 1) {
