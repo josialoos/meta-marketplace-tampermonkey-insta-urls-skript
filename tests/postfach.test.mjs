@@ -624,6 +624,22 @@ gruppe('Eine blosse Reaktion aendert die Prioritaet nicht');
     JSON.stringify(aufrufe.filter((a) => a.methode === 'PUT').map((a) => a.data)));
 }
 
+gruppe('Hat Josia den Task schon einsortiert, bleibt die Prioritaet seine');
+{
+  // T2 = Corina, Gegenueber zuletzt. Status ist aber nicht mehr angeschrieben,
+  // also hat Josia den Fall selbst in der Hand.
+  const { w, serverTasks, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'Corina Bösch', status: 'kommunikation', farbe: '#7b68ee',
+              beschreibung: beschreibungMit('T2'), tags: [TAG] }],
+  });
+  await warte(w, 1200);
+  pruefe('Keine Prioritaet gesetzt', !serverTasks[0].prio, String(serverTasks[0].prio));
+  pruefe('Nichts uebertragen',
+    !aufrufe.some((a) => a.methode === 'PUT' && a.data && 'priority' in a.data),
+    JSON.stringify(aufrufe.filter((a) => a.methode === 'PUT').map((a) => a.data)));
+}
+
 gruppe('Ohne Task legt die Prioritaet nichts an');
 {
   const { w, aufrufe } = await starte({ speicher: MIT_CLICKUP });

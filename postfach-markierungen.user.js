@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      3.1
+// @version      3.2
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -1059,10 +1059,19 @@
       // „urgent" heisst hier: die Antwort liegt bei uns. Sobald Josia
       // geantwortet hat, faellt die Markierung wieder weg. Eine Reaktion
       // aendert nichts, die ist keine offene Nachricht.
+      //
+      // Nur bei Status „angeschrieben". Sobald ein Task auf kommunikation,
+      // abgesagt oder ongeboardet steht, hat Josia ihn selbst in die Hand
+      // genommen, und dann fasst das Skript die Prioritaet nicht mehr an.
+      // Am 30.09.2026 nachgemessen: von vier Unterhaltungen, bei denen das
+      // Gegenueber zuletzt geschrieben hatte, waeren alle vier Fehlalarme
+      // gewesen. Dreimal ein blosser Abbinder („Alles klar, danke"), einmal
+      // eine Absage. Josia hatte sie am selben Tag bereits einsortiert, die
+      // Regel ohne diese Schranke haette seine Triage wieder ueberschrieben.
       const wer = werZuletzt(t);
       if (wer === 'ich' || wer === 'gegenueber') {
         const task = cuTasks[tid];
-        if (task) {
+        if (task && task.status === CU_STATUS_NEU) {
           const soll = wer === 'gegenueber';
           if (soll !== (task.prio === 'urgent')) {
             vormerken({ art: 'prio', tid, titel: t.title, wert: soll ? 'urgent' : '' });
