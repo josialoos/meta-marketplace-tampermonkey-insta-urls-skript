@@ -156,6 +156,22 @@ export async function starte({
   };
   w.open = (url) => { (w.__geoeffnet = w.__geoeffnet || []).push(url); return null; };
 
+  // Klicks auf Zeilen schon vor dem Start des Skripts mitschneiden, sonst
+  // entgehen uns die, die direkt beim Laden passieren.
+  w.__zeilenKlicks = [];
+  doc.addEventListener('click', (e) => {
+    const r = e.target && e.target.closest && e.target.closest('.row');
+    if (r) w.__zeilenKlicks.push([...doc.querySelectorAll('.row')].indexOf(r));
+  }, true);
+  w.__flashGesehen = [];
+  new w.MutationObserver((ms) => {
+    for (const m of ms) {
+      if (m.attributeName === 'data-igfu-flash' && m.target.hasAttribute('data-igfu-flash')) {
+        w.__flashGesehen.push([...doc.querySelectorAll('.row')].indexOf(m.target));
+      }
+    }
+  }).observe(doc.body, { attributes: true, subtree: true, attributeFilter: ['data-igfu-flash'] });
+
   w.eval(readFileSync(SKRIPT, 'utf8'));
   await warte(w, 400);
   return { dom, w, doc, store, aufrufe, serverTasks, spaceTags };

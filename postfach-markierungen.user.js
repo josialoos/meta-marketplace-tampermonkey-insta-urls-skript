@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      2.6
+// @version      2.7
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -36,6 +36,13 @@
 
 (function () {
   'use strict';
+
+  // Meta schreibt die Adresse beim Laden neu und wirft dabei das Fragment
+  // #igfu=<threadID> weg. Gemessen war es schon nach zwei Sekunden verschwunden,
+  // lange bevor die Unterhaltungsliste ueberhaupt existiert. Deshalb wird es
+  // hier als Allererstes festgehalten.
+  const HASH_MUSTER = /igfu=([A-Za-z0-9_-]+)/;
+  let gemerkterThread = (String(location.hash || '').match(HASH_MUSTER) || [])[1] || '';
 
   // ---------- Aussehen ----------
 
@@ -1602,12 +1609,18 @@
   function listScroller() {
     const first = threadRows()[0];
     let e = first && first[0];
+    let ersatz = null;
     while (e && e !== document.body) {
       const oy = getComputedStyle(e).overflowY;
-      if (oy === 'auto' || oy === 'scroll') return e;
+      if (oy === 'auto' || oy === 'scroll') {
+        // Bevorzugt der Bereich, der tatsaechlich scrollt. Sonst liefert die
+        // Suche einen Container, in dem sich nichts bewegt.
+        if (e.scrollHeight > e.clientHeight + 40) return e;
+        if (!ersatz) ersatz = e;
+      }
       e = e.parentElement;
     }
-    return null;
+    return ersatz;
   }
 
   // Scrollen per Code + Scroll-Ereignis, damit Metas Liste sicher nachrendert
@@ -1672,22 +1685,46 @@
   // Die Tasks tragen eine Adresse mit #igfu=<threadID>. Ohne Auswertung landet
   // man nur im Postfach, ohne dass sich etwas oeffnet. Genau das war bisher so.
 
-  const hashThread = () => (String(location.hash || '').match(/igfu=([A-Za-z0-9_-]+)/) || [])[1] || '';
+  const hashThread = () => (String(location.hash || '').match(HASH_MUSTER) || [])[1] || '';
+
+  // Solange die Seite hochfaehrt, weiter nach dem Fragment schauen, falls es
+  // beim Start noch nicht da war.
+  const hashWaechter = setInterval(() => {
+    const t = hashThread();
+    if (t) gemerkterThread = t;
+  }, 100);
+  setTimeout(() => clearInterval(hashWaechter), 15000);
+
+  // Die Liste steht erst nach einigen Sekunden. Vorher zu suchen bringt nur die
+  // Meldung, dass sie nicht gefunden wurde.
+  async function warteAufListe(maxMs) {
+    const bis = Date.now() + maxMs;
+    while (Date.now() < bis) {
+      // Auf die Zeilen warten reicht. Ein Scrollbereich wird nur gebraucht,
+      // wenn die gesuchte Zeile nicht ohnehin schon dasteht.
+      if (threadRows().length) return true;
+      await sleep(300);
+    }
+    return false;
+  }
 
   let hashErledigt = '';
   async function hashOeffnen() {
     if (!isInbox()) return;
-    const tid = hashThread();
+    const tid = hashThread() || gemerkterThread;
     if (!tid || tid === hashErledigt) return;
     hashErledigt = tid;
+    gemerkterThread = '';
     toast('Öffne die Unterhaltung aus ClickUp …');
-    await sleep(600);
+    if (!(await warteAufListe(25000))) {
+      toast('Die Unterhaltungsliste lädt ungewöhnlich lange. Bitte nochmal auf den Link klicken.');
+      return;
+    }
     await reveal(tid, true);
-    // Fragment entfernen, damit ein Neuladen nicht erneut oeffnet
     try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* egal */ }
   }
 
-  window.addEventListener('hashchange', () => { hashErledigt = ''; hashOeffnen(); });
+  window.addEventListener('hashchange', () => { hashErledigt = ''; gemerkterThread = hashThread(); hashOeffnen(); });
 
   // Geht die ganze Liste von oben nach unten durch, damit jede Zeile einmal
   // gesehen wird. Nur dabei erfaehrt das Skript neue Zeitstempel, Handles und
