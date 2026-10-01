@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      3.3
+// @version      3.4
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -304,6 +304,26 @@
   const CU_STATUS_NEU = 'angeschrieben';
   const CU_STATUS_MARKT = 'recherchiert';
   const CU_STATUS_ONBOARD = 'ongeboardet';
+  const CU_STATUS_WARE = 'erste ware versendet';
+  const CU_STATUS_SALES = 'hat sales';
+
+  // Die Pipeline ist eine Leiter, und das Skript darf einen Task nur nach vorn
+  // schieben. Ohne diese Regel nehmen sich die Pruefungen gegenseitig das
+  // Ergebnis weg: der UpPromote-Abgleich setzt alles Aktive auf „ongeboardet"
+  // und wuerde damit „erste ware versendet" und „hat sales" bei jedem Lauf
+  // wieder einkassieren.
+  const STATUS_LEITER = ['recherchiert', 'angeschrieben', 'kommunikation', 'zugesagt',
+    CU_STATUS_ONBOARD, CU_STATUS_WARE, CU_STATUS_SALES];
+  // Wer hier liegt, wurde von Hand einsortiert. Daran fasst das Skript nichts an,
+  // dieselbe Regel wie bei der Prioritaet.
+  const STATUS_ENDE = ['abgesagt', 'keine antwort', 'beendet'];
+  const statusRang = (s) => STATUS_LEITER.indexOf(String(s || '').toLowerCase().trim());
+  function darfSetzen(alt, neu) {
+    const a = String(alt || '').toLowerCase().trim();
+    if (STATUS_ENDE.includes(a)) return false;
+    const rn = statusRang(neu);
+    return rn >= 0 && rn > statusRang(a);
+  }
 
   // UpPromote kennt den Freigabestatus der Affiliates. Shopify kennt ihn nicht,
   // dort steht nur ein Tag ohne Aussage. Die Zuordnung laeuft ueber das
@@ -599,7 +619,16 @@
       vorige = kennung;
       for (const a of liste) {
         const h = handleAusAffiliate(a);
-        if (h) gefunden[h] = { name: [a.first_name, a.last_name].filter(Boolean).join(' '), email: a.email };
+        if (!h) continue;
+        // Alles ausser „denied" zaehlt als Verkauf. Die Betraege stehen schon in
+        // dieser Antwort, das kostet keine zusaetzliche Anfrage.
+        const umsatz = ['approved_amount', 'pending_amount', 'paid_amount']
+          .reduce((summe, feld) => summe + (parseFloat(a[feld]) || 0), 0);
+        gefunden[h] = {
+          name: [a.first_name, a.last_name].filter(Boolean).join(' '),
+          email: String(a.email || '').trim().toLowerCase(),
+          umsatz,
+        };
       }
       if (liste.length < 100) break;
     }
@@ -615,6 +644,20 @@
     return HANDLE_MUSTER.test(n.toLowerCase()) ? n.toLowerCase() : '';
   }
 
+  // Traegt die E-Mail als Markerzeile nach, damit eine Shopify-Geschenkbestellung
+  // spaeter diesem Task zugeordnet werden kann. Ergaenzt nur, ersetzt nie, damit
+  // eigene Notizen in der Beschreibung erhalten bleiben.
+  async function mailEintragen(task, mail) {
+    const voll = await cuRequest('GET', '/task/' + task.taskId + '?include_markdown_description=true');
+    const bisher = voll.markdown_description || voll.description || '';
+    const schon = mailAusText(bisher);
+    if (schon) { task.mail = schon; return; }
+    await cuRequest('PUT', '/task/' + task.taskId, {
+      markdown_description: bisher.replace(/\s*$/, '') + '\nigfu-mail: ' + mail,
+    });
+    task.mail = mail;
+  }
+
   async function upAbgleichen() {
     if (!cuEingerichtet()) { toast('Bitte erst ClickUp einrichten.'); return; }
     if (!upToken()) { toast('Bitte erst den UpPromote-Token eintragen.'); return; }
@@ -627,23 +670,33 @@
       const treffer = [];
       for (const t of Object.values(cuTasks)) {
         const h = handleAusTaskname(t.titel);
-        if (!h || !aktive[h]) continue;
-        if (t.status === CU_STATUS_ONBOARD) continue;
-        treffer.push([t, h]);
+        const a = h && aktive[h];
+        if (!a) continue;
+        // Wer verkauft hat, ist weiter als nur ongeboardet.
+        const ziel = a.umsatz > 0 ? CU_STATUS_SALES : CU_STATUS_ONBOARD;
+        const statusNoetig = darfSetzen(t.status, ziel);
+        const mailNoetig = !!a.email && !t.mail;
+        if (statusNoetig || mailNoetig) treffer.push({ t, ziel, statusNoetig, mailNoetig, mail: a.email });
       }
       if (!treffer.length) {
-        toast(Object.keys(aktive).length + ' bestätigte Affiliates bei UpPromote, keiner davon neu im CRM.');
+        toast(Object.keys(aktive).length + ' bestätigte Affiliates bei UpPromote, nichts Neues im CRM.');
         return;
       }
       let fertig = 0;
-      for (const [t] of treffer) {
-        toast('Setze ' + (fertig + 1) + ' von ' + treffer.length + ' auf „' + CU_STATUS_ONBOARD + '" …');
-        await cuRequest('PUT', '/task/' + t.taskId, { status: CU_STATUS_ONBOARD });
-        t.status = CU_STATUS_ONBOARD;
-        fertig++;
+      let mails = 0;
+      for (const x of treffer) {
+        if (x.statusNoetig) {
+          toast('Setze auf „' + x.ziel + '" …');
+          await cuRequest('PUT', '/task/' + x.t.taskId, { status: x.ziel });
+          x.t.status = x.ziel;
+          fertig++;
+        }
+        if (x.mailNoetig) { await mailEintragen(x.t, x.mail); mails++; }
       }
       GM_setValue(CU_TASKS, { stand: Date.now(), tasks: cuTasks, bilder: cuBilder });
-      toast(fertig + ' auf „' + CU_STATUS_ONBOARD + '" gesetzt, von ' + Object.keys(aktive).length + ' bestätigten Affiliates.');
+      toast(fertig + ' Status gesetzt'
+        + (mails ? ', ' + mails + ' E-Mail(s) nachgetragen' : '')
+        + ', von ' + Object.keys(aktive).length + ' bestätigten Affiliates.');
       scanRows();
     } catch (e) {
       toast('UpPromote: ' + e.message);
@@ -683,6 +736,10 @@
   }
 
   const bildAusText = (text) => (String(text || '').match(/igfu-bild:\s*([0-9]{6,})/) || [])[1] || '';
+  // Die E-Mail ist die Bruecke zu Shopify. An der Geschenkbestellung dort steht
+  // nur die Adresse des Affiliates, kein Instagram-Handle.
+  const mailAusText = (text) => String((String(text || '')
+    .match(/igfu-mail:\s*([^\s<>()]+@[^\s<>()]+)/) || [])[1] || '').toLowerCase();
 
   function taskAufbereiten(t) {
     const texte = [t.description, t.text_content, t.markdown_description];
@@ -696,10 +753,13 @@
     }
     let bild = '';
     for (const x of texte) { bild = bild || bildAusText(x); }
+    let mail = '';
+    for (const x of texte) { mail = mail || mailAusText(x); }
     const tags = (t.tags || []).map((x) => String(x.name || '').toLowerCase());
     return {
       tid: tid ? String(tid) : '',
       bild,
+      mail,
       taskId: t.id,
       titel: t.name,
       status: (t.status && t.status.status) || '',
@@ -862,11 +922,12 @@
       }
       const w = handleVon(a.tid);
       const neuerName = taskName((w && w.handle) || ziel.titel, a.titel);
-      const aenderung = { status: CU_STATUS_NEU };
+      const aenderung = {};
+      if (darfSetzen(ziel.status, CU_STATUS_NEU)) aenderung.status = CU_STATUS_NEU;
       if (neuerName && neuerName !== ziel.titel) aenderung.name = neuerName;
-      await cuRequest('PUT', '/task/' + ziel.taskId, aenderung);
+      if (Object.keys(aenderung).length) await cuRequest('PUT', '/task/' + ziel.taskId, aenderung);
       ziel.tid = a.tid;
-      ziel.status = CU_STATUS_NEU;
+      if (aenderung.status) ziel.status = aenderung.status;
       if (aenderung.name) ziel.titel = aenderung.name;
       cuTasks[a.tid] = ziel;
       GM_setValue(CU_TASKS, { stand: Date.now(), tasks: cuTasks, bilder: cuBilder });

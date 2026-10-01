@@ -481,6 +481,78 @@ gruppe('UpPromote: bestätigte Affiliates werden ongeboardet');
     !aufrufe.some((a) => JSON.stringify(a.data || '').includes('up_geheim')));
 }
 
+gruppe('UpPromote: Sales heben den Status auf „hat sales"');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_UP,
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: beschreibungMit('T1'), tags: [TAG] }],
+    affiliates: [{ first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de',
+                   instagram: 'annabolko.runs', approved_amount: '12.50' }],
+  });
+  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await warte(w, 1200);
+  pruefe('Status ist „hat sales"', serverTasks[0].status === 'hat sales', serverTasks[0].status);
+}
+
+gruppe('UpPromote: ohne Umsatz bleibt es bei ongeboardet');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_UP,
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1'), tags: [TAG] }],
+    affiliates: [{ first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de',
+                   instagram: 'annabolko.runs', denied_amount: '99.00' }],
+  });
+  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await warte(w, 1200);
+  pruefe('Abgelehnte Provision zählt nicht als Sale',
+    serverTasks[0].status === 'ongeboardet', serverTasks[0].status);
+}
+
+gruppe('Die Leiter zieht keinen Task zurück');
+{
+  const { doc, w, serverTasks, aufrufe } = await starte({
+    speicher: MIT_UP,
+    tasks: [
+      { id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'erste ware versendet', farbe: '#b660e0',
+        beschreibung: beschreibungMit('T1') + '\nigfu-mail: a@b.de', tags: [TAG] },
+      { id: 'a2', name: 'corina_boesch — Corina Bösch', status: 'abgesagt', farbe: '#e5484d',
+        beschreibung: beschreibungMit('T2') + '\nigfu-mail: c@b.de', tags: [TAG] },
+    ],
+    affiliates: [
+      { first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de', instagram: 'annabolko.runs' },
+      { first_name: 'Corina', last_name: 'Bösch', email: 'c@b.de', instagram: 'corina_boesch' },
+    ],
+  });
+  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await warte(w, 1200);
+  pruefe('„erste ware versendet" bleibt stehen',
+    serverTasks[0].status === 'erste ware versendet', serverTasks[0].status);
+  pruefe('„abgesagt" wird nicht angefasst',
+    serverTasks[1].status === 'abgesagt', serverTasks[1].status);
+  pruefe('Gar kein Statuswechsel übertragen',
+    !aufrufe.some((a) => a.methode === 'PUT' && a.data && a.data.status),
+    JSON.stringify(aufrufe.filter((a) => a.methode === 'PUT').map((a) => a.data)));
+}
+
+gruppe('UpPromote: die E-Mail wird als Brücke zu Shopify nachgetragen');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_UP,
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: beschreibungMit('T1'), tags: [TAG] }],
+    affiliates: [{ first_name: 'Anna', last_name: 'Bolko', email: 'Anna@B.de', instagram: 'annabolko.runs' }],
+  });
+  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await warte(w, 1500);
+  pruefe('Markerzeile steht in der Beschreibung',
+    /igfu-mail:\s*anna@b\.de/.test(serverTasks[0].beschreibung || ''),
+    (serverTasks[0].beschreibung || '').slice(-80));
+  pruefe('Der Thread-Marker bleibt erhalten',
+    /igfu-thread:/.test(serverTasks[0].beschreibung || ''));
+}
+
 gruppe('UpPromote: Handle wird aus allen Schreibweisen gelesen');
 {
   const faelle = [
