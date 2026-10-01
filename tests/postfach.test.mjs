@@ -553,6 +553,61 @@ gruppe('UpPromote: die E-Mail wird als Brücke zu Shopify nachgetragen');
     /igfu-thread:/.test(serverTasks[0].beschreibung || ''));
 }
 
+gruppe('Eingesammelter Content hebt auf „erster content"');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: {
+      ...MIT_CLICKUP,
+      'clickup:content:v1': {
+        'annabolko.runs': { bereit: true, anfragen: false, stand: Date.now() },
+        'corina_boesch': { bereit: false, anfragen: true, stand: Date.now() },
+      },
+    },
+    tasks: [
+      { id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'ongeboardet', farbe: '#b660e0',
+        beschreibung: beschreibungMit('T1'), tags: [TAG] },
+      { id: 'a2', name: 'corina_boesch — Corina Bösch', status: 'angeschrieben', farbe: '#87909e',
+        beschreibung: beschreibungMit('T2'), tags: [TAG] },
+    ],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 2500);
+  pruefe('„Für Anzeige bereit" zählt',
+    serverTasks[0].status === 'erster content', serverTasks[0].status);
+  pruefe('„Handeln erforderlich" zählt auch',
+    serverTasks[1].status === 'erster content', serverTasks[1].status);
+}
+
+gruppe('Content zieht niemanden von „hat sales" zurück');
+{
+  const { doc, w, serverTasks, aufrufe } = await starte({
+    speicher: {
+      ...MIT_CLICKUP,
+      'clickup:content:v1': { 'annabolko.runs': { bereit: true, anfragen: false, stand: Date.now() } },
+    },
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'hat sales', farbe: '#e16b16',
+              beschreibung: beschreibungMit('T1'), tags: [TAG] }],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 2500);
+  pruefe('Status bleibt „hat sales"', serverTasks[0].status === 'hat sales', serverTasks[0].status);
+  pruefe('Kein Statuswechsel übertragen',
+    !aufrufe.some((a) => a.methode === 'PUT' && a.data && a.data.status),
+    JSON.stringify(aufrufe.filter((a) => a.methode === 'PUT').map((a) => a.data)));
+}
+
+gruppe('Ohne eingesammelten Content passiert nichts');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: beschreibungMit('T1'), tags: [TAG] }],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 2500);
+  pruefe('Status unverändert', serverTasks[0].status === 'ongeboardet', serverTasks[0].status);
+}
+
 gruppe('UpPromote: Handle wird aus allen Schreibweisen gelesen');
 {
   const faelle = [

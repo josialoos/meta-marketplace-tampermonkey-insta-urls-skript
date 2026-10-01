@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      3.4
+// @version      3.5
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -233,6 +233,13 @@
   // erfasst wird, hat es von Anfang an im Task stehen.
   const MARKT_PATH = /^\/(latest\/creator_marketplace|creator_marketing_hub)(\/|$)/;
   const isMarkt = () => MARKT_PATH.test(location.pathname);
+  // Die Inhalte-Seite des Creator-Marketing-Hubs. Dort liegt pro Content-Kachel,
+  // ob wir darauf eine Anzeige schalten duerfen.
+  const INHALTE_PATH = /^\/creator_marketing_hub\/ad_content(\/|$)/;
+  const isInhalte = () => INHALTE_PATH.test(location.pathname);
+  // Nach Datum sortiert, sonst zeigt Meta nach Relevanz vor allem fremde Creator.
+  const INHALTE_URL = 'https://business.facebook.com/creator_marketing_hub/ad_content/'
+    + '?sort_index=upac_publish_time';
 
   // ---------- Speicher ----------
   // Follow-ups: { [threadID]: { title, flaggedAt, due: 'YYYY-MM-DD' | '', note } }
@@ -297,6 +304,8 @@
   const CU_TAG = 'follow-up';
   const FELD_THREAD = 'Thread-ID';   // wird nur noch gelesen, falls vorhanden
   const CU_HANDLES = 'clickup:handles:v1';
+  // { handle: { bereit: bool, anfragen: bool, stand: ms } }
+  const CU_CONTENT = 'clickup:content:v1';
 
   // Seit „recherchiert" der erste Status der Liste ist, waere er die Vorgabe beim
   // Anlegen. Eine Unterhaltung im Postfach heisst aber, dass schon geschrieben
@@ -305,6 +314,7 @@
   const CU_STATUS_MARKT = 'recherchiert';
   const CU_STATUS_ONBOARD = 'ongeboardet';
   const CU_STATUS_WARE = 'erste ware versendet';
+  const CU_STATUS_CONTENT = 'erster content';
   const CU_STATUS_SALES = 'hat sales';
 
   // Die Pipeline ist eine Leiter, und das Skript darf einen Task nur nach vorn
@@ -313,7 +323,7 @@
   // und wuerde damit „erste ware versendet" und „hat sales" bei jedem Lauf
   // wieder einkassieren.
   const STATUS_LEITER = ['recherchiert', 'angeschrieben', 'kommunikation', 'zugesagt',
-    CU_STATUS_ONBOARD, CU_STATUS_WARE, CU_STATUS_SALES];
+    CU_STATUS_ONBOARD, CU_STATUS_WARE, CU_STATUS_CONTENT, CU_STATUS_SALES];
   // Wer hier liegt, wurde von Hand einsortiert. Daran fasst das Skript nichts an,
   // dieselbe Regel wie bei der Prioritaet.
   const STATUS_ENDE = ['abgesagt', 'keine antwort', 'beendet'];
@@ -1252,6 +1262,88 @@
     } catch (e) { return ''; }
   }
 
+  // ---------- Inhalte des Creator-Marketing-Hubs ----------
+  // Jede Content-Kachel traegt am React-Fiber ein content-Objekt. Entscheidend
+  // ist ad_ready_status, nicht pa_content_type: Berechtigung und Content-Art
+  // sind zwei unabhaengige Achsen, es gibt UGC mit Rechten und Branded Content
+  // ohne. Metas Filter kennt genau drei Zustaende:
+  //   NO_ISSUES  „Fuer Anzeige bereit"    Rechte liegen vor
+  //   WARNINGS   „Handeln erforderlich"   keine Berechtigung, aber anfragbar
+  //   (dritter)  „Unzulaessig"            geht nicht
+  // Gezaehlt wird als Positivliste, damit der dritte Wert, den wir noch nie
+  // gesehen haben, nie versehentlich mitzaehlt.
+  const INHALT_BEREIT = 'NO_ISSUES';
+  const INHALT_ANFRAGEN = 'WARNINGS';
+
+  function inhaltVonKnoten(el) {
+    let f = null;
+    for (let k of Object.keys(el)) { if (k.startsWith('__reactFiber$')) { f = el[k]; break; } }
+    for (let i = 0; i < 35 && f; i++, f = f.return) {
+      const p = f.memoizedProps;
+      if (p && p.content && p.content.content_id) return p.content;
+    }
+    return null;
+  }
+
+  const inhalte = () => GM_getValue(CU_CONTENT, {}) || {};
+  const gesehenInhalte = new Set();
+
+  function scanInhalte() {
+    if (!isInhalte()) return;
+    const alle = inhalte();
+    let neu = false;
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let n;
+    while ((n = walker.nextNode())) {
+      const t = (n.nodeValue || '').trim();
+      if (t.length < 3 || t.length > 30 || !HANDLE_MUSTER.test(t)) continue;
+      const p = n.parentElement;
+      if (!p || p.closest('.igfu-crm-pille')) continue;
+      const c = inhaltVonKnoten(p);
+      if (!c) continue;
+      const schluessel = c.content_id + '|' + t;
+      if (gesehenInhalte.has(schluessel)) continue;
+      gesehenInhalte.add(schluessel);
+      if (c.ad_ready_status !== INHALT_BEREIT && c.ad_ready_status !== INHALT_ANFRAGEN) continue;
+      const e = alle[t] || { bereit: false, anfragen: false };
+      if (c.ad_ready_status === INHALT_BEREIT) e.bereit = true; else e.anfragen = true;
+      e.stand = Date.now();
+      alle[t] = e;
+      neu = true;
+    }
+    if (neu) GM_setValue(CU_CONTENT, alle);
+  }
+
+  // Traegt den eingesammelten Stand in ClickUp ein. Laeuft im Postfach, weil der
+  // Aktualisieren-Knopf dort sitzt, und arbeitet nur mit dem, was auf der
+  // Inhalte-Seite schon gesehen wurde.
+  async function inhalteAnwenden() {
+    if (!cuEingerichtet() || cuLaeuft) return 0;
+    const alle = inhalte();
+    const handles = Object.keys(alle).filter((h) => alle[h] && (alle[h].bereit || alle[h].anfragen));
+    if (!handles.length) return 0;
+    cuLaeuft = true;
+    try {
+      await cuTasksLaden();
+      let fertig = 0;
+      for (const t of Object.values(cuTasks)) {
+        const h = handleAusTaskname(t.titel);
+        if (!h || !alle[h]) continue;
+        if (!darfSetzen(t.status, CU_STATUS_CONTENT)) continue;
+        await cuRequest('PUT', '/task/' + t.taskId, { status: CU_STATUS_CONTENT });
+        t.status = CU_STATUS_CONTENT;
+        fertig++;
+      }
+      if (fertig) GM_setValue(CU_TASKS, { stand: Date.now(), tasks: cuTasks, bilder: cuBilder });
+      return fertig;
+    } catch (e) {
+      toast('Inhalte: ' + e.message);
+      return 0;
+    } finally {
+      cuLaeuft = false;
+    }
+  }
+
   function scanMarkt() {
     if (!isMarkt() || !cuEingerichtet()) return;
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
@@ -1414,6 +1506,7 @@
       'Instagram-Handles aus den Vorschautexten, und benennt die Tasks entsprechend um',
       'Unterhaltungen, die zu einem im Marketplace erfassten Creator gehören, werden mit ihm verbunden',
       'bestätigte Affiliates aus UpPromote auf „' + CU_STATUS_ONBOARD + '"',
+      'Creator mit nutzbarem Content auf „' + CU_STATUS_CONTENT + '" — eingesammelt auf der Inhalte-Seite',
     ]) liste.appendChild(el('li', '', t));
     const fuss = el('div', 'igfu-tipp-fuss',
       'Läuft nur so weit nach unten, bis er am letzten Lauf vorbei ist, meist ein paar Zeilen. '
@@ -1529,6 +1622,9 @@
       button('igfu-link', 'Lokale Follow-ups übernehmen', async () => { await uebernehmen(); standAnzeigen(); }),
       button('igfu-link', 'UpPromote abgleichen', async () => { await upAbgleichen(); standAnzeigen(); },
         'Bestätigte Affiliates aus UpPromote auf „' + CU_STATUS_ONBOARD + '" setzen'),
+      button('igfu-link', 'Inhalte-Seite öffnen', () => { closePanel(); window.open(INHALTE_URL, '_blank'); },
+        'Öffnet die Inhalte des Creator-Marketing-Hubs, nach Datum sortiert. Was dort sichtbar wird, '
+        + 'sammelt das Skript ein. Beim nächsten Aktualisieren landet es in ClickUp.'),
       button('igfu-link', 'Ganze Liste durchgehen', () => { closePanel(); allesAktualisieren(true); },
         'Scrollt die komplette Unterhaltungsliste durch statt nur bis zum letzten Lauf. '
         + 'Dauert deutlich länger. Nötig nach längerer Abwesenheit oder wenn etwas fehlt.'),
@@ -1880,8 +1976,10 @@
   let laeuftDurchlauf = false;
   async function allesAktualisieren(vollstaendig) {
     if (laeuftDurchlauf) return;
+    // Fehlt die Liste, wird nur das Durchgehen uebersprungen. Die Uebertragung
+    // nach ClickUp, UpPromote und die Inhalte haengen nicht daran und liefen
+    // sonst bei jedem Umbau durch Meta stillschweigend gar nicht mehr.
     const sc = listScroller();
-    if (!sc) { toast('Die Unterhaltungsliste wurde nicht gefunden.'); return; }
 
     const letzterLauf = Number(GM_getValue(LETZTER_LAUF, 0)) || 0;
     // Ohne vorherigen Lauf fehlt die Grenze, dann bleibt nur der volle Weg.
@@ -1914,39 +2012,46 @@
     };
 
     try {
-      setScrollTop(sc, 0);
-      await sleep(700);
-      let ohneZuwachs = 0;
-      for (let i = 0; i < 400; i++) {
-        scanRows();
-        if (erfassen()) break;
-        zeigen(gesehen.size + ' geprüft');
-        const vorher = gesehen.size;
-        const obenVorher = sc.scrollTop;
-        setScrollTop(sc, sc.scrollTop + Math.max(200, Math.round(sc.clientHeight * 0.6)));
-        // Metas Liste laedt teilweise erst auf ein echtes Rad-Ereignis nach
-        sc.dispatchEvent(new WheelEvent('wheel', { deltaY: 300, bubbles: true }));
-        await sleep(500);
-        const amEnde = sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 6;
-        if (amEnde || sc.scrollTop === obenVorher) {
-          await sleep(1600);
+      if (!sc) {
+        toast('Die Unterhaltungsliste wurde nicht gefunden, ich übertrage nur den Rest.');
+      } else {
+        setScrollTop(sc, 0);
+        await sleep(700);
+        let ohneZuwachs = 0;
+        for (let i = 0; i < 400; i++) {
           scanRows();
           if (erfassen()) break;
+          zeigen(gesehen.size + ' geprüft');
+          const vorher = gesehen.size;
+          const obenVorher = sc.scrollTop;
+          setScrollTop(sc, sc.scrollTop + Math.max(200, Math.round(sc.clientHeight * 0.6)));
+          // Metas Liste laedt teilweise erst auf ein echtes Rad-Ereignis nach
+          sc.dispatchEvent(new WheelEvent('wheel', { deltaY: 300, bubbles: true }));
+          await sleep(500);
+          const amEnde = sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 6;
+          if (amEnde || sc.scrollTop === obenVorher) {
+            await sleep(1600);
+            scanRows();
+            if (erfassen()) break;
+          }
+          if (gesehen.size === vorher) { if (++ohneZuwachs >= 10) break; } else ohneZuwachs = 0;
         }
-        if (gesehen.size === vorher) { if (++ohneZuwachs >= 10) break; } else ohneZuwachs = 0;
+        setScrollTop(sc, 0);
+        await sleep(400);
+        scanRows();
       }
-      setScrollTop(sc, 0);
-      await sleep(400);
-      scanRows();
 
       zeigen('überträgt …');
       await abarbeiten();
       const offen = warteschlange().length;
-      toast(gesehen.size + (voll ? ' Unterhaltungen durchgesehen' : ' Unterhaltungen seit dem letzten Lauf')
-        + (offen ? ', ' + offen + ' Änderung(en) gehen noch raus.' : ', alles auf Stand.'));
-
-      // Der Stand gilt erst als aktuell, wenn der Lauf auch durchgekommen ist.
-      GM_setValue(LETZTER_LAUF, Date.now());
+      if (sc) {
+        toast(gesehen.size + (voll ? ' Unterhaltungen durchgesehen' : ' Unterhaltungen seit dem letzten Lauf')
+          + (offen ? ', ' + offen + ' Änderung(en) gehen noch raus.' : ', alles auf Stand.'));
+        // Der Stand gilt erst als aktuell, wenn die Liste auch wirklich
+        // durchgegangen wurde. Sonst ueberspringt der naechste Lauf alles,
+        // was in der Zwischenzeit passiert ist.
+        GM_setValue(LETZTER_LAUF, Date.now());
+      }
 
       // UpPromote haengt mit dran, damit bestaetigte Affiliates ohne zweiten
       // Knopfdruck auf „ongeboardet" kommen. Ohne Schluessel still uebergehen.
@@ -1954,6 +2059,9 @@
         zeigen('UpPromote …');
         await upAbgleichen();
       }
+      zeigen('Inhalte …');
+      const mitContent = await inhalteAnwenden();
+      if (mitContent) toast(mitContent + ' auf „' + CU_STATUS_CONTENT + '" gesetzt.');
     } finally {
       laeuftDurchlauf = false;
       if (refreshBtn) { refreshBtn.disabled = false; refreshBtn.textContent = merke || 'Aktualisieren'; }
@@ -2039,7 +2147,7 @@
   let wasInbox = null;
   function syncActive() {
     const now = isInbox();
-    if (now === wasInbox) { if (isMarkt()) { stilEinspielen(); scanMarkt(); } return; }
+    if (now === wasInbox) { if (isMarkt()) { stilEinspielen(); scanMarkt(); scanInhalte(); } return; }
     wasInbox = now;
     if (now) {
       buildUI(); launcher.hidden = false; refreshBtn.hidden = false; updateLauncher(); scanRows();
@@ -2063,7 +2171,7 @@
       if (tippEl) tippEl.classList.remove('show');
       closePanel();
     }
-    if (isMarkt()) { stilEinspielen(); cuAktualisieren(false); scanMarkt(); }
+    if (isMarkt()) { stilEinspielen(); cuAktualisieren(false); scanMarkt(); scanInhalte(); }
   }
 
   let scheduled = null;
@@ -2073,7 +2181,7 @@
       scheduled = null;
       syncActive();
       if (isInbox()) { scanRows(); positionUI(); }
-      if (isMarkt()) scanMarkt();
+      if (isMarkt()) { scanMarkt(); scanInhalte(); }
     }, 250);
   });
   observer.observe(document.body, { childList: true, subtree: true });
