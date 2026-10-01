@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      3.5
+// @version      3.6
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -238,8 +238,24 @@
   const INHALTE_PATH = /^\/creator_marketing_hub\/ad_content(\/|$)/;
   const isInhalte = () => INHALTE_PATH.test(location.pathname);
   // Nach Datum sortiert, sonst zeigt Meta nach Relevanz vor allem fremde Creator.
-  const INHALTE_URL = 'https://business.facebook.com/creator_marketing_hub/ad_content/'
-    + '?sort_index=upac_publish_time';
+  //
+  // Business und Asset muessen mit, sonst landet Meta auf dem zuletzt benutzten
+  // Konto. Genau das ist am 01.10. passiert: der Knopf oeffnete Oberland Messer
+  // statt Tzampas. Beide Werte stehen in der Adresse des Postfachs, von dort
+  // werden sie uebernommen statt fest verdrahtet — damit stimmt es auch, wenn
+  // jemand mit einem anderen Konto arbeitet.
+  function inhalteZiel() {
+    const jetzt = new URLSearchParams(location.search);
+    const business = jetzt.get('business_id');
+    const asset = jetzt.get('asset_id');
+    const p = new URLSearchParams({ sort_index: 'upac_publish_time' });
+    if (business) p.set('business_id', business);
+    if (asset) { p.set('asset_id', asset); p.set('selected_business_page_id', asset); }
+    return {
+      url: 'https://business.facebook.com/creator_marketing_hub/ad_content/?' + p.toString(),
+      vollstaendig: !!(business && asset),
+    };
+  }
 
   // ---------- Speicher ----------
   // Follow-ups: { [threadID]: { title, flaggedAt, due: 'YYYY-MM-DD' | '', note } }
@@ -1622,7 +1638,14 @@
       button('igfu-link', 'Lokale Follow-ups übernehmen', async () => { await uebernehmen(); standAnzeigen(); }),
       button('igfu-link', 'UpPromote abgleichen', async () => { await upAbgleichen(); standAnzeigen(); },
         'Bestätigte Affiliates aus UpPromote auf „' + CU_STATUS_ONBOARD + '" setzen'),
-      button('igfu-link', 'Inhalte-Seite öffnen', () => { closePanel(); window.open(INHALTE_URL, '_blank'); },
+      button('igfu-link', 'Inhalte-Seite öffnen', () => {
+        const ziel = inhalteZiel();
+        closePanel();
+        if (!ziel.vollstaendig) {
+          toast('Das Konto steht nicht in der Adresse. Bitte oben rechts prüfen, ob „Tzampas Food" ausgewählt ist.');
+        }
+        window.open(ziel.url, '_blank');
+      },
         'Öffnet die Inhalte des Creator-Marketing-Hubs, nach Datum sortiert. Was dort sichtbar wird, '
         + 'sammelt das Skript ein. Beim nächsten Aktualisieren landet es in ClickUp.'),
       button('igfu-link', 'Ganze Liste durchgehen', () => { closePanel(); allesAktualisieren(true); },

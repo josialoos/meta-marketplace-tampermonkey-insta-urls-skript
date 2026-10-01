@@ -553,6 +553,35 @@ gruppe('UpPromote: die E-Mail wird als Brücke zu Shopify nachgetragen');
     /igfu-thread:/.test(serverTasks[0].beschreibung || ''));
 }
 
+gruppe('Die Inhalte-Seite wird mit dem richtigen Konto geöffnet');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    pfad: '/latest/inbox/all/?asset_id=1605958876394212&business_id=2004010669811702&partnership_messages=true',
+  });
+  klick(w, knopf(doc, 'Inhalte-Seite öffnen'));
+  const url = (w.__geoeffnet || [])[0] || '';
+  pruefe('Business wird mitgegeben', /business_id=2004010669811702/.test(url), url);
+  pruefe('Asset wird mitgegeben', /asset_id=1605958876394212/.test(url), url);
+  pruefe('Seite wird als Asset vorausgewählt',
+    /selected_business_page_id=1605958876394212/.test(url), url);
+  pruefe('Nach Datum sortiert', /sort_index=upac_publish_time/.test(url), url);
+}
+
+gruppe('Fehlt das Konto in der Adresse, wird gewarnt');
+{
+  const { doc, w } = await starte({ speicher: MIT_CLICKUP, pfad: '/latest/inbox/all/' });
+  klick(w, knopf(doc, 'Inhalte-Seite öffnen'));
+  await warte(w, 150);
+  const url = (w.__geoeffnet || [])[0] || '';
+  pruefe('Es wird trotzdem geöffnet', /ad_content/.test(url), url);
+  pruefe('Kein fremdes Konto erfunden', !/business_id=/.test(url), url);
+  const toastEl = doc.querySelector('#igfu-toast');
+  pruefe('Hinweis auf das Konto erscheint',
+    /Tzampas Food/.test((toastEl && toastEl.textContent) || ''),
+    (toastEl && toastEl.textContent) || '');
+}
+
 gruppe('Eingesammelter Content hebt auf „erster content"');
 {
   const { doc, w, serverTasks } = await starte({
