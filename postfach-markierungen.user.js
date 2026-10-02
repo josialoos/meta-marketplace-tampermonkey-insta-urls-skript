@@ -1590,7 +1590,7 @@
 
     const listenFeld = el('input');
     listenFeld.type = 'text';
-    listenFeld.placeholder = 'z. B. 1200250000007224';
+    listenFeld.placeholder = 'z. B. 901234567890';
     listenFeld.value = cuListe();
     const listenLabel = el('label', '', 'Listen-ID');
     listenLabel.appendChild(listenFeld);
