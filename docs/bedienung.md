@@ -204,9 +204,15 @@ Meta hat die Seite umgebaut. Der Rest läuft weiter, nur das Durchgehen fällt
 aus. Das Skript muss angepasst werden.
 
 **Ein Task bekommt keinen Status**
-Fast immer fehlt das Instagram-Handle im Task-Namen. Ohne Handle gibt es keinen
+Fast immer fehlt das Instagram-Handle. Ohne Handle gibt es keinen
 UpPromote-Treffer, ohne den keine E-Mail, ohne die keine Zuordnung zur
-Warensendung. Format: `handle — Anzeigename`.
+Warensendung — und auch keinen Content und keine Frist.
+
+Solche Tasks tragen in ClickUp den roten Tag **`handle-fehlt`**. Danach filtern,
+Handle ergänzen, fertig: Format `handle — Anzeigename` im Titel. Beim nächsten
+Aktualisieren verschwindet der Tag von selbst, und das Skript schreibt den
+Handle zusätzlich als Zeile `igfu-handle:` in die Beschreibung — die ist dann
+die maßgebliche Stelle, eine spätere Umbenennung schadet nicht mehr.
 
 **Nach dem Aktualisieren steht „… Änderungen gehen noch raus"**
 Normal. Die Warteschlange wird nach und nach abgearbeitet; beim nächsten Lauf

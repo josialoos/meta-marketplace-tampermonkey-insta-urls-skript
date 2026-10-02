@@ -196,11 +196,30 @@ Verbunden wird über Markerzeilen in der **Task-Beschreibung**:
 
 ```
 igfu-thread: <threadID>     Unterhaltung ↔ Task
+igfu-handle: <handle>       Task ↔ UpPromote, Content, Marketplace
 igfu-bild:   <bildID>       im Marketplace erfasster Task ↔ Unterhaltung
 igfu-mail:   <adresse>      Task ↔ Shopify-Bestellung
 igfu-ware:   <JJJJ-MM-TT>   Versanddatum, vom geplanten Lauf gesetzt
                             (das Skript liest es für die Frist mit)
 ```
+
+**Der Handle steht an zwei Stellen, und das mit Absicht.** Im Task-Namen, weil
+man ihn dort sieht und danach suchen kann. Und als Markerzeile, weil die die
+**maßgebliche Bezugsstelle** ist: `handleVonTask()` liest erst den Marker, erst
+dann den Namen. Eine Umbenennung in ClickUp kann die Zuordnung damit nicht mehr
+stillschweigend zerreißen.
+
+**Kein Handle heißt: der Task ist für sämtliche Automatiken unsichtbar** —
+Content, UpPromote, Sales, E-Mail-Brücke, Warensendung, Frist, alles hängt
+daran. Am 02.10.2026 betraf das **17 von rund 54 Tasks**, und aufgefallen ist es
+erst, als ein Creator nachweislich gepostet hatte und nichts passierte. Jede
+Automatik hatte stillschweigend übersprungen, was sie nicht zuordnen konnte.
+
+Deshalb setzt das Skript auf solche Tasks den Tag **`handle-fehlt`** und
+entfernt ihn wieder, sobald der Handle da ist. Tasks auf `abgesagt`,
+`keine antwort` oder `beendet` bleiben außen vor, dort interessiert er nicht
+mehr. Aus einem unsichtbaren Ausfall wird so eine Liste, die man abarbeiten
+kann.
 
 **Warum Beschreibung und nicht Custom Fields:** Im ClickUp-Free-Plan sind 60
 Custom-Field-Belegungen pro Workspace erlaubt, und die waren aufgebraucht. Die

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      3.7
+// @version      3.8
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -321,6 +321,9 @@
   // Haengt an jedem Task, bei dem jemals nutzbarer Content gesehen wurde.
   // Anders als der Status bleibt er stehen, auch wenn der Task weiterwandert.
   const CU_TAG_ADCODE = 'ad-code';
+  // Macht sichtbar, was sonst stillschweigend durchfaellt: ohne Handle ist ein
+  // Task fuer saemtliche Automatiken unsichtbar.
+  const CU_TAG_OHNE_HANDLE = 'handle-fehlt';
   const FELD_THREAD = 'Thread-ID';   // wird nur noch gelesen, falls vorhanden
   const CU_HANDLES = 'clickup:handles:v1';
   // { handle: { bereit: bool, anfragen: bool, stand: ms } }
@@ -393,6 +396,7 @@
     const z = ['[Unterhaltung im Postfach öffnen](' + postfachLink(tid) + ')', ''];
     if (handle) z.push('Instagram: [@' + handle + '](https://www.instagram.com/' + handle + '/)', '');
     z.push('---', 'Vom Postfach-Skript verwaltet. Die folgenden Zeilen bitte nicht ändern.', 'igfu-thread: ' + tid);
+    if (handle) z.push('igfu-handle: ' + handle);
     // Die Bild-ID des Profilfotos ist der Schluessel, ueber den sich ein im
     // Marketplace angelegter Task spaeter mit dieser Unterhaltung verbinden laesst.
     if (bildID) z.push('igfu-bild: ' + bildID);
@@ -706,6 +710,13 @@
 
   // Das Handle eines Tasks steht im Namen vor dem Gedankenstrich, sonst ist der
   // ganze Name das Handle.
+  // Markerzeile schlaegt Name. Der Name bleibt die Anzeige, der Marker ist der
+  // Schluessel.
+  function handleVonTask(task) {
+    if (!task) return '';
+    return task.handle || handleAusTaskname(task.titel);
+  }
+
   function handleAusTaskname(name) {
     const n = String(name || '').trim();
     const m = n.match(/^([a-z0-9._]{2,30})\s+—\s+/);
@@ -716,15 +727,61 @@
   // Traegt die E-Mail als Markerzeile nach, damit eine Shopify-Geschenkbestellung
   // spaeter diesem Task zugeordnet werden kann. Ergaenzt nur, ersetzt nie, damit
   // eigene Notizen in der Beschreibung erhalten bleiben.
-  async function mailEintragen(task, mail) {
+  async function markerEintragen(task, feld, wert) {
     const voll = await cuRequest('GET', '/task/' + task.taskId + '?include_markdown_description=true');
     const bisher = voll.markdown_description || voll.description || '';
-    const schon = mailAusText(bisher);
-    if (schon) { task.mail = schon; return; }
+    if (new RegExp(feld + ':\\s*\\S').test(bisher)) return false;
     await cuRequest('PUT', '/task/' + task.taskId, {
-      markdown_description: bisher.replace(/\s*$/, '') + '\nigfu-mail: ' + mail,
+      markdown_description: bisher.replace(/\s*$/, '') + '\n' + feld + ': ' + wert,
     });
+    return true;
+  }
+
+  async function mailEintragen(task, mail) {
+    const geschrieben = await markerEintragen(task, 'igfu-mail', mail);
     task.mail = mail;
+    return geschrieben;
+  }
+
+  // Zwei Dinge, die sonst stillschweigend durchfallen:
+  //   1. Ist der Handle nur im Namen, wird er als Markerzeile nachgetragen.
+  //   2. Fehlt er ganz, bekommt der Task den Tag „handle-fehlt".
+  // Ohne Handle ist ein Task fuer saemtliche Automatiken unsichtbar — Content,
+  // UpPromote, Sales, E-Mail-Bruecke, Warensendung, Frist. Am 02.10.2026 waren
+  // das 17 von rund 54 Tasks, und gemerkt hat es niemand, weil jede Automatik
+  // einfach uebersprungen hat, was sie nicht zuordnen konnte.
+  async function handleLuecken() {
+    if (!cuEingerichtet() || cuLaeuft) return { marker: 0, fehlt: 0 };
+    cuLaeuft = true;
+    let marker = 0;
+    let fehlt = 0;
+    try {
+      await cuTasksLaden();
+      for (const t of Object.values(cuTasks)) {
+        // Abgesagt, keine Antwort, beendet: dort interessiert kein Handle mehr.
+        if (STATUS_ENDE.includes(String(t.status || '').toLowerCase())) continue;
+        const h = handleVonTask(t);
+        if (h && !t.handle) {
+          await markerEintragen(t, 'igfu-handle', h);
+          t.handle = h;
+          marker += 1;
+        }
+        if (!h && !t.ohneHandle) {
+          await cuTagSetzen(t.taskId, CU_TAG_OHNE_HANDLE, '#e5484d', true);
+          t.ohneHandle = true;
+          fehlt += 1;
+        } else if (h && t.ohneHandle) {
+          await cuTagSetzen(t.taskId, CU_TAG_OHNE_HANDLE, '#e5484d', false);
+          t.ohneHandle = false;
+        }
+      }
+      GM_setValue(CU_TASKS, { stand: Date.now(), tasks: cuTasks, bilder: cuBilder });
+    } catch (e) {
+      toast('Handles: ' + e.message);
+    } finally {
+      cuLaeuft = false;
+    }
+    return { marker, fehlt };
   }
 
   async function upAbgleichen() {
@@ -738,7 +795,7 @@
       await cuTasksLaden();
       const treffer = [];
       for (const t of Object.values(cuTasks)) {
-        const h = handleAusTaskname(t.titel);
+        const h = handleVonTask(t);
         const a = h && aktive[h];
         if (!a) continue;
         // Wer verkauft hat, ist weiter als nur ongeboardet.
@@ -804,9 +861,18 @@
     tagGeprueft.add(name);
   }
 
-  // Setzt einen Tag und laesst ihn stehen. Es gibt bewusst kein Entfernen:
-  // „ad-code" haelt fest, dass es einmal nutzbaren Content gab.
-  async function cuTagSetzen(taskId, name, farbe) {
+  // „ad-code" wird nur gesetzt und nie entfernt, der haelt eine Tatsache fest.
+  // „handle-fehlt" dagegen verschwindet wieder, sobald der Handle da ist.
+  async function cuTagSetzen(taskId, name, farbe, an) {
+    if (an === false) {
+      try {
+        await cuRequest('DELETE', '/task/' + taskId + '/tag/' + encodeURIComponent(name));
+      } catch (e) {
+        if (!e.wiederholbar && !e.blockierend) return;  // war gar nicht dran
+        throw e;
+      }
+      return;
+    }
     await cuTagSichern(name, farbe);
     await cuRequest('POST', '/task/' + taskId + '/tag/' + encodeURIComponent(name));
   }
@@ -816,6 +882,13 @@
   // nur die Adresse des Affiliates, kein Instagram-Handle.
   const mailAusText = (text) => String((String(text || '')
     .match(/igfu-mail:\s*([^\s<>()]+@[^\s<>()]+)/) || [])[1] || '').toLowerCase();
+  // Der Handle steht weiterhin im Task-Namen, zusaetzlich aber als eigene
+  // Markerzeile. Die ist die massgebliche Bezugsstelle: eine Umbenennung in
+  // ClickUp kann die Zuordnung damit nicht mehr stillschweigend zerreissen.
+  const handleAusText = (text) => {
+    const h = (String(text || '').match(/igfu-handle:\s*([a-z0-9._]{2,30})/i) || [])[1] || '';
+    return HANDLE_MUSTER.test(h.toLowerCase()) ? h.toLowerCase() : '';
+  };
   // Versanddatum der Warenprobe, vom geplanten Shopify-Lauf eingetragen.
   const wareAusText = (text) => (String(text || '').match(/igfu-ware:\s*(\d{4}-\d{2}-\d{2})/) || [])[1] || '';
 
@@ -835,18 +908,22 @@
     for (const x of texte) { mail = mail || mailAusText(x); }
     let ware = '';
     for (const x of texte) { ware = ware || wareAusText(x); }
+    let handle = '';
+    for (const x of texte) { handle = handle || handleAusText(x); }
     const tags = (t.tags || []).map((x) => String(x.name || '').toLowerCase());
     return {
       tid: tid ? String(tid) : '',
       bild,
       mail,
       ware,
+      handle,
       taskId: t.id,
       titel: t.name,
       status: (t.status && t.status.status) || '',
       farbe: (t.status && t.status.color) || '#65676b',
       follow: tags.includes(CU_TAG),
       adcode: tags.includes(CU_TAG_ADCODE),
+      ohneHandle: tags.includes(CU_TAG_OHNE_HANDLE),
       prio: (t.priority && t.priority.priority) || '',
       due: isoVonMs(t.due_date),
       // Das Startdatum traegt bei uns das Datum der letzten Nachricht. Ein
@@ -1407,7 +1484,7 @@
       await cuTasksLaden();
       let fertig = 0;
       for (const t of Object.values(cuTasks)) {
-        const h = handleAusTaskname(t.titel);
+        const h = handleVonTask(t);
         if (!h || !alle[h]) continue;
         // Der Tag ist eine Tatsache, kein Zustand: er wird auch dann gesetzt,
         // wenn der Status wegen der Leiter nicht mehr wandert, und nie entfernt.
@@ -2155,6 +2232,13 @@
       zeigen('Inhalte …');
       const mitContent = await inhalteAnwenden();
       if (mitContent) toast(mitContent + ' auf „' + CU_STATUS_CONTENT + '" gesetzt.');
+
+      zeigen('Handles …');
+      const luecken = await handleLuecken();
+      if (luecken.fehlt) {
+        toast(luecken.fehlt + ' Task(s) ohne Handle — in ClickUp mit „'
+          + CU_TAG_OHNE_HANDLE + '" markiert. Ohne Handle greift keine Automatik.');
+      }
     } finally {
       laeuftDurchlauf = false;
       if (refreshBtn) { refreshBtn.disabled = false; refreshBtn.textContent = merke || 'Aktualisieren'; }

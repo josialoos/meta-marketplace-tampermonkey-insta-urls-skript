@@ -701,6 +701,77 @@ gruppe('UpPromote: ohne Token passiert nichts');
 
 const alsDatum = (ms) => ms ? new Date(Number(ms)).toISOString().slice(0, 10) : null;
 
+gruppe('Handle wandert als Markerzeile in die Beschreibung');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1'), tags: [TAG] }],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 2500);
+  pruefe('Markerzeile wurde nachgetragen',
+    /igfu-handle:\s*annabolko\.runs/.test(serverTasks[0].beschreibung || ''),
+    (serverTasks[0].beschreibung || '').slice(-90));
+  pruefe('Kein Tag „handle-fehlt"',
+    !(serverTasks[0].tags || []).includes('handle-fehlt'), JSON.stringify(serverTasks[0].tags));
+}
+
+gruppe('Ohne Handle wird der Task sichtbar markiert');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'Carsten Schymik', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1'), tags: [TAG] }],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 2500);
+  pruefe('Tag „handle-fehlt" ist gesetzt',
+    (serverTasks[0].tags || []).includes('handle-fehlt'), JSON.stringify(serverTasks[0].tags));
+}
+
+gruppe('Der Tag verschwindet, sobald der Handle da ist');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1'), tags: [TAG, 'handle-fehlt'] }],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 2500);
+  pruefe('Tag ist wieder weg',
+    !(serverTasks[0].tags || []).includes('handle-fehlt'), JSON.stringify(serverTasks[0].tags));
+}
+
+gruppe('Die Markerzeile schlägt den Namen');
+{
+  // Der Name trägt keinen Handle, die Beschreibung schon. UpPromote muss
+  // trotzdem zuordnen können — genau dafür ist der Marker da.
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_UP,
+    tasks: [{ id: 'a1', name: 'Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1') + '\nigfu-handle: annabolko.runs', tags: [TAG] }],
+    affiliates: [{ first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de', instagram: 'annabolko.runs' }],
+  });
+  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await warte(w, 1500);
+  pruefe('Trotz Namen ohne Handle zugeordnet',
+    serverTasks[0].status === 'ongeboardet', serverTasks[0].status);
+}
+
+gruppe('Bei abgesagt interessiert kein fehlender Handle');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'Willi', status: 'abgesagt', farbe: '#e5484d',
+              beschreibung: beschreibungMit('T1'), tags: [TAG] }],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 2500);
+  pruefe('Kein Tag auf einem abgesagten Task',
+    !(serverTasks[0].tags || []).includes('handle-fehlt'), JSON.stringify(serverTasks[0].tags));
+}
+
 gruppe('Nachfass-Frist: 14 Tage nach der letzten Nachricht');
 {
   // T1 = Anna, letzte Nachricht 14.09.2026
