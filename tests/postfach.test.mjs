@@ -701,6 +701,77 @@ gruppe('UpPromote: ohne Token passiert nichts');
 
 const alsDatum = (ms) => ms ? new Date(Number(ms)).toISOString().slice(0, 10) : null;
 
+gruppe('Nachfass-Frist: 14 Tage nach der letzten Nachricht');
+{
+  // T1 = Anna, letzte Nachricht 14.09.2026
+  const { w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1'), tags: [TAG] }],
+  });
+  await warte(w, 1500);
+  pruefe('Startdatum ist die letzte Nachricht',
+    alsDatum(serverTasks[0].start) === '2026-09-14', String(alsDatum(serverTasks[0].start)));
+  pruefe('Frist ist 14 Tage später',
+    alsDatum(serverTasks[0].due) === '2026-09-28', String(alsDatum(serverTasks[0].due)));
+}
+
+gruppe('Nachfass-Frist: Versand schlägt die 14 Tage, wenn er später liegt');
+{
+  // T3 = Willi, letzte Nachricht 30.08.2026 → +14 Tage = 13.09.
+  // Versand Montag 14.09. + 10 Wochentage = 28.09., die spätere gilt.
+  // Zugleich die Probe auf die Wochentagsrechnung: kalendarisch wären es
+  // der 24.09., nur mit übersprungenen Wochenenden kommt der 28.09. heraus.
+  const { w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'Willi', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T3') + '\nigfu-ware: 2026-09-14', tags: [TAG] }],
+  });
+  await warte(w, 1500);
+  pruefe('Frist richtet sich nach dem Versand',
+    alsDatum(serverTasks[0].due) === '2026-09-28', String(alsDatum(serverTasks[0].due)));
+}
+
+gruppe('Startdatum liegt nie nach der Frist');
+{
+  // ClickUp lehnt das sonst mit Fehler 400 ab. Genau so ist es passiert:
+  // eine reine Versandfrist lag bei laufender Unterhaltung irgendwann vor der
+  // letzten Nachricht, und jedes weitere Schreiben scheiterte.
+  const frueh = new Date(2026, 8, 1, 12, 0, 0).getTime();
+  const { w, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'Corina Bösch', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T2') + '\nigfu-ware: 2026-09-01',
+              tags: [TAG], due: frueh }],
+  });
+  await warte(w, 1500);
+  const verstoss = aufrufe.filter((a) => a.methode === 'PUT' && a.data
+    && a.data.start_date && a.data.due_date && a.data.start_date > a.data.due_date);
+  pruefe('Keine Nutzlast mit start nach due', verstoss.length === 0, JSON.stringify(verstoss));
+  const mitBeidem = aufrufe.find((a) => a.methode === 'PUT' && a.data && a.data.start_date);
+  pruefe('Frist wird gleich mitgeschickt',
+    !!(mitBeidem && mitBeidem.data.due_date), JSON.stringify(mitBeidem && mitBeidem.data));
+}
+
+gruppe('Der Tag „ad-code" wird gesetzt und bleibt');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: {
+      ...MIT_CLICKUP,
+      'clickup:content:v1': { 'annabolko.runs': { bereit: true, anfragen: false, stand: Date.now() } },
+    },
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'hat sales', farbe: '#e16b16',
+              beschreibung: beschreibungMit('T1'), tags: [TAG] }],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 2500);
+  pruefe('Tag ist dran', (serverTasks[0].tags || []).includes('ad-code'),
+    JSON.stringify(serverTasks[0].tags));
+  pruefe('Status bleibt trotzdem „hat sales"',
+    serverTasks[0].status === 'hat sales', serverTasks[0].status);
+}
+
+
 gruppe('Datum der letzten Nachricht landet im Startdatum');
 {
   const { w, serverTasks } = await starte({

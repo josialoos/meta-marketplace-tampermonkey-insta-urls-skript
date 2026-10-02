@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      3.6
+// @version      3.7
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -318,6 +318,9 @@
   // Die Thread-ID steht deshalb in der Beschreibung, das Follow-up ist ein Tag.
   // Beschreibungen und Tags haben kein Kontingent.
   const CU_TAG = 'follow-up';
+  // Haengt an jedem Task, bei dem jemals nutzbarer Content gesehen wurde.
+  // Anders als der Status bleibt er stehen, auch wenn der Task weiterwandert.
+  const CU_TAG_ADCODE = 'ad-code';
   const FELD_THREAD = 'Thread-ID';   // wird nur noch gelesen, falls vorhanden
   const CU_HANDLES = 'clickup:handles:v1';
   // { handle: { bereit: bool, anfragen: bool, stand: ms } }
@@ -524,6 +527,46 @@
     if (!ms) return '';
     const d = new Date(Number(ms));
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  const tagePlus = (iso, n) => {
+    const ms = msVonIso(iso);
+    return ms ? isoVonMs(ms + n * 86400000) : '';
+  };
+  // Zaehlt ab dem Tag nach dem Stichtag und ueberspringt Samstag und Sonntag.
+  // Feiertage bleiben unberuecksichtigt.
+  function wochentagePlus(iso, n) {
+    const ms = msVonIso(iso);
+    if (!ms) return '';
+    const d = new Date(ms);
+    let offen = n;
+    while (offen > 0) {
+      d.setDate(d.getDate() + 1);
+      const wt = d.getDay();
+      if (wt !== 0 && wt !== 6) offen -= 1;
+    }
+    return isoVonMs(d.getTime());
+  }
+
+  // Nachfass-Frist. Zwei Regeln, es gilt die spaetere:
+  //   14 Tage nach der letzten Nachricht oder Reaktion des Creators
+  //   10 Wochentage nach dem Versand der Ware, sofern einer bekannt ist
+  //
+  // Die spaetere zu nehmen ist nicht nur sinnvoll, sondern noetig: das
+  // Startdatum traegt bei uns das Datum der letzten Nachricht, und ClickUp
+  // lehnt ein Startdatum nach dem Faelligkeitsdatum ab. Eine reine
+  // Versandfrist lag bei laufenden Unterhaltungen irgendwann davor, und dann
+  // scheiterte jedes weitere Schreiben mit Fehler 400.
+  function fristFuer(task, letzteIso) {
+    const kandidaten = [];
+    const nachNachricht = tagePlus(letzteIso, 14);
+    if (nachNachricht) kandidaten.push(nachNachricht);
+    if (task && task.ware) {
+      const nachVersand = wochentagePlus(task.ware, 10);
+      if (nachVersand) kandidaten.push(nachVersand);
+    }
+    kandidaten.sort();
+    return kandidaten.length ? kandidaten[kandidaten.length - 1] : '';
   }
 
   // Der Token wird pro Anfrage frisch gelesen und nirgends zwischengespeichert.
@@ -741,24 +784,31 @@
   const cuSpace = () => String(GM_getValue(CU_SPACE, '') || '');
 
   // Legt den Tag einmalig im Space an, falls er fehlt. Danach nur noch gelesen.
-  let tagGeprueft = false;
-  async function cuTagSichern() {
-    if (tagGeprueft) return;
+  const tagGeprueft = new Set();
+  async function cuTagSichern(name, farbe) {
+    if (tagGeprueft.has(name)) return;
     const space = cuSpace() || (await cuSpaceLaden());
     const daten = await cuRequest('GET', '/space/' + space + '/tag');
-    const da = (daten.tags || []).some((t) => (t.name || '').toLowerCase() === CU_TAG);
+    const da = (daten.tags || []).some((t) => (t.name || '').toLowerCase() === name);
     if (!da) {
       try {
         await cuRequest('POST', '/space/' + space + '/tag', {
-          tag: { name: CU_TAG, tag_fg: '#1c1e21', tag_bg: YELLOW },
+          tag: { name, tag_fg: '#1c1e21', tag_bg: farbe || YELLOW },
         });
       } catch (e) {
         if (e.wiederholbar || e.blockierend) throw e;
-        throw new Error('Der Tag „' + CU_TAG + '" fehlt im Space und liess sich nicht anlegen. '
+        throw new Error('Der Tag „' + name + '" fehlt im Space und liess sich nicht anlegen. '
           + 'Bitte einmal von Hand in ClickUp anlegen. ' + e.message);
       }
     }
-    tagGeprueft = true;
+    tagGeprueft.add(name);
+  }
+
+  // Setzt einen Tag und laesst ihn stehen. Es gibt bewusst kein Entfernen:
+  // „ad-code" haelt fest, dass es einmal nutzbaren Content gab.
+  async function cuTagSetzen(taskId, name, farbe) {
+    await cuTagSichern(name, farbe);
+    await cuRequest('POST', '/task/' + taskId + '/tag/' + encodeURIComponent(name));
   }
 
   const bildAusText = (text) => (String(text || '').match(/igfu-bild:\s*([0-9]{6,})/) || [])[1] || '';
@@ -766,6 +816,8 @@
   // nur die Adresse des Affiliates, kein Instagram-Handle.
   const mailAusText = (text) => String((String(text || '')
     .match(/igfu-mail:\s*([^\s<>()]+@[^\s<>()]+)/) || [])[1] || '').toLowerCase();
+  // Versanddatum der Warenprobe, vom geplanten Shopify-Lauf eingetragen.
+  const wareAusText = (text) => (String(text || '').match(/igfu-ware:\s*(\d{4}-\d{2}-\d{2})/) || [])[1] || '';
 
   function taskAufbereiten(t) {
     const texte = [t.description, t.text_content, t.markdown_description];
@@ -781,16 +833,20 @@
     for (const x of texte) { bild = bild || bildAusText(x); }
     let mail = '';
     for (const x of texte) { mail = mail || mailAusText(x); }
+    let ware = '';
+    for (const x of texte) { ware = ware || wareAusText(x); }
     const tags = (t.tags || []).map((x) => String(x.name || '').toLowerCase());
     return {
       tid: tid ? String(tid) : '',
       bild,
       mail,
+      ware,
       taskId: t.id,
       titel: t.name,
       status: (t.status && t.status.status) || '',
       farbe: (t.status && t.status.color) || '#65676b',
       follow: tags.includes(CU_TAG),
+      adcode: tags.includes(CU_TAG_ADCODE),
       prio: (t.priority && t.priority.priority) || '',
       due: isoVonMs(t.due_date),
       // Das Startdatum traegt bei uns das Datum der letzten Nachricht. Ein
@@ -849,7 +905,7 @@
   }
 
   async function cuFollowSetzen(taskId, an) {
-    await cuTagSichern();
+    await cuTagSichern(CU_TAG, YELLOW);
     const pfad = '/task/' + taskId + '/tag/' + encodeURIComponent(CU_TAG);
     try {
       await cuRequest(an ? 'POST' : 'DELETE', pfad);
@@ -971,8 +1027,16 @@
     } else if (a.art === 'letzte') {
       const ms = msVonIso(a.wert);
       if (ms) {
-        await cuRequest('PUT', '/task/' + task.taskId, { start_date: ms, start_date_time: false });
+        // Frist zusammen mit dem Startdatum schicken. Einzeln abgeschickt
+        // lehnt ClickUp das Startdatum ab, sobald es hinter der alten Frist
+        // liegt.
+        const frist = fristFuer(task, a.wert);
+        const nutzlast = { start_date: ms, start_date_time: false };
+        const fms = msVonIso(frist);
+        if (fms && frist !== task.due) { nutzlast.due_date = fms; nutzlast.due_date_time = false; }
+        await cuRequest('PUT', '/task/' + task.taskId, nutzlast);
         task.letzte = a.wert;
+        if (nutzlast.due_date) task.due = frist;
       }
     } else if (a.art === 'prio') {
       const urgent = a.wert === 'urgent';
@@ -1345,6 +1409,12 @@
       for (const t of Object.values(cuTasks)) {
         const h = handleAusTaskname(t.titel);
         if (!h || !alle[h]) continue;
+        // Der Tag ist eine Tatsache, kein Zustand: er wird auch dann gesetzt,
+        // wenn der Status wegen der Leiter nicht mehr wandert, und nie entfernt.
+        if (!t.adcode) {
+          await cuTagSetzen(t.taskId, CU_TAG_ADCODE, '#30a46c');
+          t.adcode = true;
+        }
         if (!darfSetzen(t.status, CU_STATUS_CONTENT)) continue;
         await cuRequest('PUT', '/task/' + t.taskId, { status: CU_STATUS_CONTENT });
         t.status = CU_STATUS_CONTENT;
@@ -1677,7 +1747,7 @@
     if (!cuEingerichtet()) { toast('Bitte erst Listen-ID und Token eintragen.'); return false; }
     try {
       await cuSpaceLaden();
-      tagGeprueft = false;
+      tagGeprueft.clear();
       await cuTagSichern();
       await cuTasksLaden();
       zusammenfuehren();

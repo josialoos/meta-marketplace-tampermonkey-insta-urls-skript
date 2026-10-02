@@ -115,6 +115,10 @@ dafür offen gewesen sein.
 Alles, was dabei sichtbar war, hat das Skript eingesammelt. Einmal erfasste
 Profile musst du nicht erneut durchscrollen.
 
+Wer so erkannt wird, bekommt dauerhaft den Tag **`ad-code`**. Der bleibt
+stehen, auch wenn der Task später auf „hat sales" weiterwandert — am Status
+sieht man, wo jemand gerade steht, am Tag, dass es nutzbaren Content gibt.
+
 Gezählt wird Content, der **„Für Anzeige bereit"** ist *oder* auf **„Handeln
 erforderlich"** steht. Das zweite heißt: der Creator hat euch markiert, die
 Rechte fehlen noch — aber ihr könnt sie mit einem Klick anfragen. Oft die
@@ -124,15 +128,21 @@ dankbarste Gelegenheit zum Nachhaken.
 
 ## Die Nachfass-Frist
 
-Sobald eine Warensendung erkannt wird, bekommt der Task automatisch ein
-**Fälligkeitsdatum: Versanddatum plus 10 Wochentage.** Samstag und Sonntag
-zählen nicht mit. Das ist die Deadline, bis zu der nachgehakt sein sollte.
+Jeder Task bekommt automatisch ein **Fälligkeitsdatum** — deine Deadline, bis zu
+der nachgehakt sein sollte. Es gelten zwei Regeln, und es gilt immer die
+**spätere**:
 
-Fällige Fristen siehst du ohne Umweg an der farbigen Pille unten rechts — dort
+- **14 Tage** nach der letzten Nachricht oder Reaktion des Creators
+- **10 Wochentage** nach dem Versand der Warenprobe, falls eine raus ist
+
+Wochenenden zählen bei den Wochentagen nicht mit. Schreibt ein Creator wieder,
+rückt die Frist entsprechend nach hinten — die Uhr beginnt von vorn.
+
+Fällige Fristen siehst du ohne Umweg an der farbigen Pille unten rechts, dort
 erscheint dann zusätzlich „N fällig".
 
-Ein Fälligkeitsdatum, das du **selbst** gesetzt hast, bleibt unangetastet. Die
-Automatik trägt nur dort ein, wo noch keines steht.
+Ein Fälligkeitsdatum, das du **selbst** im Panel einträgst, überschreibt die
+Automatik nicht von sich aus.
 
 ---
 

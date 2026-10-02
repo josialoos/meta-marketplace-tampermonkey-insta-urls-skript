@@ -65,7 +65,8 @@ Zugängen, die ohnehin außerhalb des Browsers liegen.
 | E-Mail des Affiliates | UpPromote | `email` | Kernskript |
 | Nutzbarer Content | Creator Marketing Hub | React-Fiber, `content.ad_ready_status` | Kernskript |
 | Warensendung | Shopify | Bestellung mit Tag `uppromote_gift` **oder** `Affiliate`, 0,00 € | Geplanter Lauf |
-| Nachfass-Frist | abgeleitet | Versanddatum + 10 Wochentage | Geplanter Lauf |
+| Nachfass-Frist | abgeleitet | spätere aus „letzte Nachricht + 14 Tage" und „Versand + 10 Wochentage" | Skript, ersatzweise geplanter Lauf |
+| Tag `ad-code` | Creator Marketing Hub | einmal nutzbarer Content gesehen | Skript |
 
 ### UpPromote
 
@@ -131,21 +132,46 @@ Namensähnlichkeit.
 
 #### Nachfass-Frist
 
-Wo eine Warensendung erkannt wird, setzt der Lauf zugleich das **Fälligkeitsdatum**
-des Tasks: Versanddatum **plus 10 Wochentage**, gezählt ab dem Tag nach dem
-Versand, Samstag und Sonntag übersprungen, Feiertage unberücksichtigt. Das ist
-die Deadline zum Nachhaken.
+Das Fälligkeitsdatum des Tasks ist die Deadline zum Nachhaken. Es gelten zwei
+Regeln, und zwar **die spätere von beiden**:
+
+- **14 Tage nach der letzten Nachricht oder Reaktion des Creators**
+- **10 Wochentage nach dem Versand der Ware**, falls es einen gibt — gezählt ab
+  dem Tag nach dem Versand, Samstag und Sonntag übersprungen, Feiertage
+  unberücksichtigt
 
 Kontrollbeispiel: Versand Freitag 31.07.2026 → Frist Freitag 14.08.2026.
 
-**Nur, wenn der Task noch kein Fälligkeitsdatum hat.** Ein vorhandenes bleibt
-unangetastet — es könnte von Hand gesetzt sein. Dieselbe Linie wie bei Status
-und Priorität: was jemand selbst entschieden hat, überschreibt die Automatik
-nicht.
+> **Warum „die spätere" nicht nur sinnvoll, sondern nötig ist.**
+> Das `start_date` trägt bei uns das Datum der letzten Nachricht, und **ClickUp
+> lehnt ein Startdatum nach dem Fälligkeitsdatum ab** („Start date cannot be
+> after due date"). Eine reine Versandfrist lag bei laufenden Unterhaltungen
+> irgendwann vor der letzten Nachricht — ab da scheiterte jedes weitere
+> Schreiben mit Fehler 400, und weil sich das Skript das Datum erst nach
+> erfolgreichem Schreiben merkt, stellte es den Auftrag bei jedem Durchlauf
+> neu ein. Dauerschleife.
+>
+> Die 14-Tage-Regel schließt das von selbst aus: eine Frist 14 Tage nach der
+> letzten Nachricht liegt nie davor. Zusätzlich gehen Startdatum und Frist in
+> **einer** Anfrage raus, nie einzeln.
+>
+> Die „Duration ClickApp", die ClickUp in der Fehlermeldung vorschlägt, wäre
+> der falsche Weg: sie würde eines der beiden Daten selbsttätig verschieben und
+> damit genau die Bedeutung zerstören, die wir hineinlegen.
 
-Es gibt hier keine Kollision mit dem Skript: das schreibt `due_date` nur, wenn
-jemand im Panel ein Datum einträgt, und liest es sonst aus ClickUp zurück. Die
-Frist taucht dadurch von selbst in der „fällig"-Anzeige an der Pille auf.
+Zuständig ist in erster Linie das Skript — es sieht bei jedem Durchlauf jede
+sichtbare Unterhaltung. Der geplante Shopify-Lauf setzt eine Frist nur, wenn
+noch gar keine da ist, für Tasks, deren Unterhaltung das Skript nicht zu
+Gesicht bekommen hat. Ein von Hand gesetztes Datum bleibt in beiden Fällen
+unangetastet.
+
+#### Der Tag `ad-code`
+
+Sobald zu einem Creator zum ersten Mal nutzbarer Content gesehen wurde, bekommt
+sein Task den Tag **`ad-code`**. Anders als der Status bleibt er stehen, auch
+wenn der Task weiterwandert — er hält eine Tatsache fest, keinen Zustand. Es
+gibt deshalb kein Entfernen, und er wird auch dann gesetzt, wenn der Status
+wegen der Leiter nicht mehr geändert wird.
 
 > Die erste Fassung suchte nur nach `uppromote_gift` und übersah damit über
 > hundert Altfälle aus der Handarbeits-Zeit — aufgefallen an einem Affiliate,
@@ -173,6 +199,7 @@ igfu-thread: <threadID>     Unterhaltung ↔ Task
 igfu-bild:   <bildID>       im Marketplace erfasster Task ↔ Unterhaltung
 igfu-mail:   <adresse>      Task ↔ Shopify-Bestellung
 igfu-ware:   <JJJJ-MM-TT>   Versanddatum, vom geplanten Lauf gesetzt
+                            (das Skript liest es für die Frist mit)
 ```
 
 **Warum Beschreibung und nicht Custom Fields:** Im ClickUp-Free-Plan sind 60
