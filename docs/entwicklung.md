@@ -64,7 +64,7 @@ Zugängen, die ohnehin außerhalb des Browsers liegen.
 | Sales | UpPromote | `approved_ + pending_ + paid_amount` | Kernskript |
 | E-Mail des Affiliates | UpPromote | `email` | Kernskript |
 | Nutzbarer Content | Creator Marketing Hub | React-Fiber, `content.ad_ready_status` | Kernskript |
-| Warensendung | Shopify | Bestellung mit Tag `uppromote_gift` | Geplanter Lauf |
+| Warensendung | Shopify | Bestellung mit Tag `uppromote_gift` **oder** `Affiliate`, 0,00 € | Geplanter Lauf |
 
 ### UpPromote
 
@@ -106,18 +106,32 @@ Zwei Parameter gehören zwingend in die Adresse:
 
 ### Shopify
 
-Warensendungen sind Bestellungen mit Tag `uppromote_gift`, Wert 0,00 €, vom
-Affiliate selbst über UpPromote ausgelöst.
+Warensendungen sehen in Shopify auf **zwei** Arten aus, je nach Zeitraum:
+
+| Zeitraum | Tag | Entstehung |
+|---|---|---|
+| seit 06.08.2026 | `uppromote_gift` | UpPromote legt sie an, wenn der Affiliate sein Geschenk einlöst |
+| davor, ca. 08.05.–02.09.2026 | `Affiliate` | von Hand als Entwurfsbestellung erfasst |
+
+Beide haben Gesamtwert 0,00 €.
 
 ```graphql
-orders(query: "tag:uppromote_gift") {
-  name  createdAt  email  displayFulfillmentStatus
+orders(query: "tag:uppromote_gift OR tag:Affiliate") {
+  name  createdAt  email  tags  displayFulfillmentStatus
+  totalPriceSet { shopMoney { amount } }
 }
 ```
 
-Gezählt wird nur `FULFILLED` oder `PARTIALLY_FULFILLED` — nur das ist wirklich
-raus. Zugeordnet wird **ausschließlich über exakte E-Mail-Übereinstimmung**,
-nie über Namensähnlichkeit.
+Behalten wird nur, was **0,00 €** kostet und auf `FULFILLED` oder
+`PARTIALLY_FULFILLED` steht — nur das ist wirklich raus. Bei mehreren
+Bestellungen zu einer Adresse zählt die älteste. Zugeordnet wird
+**ausschließlich über exakte E-Mail-Übereinstimmung**, nie über
+Namensähnlichkeit.
+
+> Die erste Fassung suchte nur nach `uppromote_gift` und übersah damit über
+> hundert Altfälle aus der Handarbeits-Zeit — aufgefallen an einem Affiliate,
+> dessen Paket nachweislich raus war und der trotzdem auf `ongeboardet` stand.
+> Beim Erweitern solcher Filter lohnt die Gegenprobe ohne Filter.
 
 ---
 
