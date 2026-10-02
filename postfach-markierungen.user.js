@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      3.8
+// @version      3.9
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -155,6 +155,29 @@
       box-shadow: 0 10px 30px rgba(0,0,0,.18);
     }
     #igfu-panel[hidden] { display: none; }
+
+    /* Nachfrage nach einem fehlenden Handle. Bewusst kein echter Modal-Dialog:
+       das Anlegen laeuft weiter, der Kasten haelt niemanden auf. */
+    #igfu-frage {
+      position: fixed; inset: 0; z-index: 2147483100;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,.35);
+    }
+    .igfu-frage-kasten {
+      width: 420px; max-width: calc(100vw - 32px);
+      display: flex; flex-direction: column; gap: 8px;
+      background: #fff; color: #1c2b33; font-family: inherit; font-size: 13px;
+      border-radius: 12px; padding: 18px 20px;
+      box-shadow: 0 16px 48px rgba(0,0,0,.28);
+    }
+    .igfu-frage-kasten b { font-size: 15px; }
+    .igfu-frage-wer { font-weight: 600; color: ${PINK}; }
+    .igfu-frage-text { color: #65676b; line-height: 1.45; }
+    .igfu-frage-kasten input {
+      width: 100%; box-sizing: border-box; padding: 7px 9px; font: inherit;
+      border: 1px solid #dadde1; border-radius: 8px;
+    }
+    .igfu-frage-kasten input:focus { outline: 2px solid ${PINK}; outline-offset: -1px; }
     .igfu-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 12px 10px 16px; border-bottom: 1px solid #e4e6eb; }
     .igfu-head h2 { margin: 0; font-size: 15px; font-weight: 700; }
     .igfu-head-actions { display: flex; align-items: center; gap: 4px; }
@@ -411,7 +434,8 @@
   // Anzeigename. Deshalb werden nur kleingeschriebene Treffer akzeptiert, sonst
   // landen Vornamen wie „Laura" als vermeintliches Handle im CRM.
   const HANDLE_MUSTER = /^(?=.*[a-z])[a-z0-9_][a-z0-9._]{1,28}[a-z0-9_]$/;
-  const GUETE = { vorschau: 1, karte: 2 };
+  // Von Hand eingetragen schlaegt ausgelesen schlaegt geraten.
+  const GUETE = { vorschau: 1, karte: 2, hand: 3 };
 
   const handles = () => GM_getValue(CU_HANDLES, {}) || {};
   const handleVon = (tid) => handles()[tid] || null;
@@ -721,7 +745,15 @@
     const n = String(name || '').trim();
     const m = n.match(/^([a-z0-9._]{2,30})\s+—\s+/);
     if (m) return m[1].toLowerCase();
-    return HANDLE_MUSTER.test(n.toLowerCase()) ? n.toLowerCase() : '';
+    // Besteht der Name nur aus einem Wort, ist er nur dann ein Handle, wenn er
+    // auch so geschrieben ist — also bereits klein. „naturpedal" und
+    // „hansj.stolz" sind Handles, „Willi" und „Sophie" sind Vornamen.
+    //
+    // Entscheidend ist, dass hier der unveraenderte Name geprueft wird. Vorher
+    // stand hier n.toLowerCase(), und damit wurde aus jedem einwortigen
+    // Anzeigenamen ein Handle. Solche Tasks galten als versorgt, obwohl der
+    // Handle geraten war, und fielen aus der Luecken-Erkennung heraus.
+    return HANDLE_MUSTER.test(n) ? n : '';
   }
 
   // Traegt die E-Mail als Markerzeile nach, damit eine Shopify-Geschenkbestellung
@@ -1064,6 +1096,7 @@
     if (a.art === 'name' && !cuTasks[a.tid]) return;   // umbenennen legt nichts an
     if (a.art === 'letzte' && !cuTasks[a.tid]) return; // Datum legt nichts an
     if (a.art === 'prio' && !cuTasks[a.tid]) return;   // Prioritaet legt nichts an
+    if (a.art === 'handle' && !cuTasks[a.tid]) return; // Handle legt nichts an
 
     if (a.art === 'verbinden') {
       // Im Marketplace erfasster Task bekommt jetzt seine Unterhaltung. Die
@@ -1114,6 +1147,17 @@
         await cuRequest('PUT', '/task/' + task.taskId, nutzlast);
         task.letzte = a.wert;
         if (nutzlast.due_date) task.due = frist;
+      }
+    } else if (a.art === 'handle') {
+      const h = String(a.wert || '').toLowerCase();
+      if (h) {
+        const neuerName = taskName(h, rohTitel(a.titel || task.titel));
+        if (neuerName && neuerName !== task.titel) {
+          await cuRequest('PUT', '/task/' + task.taskId, { name: neuerName });
+          task.titel = neuerName;
+        }
+        await markerEintragen(task, 'igfu-handle', h);
+        task.handle = h;
       }
     } else if (a.art === 'prio') {
       const urgent = a.wert === 'urgent';
@@ -1342,11 +1386,114 @@
     }
   }
 
+  // ---------- Handle besorgen, bevor ein Task ohne ihn entsteht ----------
+  // Ohne Handle ist ein Task fuer saemtliche Automatiken unsichtbar. Statt das
+  // Anlegen zu verweigern — dann waere die Markierung nur noch lokal und fuer
+  // Cosima gar nicht sichtbar — wird der Handle beschafft, waehrend der Task
+  // ganz normal entsteht.
+  //
+  // Stufe 1: die Unterhaltung oeffnen und die Kontaktkarte lesen. Das ist die
+  // einzige zweifelsfreie Quelle, dort steht das Profil der Person, mit der
+  // tatsaechlich geschrieben wird.
+  async function handleAusUnterhaltung(tid) {
+    const eintrag = threadRows().find(([, t]) => t.threadID === tid);
+    if (!eintrag) return '';
+    if (offenerThread() !== tid) zeileOeffnen(eintrag[0]);
+    for (let i = 0; i < 24; i++) {
+      await sleep(250);
+      const h = handleAusKarte();
+      if (h && HANDLE_MUSTER.test(h.toLowerCase())) return h.toLowerCase();
+    }
+    return '';   // Es gibt nicht zu jeder Unterhaltung eine Kontaktkarte
+  }
+
+  let handleFrageOffen = false;
+
+  // Stufe 2: nachfragen, aber nichts blockieren. „Später nachtragen" ist ein
+  // vollwertiger Ausgang — der Task ist dann ueber den Tag „handle-fehlt" und
+  // die Liste im Panel auffindbar.
+  function handleAbfragen(titel) {
+    if (handleFrageOffen) return Promise.resolve('');
+    handleFrageOffen = true;
+    return new Promise((fertig) => {
+      const huelle = el('div');
+      huelle.id = 'igfu-frage';
+      const kasten = el('div', 'igfu-frage-kasten');
+      kasten.append(
+        el('b', '', 'Instagram-Handle fehlt'),
+        el('div', 'igfu-frage-wer', titel || 'Unbekannt'),
+        el('div', 'igfu-frage-text',
+          'Die Kontaktkarte gibt nichts her. Ohne Handle greift bei diesem Task '
+          + 'keine Automatik — weder UpPromote noch Content noch die Warensendung.'),
+      );
+      const feld = el('input');
+      feld.type = 'text';
+      feld.placeholder = 'z. B. max.mustermann';
+      feld.autocomplete = 'off';
+      kasten.appendChild(feld);
+      const hinweis = el('div', 'igfu-frage-text', '');
+
+      const schliessen = (wert) => {
+        huelle.remove();
+        handleFrageOffen = false;
+        fertig(wert);
+      };
+      const uebernehmen = () => {
+        const h = String(feld.value || '').trim().replace(/^@/, '').toLowerCase();
+        if (!h) { schliessen(''); return; }
+        if (!HANDLE_MUSTER.test(h)) {
+          hinweis.textContent = 'Das sieht nicht nach einem Instagram-Handle aus.';
+          return;
+        }
+        schliessen(h);
+      };
+
+      const knoepfe = el('div', 'igfu-form-knoepfe');
+      knoepfe.append(
+        button('igfu-done', 'Übernehmen', uebernehmen),
+        button('igfu-link', 'Auf Instagram suchen',
+          () => window.open('https://www.instagram.com/', '_blank', 'noopener'),
+          'Öffnet Instagram in einem neuen Tab. Das Suchen bleibt Handarbeit.'),
+        button('igfu-link', 'Später nachtragen', () => schliessen('')),
+      );
+      kasten.append(hinweis, knoepfe);
+      feld.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') uebernehmen();
+        if (e.key === 'Escape') schliessen('');
+      });
+      huelle.appendChild(kasten);
+      document.body.appendChild(huelle);
+      try { feld.focus(); } catch (e) { /* egal */ }
+    });
+  }
+
+  // Beschafft den Handle und traegt ihn nach. Laeuft neben dem Anlegen her und
+  // haelt es nie auf.
+  async function handleBeschaffen(tid, titel) {
+    // Wird bewusst nicht abgewartet, damit das Anlegen nicht wartet. Deshalb
+    // darf hier nichts unbehandelt nach oben fliegen.
+    try {
+      if (!isInbox() || !cuEingerichtet()) return '';
+      const bekannt = handleVon(tid);
+      if (bekannt && bekannt.handle) return bekannt.handle;
+      const ausKarte = await handleAusUnterhaltung(tid);
+      const h = ausKarte || await handleAbfragen(titel);
+      if (!h) return '';
+      handleMerken(tid, h, ausKarte ? 'karte' : 'hand');
+      vormerken({ art: 'handle', tid, titel, wert: h });
+      return h;
+    } catch (e) {
+      toast('Handle: ' + (e && e.message ? e.message : 'unbekannter Fehler'));
+      return '';
+    }
+  }
+
   async function crmKlick(tid, titel) {
     if (!tid) return;
     const task = cuTasks[tid];
     if (task && task.url) { window.open(task.url, '_blank', 'noopener'); return; }
     toast('Lege Task in ClickUp an …');
+    handleBeschaffen(tid, titel);
     try {
       const neu = await cuTaskSichern(tid, titel);
       scanRows();
@@ -1367,6 +1514,8 @@
       else follow[tid] = { title: title || 'Unbekannt', flaggedAt: Date.now(), due: '', note: '' };
       saveFollow();
       vormerken({ art: 'follow', tid, titel: title || (follow[tid] && follow[tid].title), wert: !!follow[tid] });
+      // Laeuft nebenher. Der Task entsteht sofort, der Handle kommt nach.
+      if (follow[tid] && !cuTasks[tid]) handleBeschaffen(tid, title);
     }
     scanRows();
     updateLauncher();
@@ -1899,6 +2048,8 @@
     if (due) launcher.append(el('span', 'igfu-due-badge', due + ' fällig'));
     const offen = cuEingerichtet() ? warteschlange().length : 0;
     if (offen) launcher.append(el('span', 'igfu-due-badge', offen + ' offen'));
+    const fehlen = ohneHandle().length;
+    if (fehlen) launcher.append(el('span', 'igfu-due-badge', fehlen + ' ohne Handle'));
     launcher.classList.toggle('has', nUnread + all.length > 0);
     launcher.setAttribute('aria-expanded', panelOpen ? 'true' : 'false');
     positionUI();
@@ -1907,14 +2058,62 @@
   function openPanel() { panelOpen = true; panel.hidden = false; renderPanel(); updateLauncher(); }
   function closePanel() { panelOpen = false; panel.hidden = true; updateLauncher(); }
 
+  // Tasks, bei denen der Handle fehlt und noch gebraucht wird. Endstatus
+  // bleiben aussen vor, dort interessiert er nicht mehr.
+  function ohneHandle() {
+    if (!cuEingerichtet()) return [];
+    return Object.entries(cuTasks)
+      .filter(([, t]) => !STATUS_ENDE.includes(String(t.status || '').toLowerCase()))
+      .filter(([, t]) => !handleVonTask(t))
+      .sort((a, b) => String(a[1].titel || '').localeCompare(String(b[1].titel || '')));
+  }
+
   function renderPanel() {
     bodyEl.textContent = '';
     const uEntries = sortedUnread();
     const fEntries = sortedFollow();
 
-    if (!uEntries.length && !fEntries.length) {
+    if (!uEntries.length && !fEntries.length && !ohneHandle().length) {
       bodyEl.appendChild(el('p', 'igfu-empty', 'Noch nichts markiert. Fahr mit der Maus über eine Unterhaltung und klick auf „Ungelesen" oder „Follow-up".'));
       return;
+    }
+
+    const luecken = ohneHandle();
+    if (luecken.length) {
+      bodyEl.appendChild(el('h3', 'igfu-section-title', 'Handles nachtragen'));
+      bodyEl.appendChild(el('p', 'igfu-empty',
+        'Ohne Handle greift bei diesen Tasks keine Automatik — weder UpPromote '
+        + 'noch Content noch die Warensendung.'));
+      const ul = el('ol', 'igfu-list');
+      for (const [tid, t] of luecken) {
+        const li = el('li', 'igfu-item');
+        const top = el('div', 'igfu-item-top');
+        top.append(
+          button('igfu-name', rohTitel(t.titel), () => reveal(tid), 'In der Liste anzeigen'),
+          button('igfu-link', 'Unterhaltung öffnen', () => reveal(tid)),
+          button('igfu-link', 'Instagram', () => window.open('https://www.instagram.com/', '_blank', 'noopener'),
+            'Öffnet Instagram in einem neuen Tab. Das Suchen bleibt Handarbeit.'),
+        );
+        const feld = el('input');
+        feld.type = 'text';
+        feld.placeholder = 'Handle';
+        feld.autocomplete = 'off';
+        const uebernehmen = () => {
+          const h = String(feld.value || '').trim().replace(/^@/, '').toLowerCase();
+          if (!h) return;
+          if (!HANDLE_MUSTER.test(h)) { toast('Das sieht nicht nach einem Instagram-Handle aus.'); return; }
+          handleMerken(tid, h, 'hand');
+          vormerken({ art: 'handle', tid, titel: t.titel, wert: h });
+          toast('Handle übernommen: ' + h);
+          renderPanel();
+        };
+        feld.addEventListener('keydown', (e) => { if (e.key === 'Enter') uebernehmen(); });
+        const unten = el('div', 'igfu-item-top');
+        unten.append(feld, button('igfu-done', 'Übernehmen', uebernehmen));
+        li.append(top, unten);
+        ul.appendChild(li);
+      }
+      bodyEl.appendChild(ul);
     }
 
     if (uEntries.length) {

@@ -701,6 +701,80 @@ gruppe('UpPromote: ohne Token passiert nichts');
 
 const alsDatum = (ms) => ms ? new Date(Number(ms)).toISOString().slice(0, 10) : null;
 
+gruppe('Fehlender Handle wird aus der Kontaktkarte geholt');
+{
+  // T3 = Willi. Weder Name noch Vorschautext geben einen Handle her, die
+  // Kontaktkarte schon. Stufe 1: Unterhaltung öffnen, Karte lesen, nachtragen.
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    karte: { handle: 'willi__83' },
+  });
+  await warte(w, 600);
+  klick(w, chip(doc, 2, 'followup'));   // Willi
+  await warte(w, 2500);
+  pruefe('Task trägt den Handle im Namen',
+    serverTasks[0] && serverTasks[0].name === 'willi__83 — Willi',
+    serverTasks[0] && serverTasks[0].name);
+  pruefe('Markerzeile ist gesetzt',
+    /igfu-handle:\s*willi__83/.test((serverTasks[0] || {}).beschreibung || ''),
+    ((serverTasks[0] || {}).beschreibung || '').slice(-80));
+}
+
+gruppe('Ohne Kontaktkarte wird der Task trotzdem angelegt');
+{
+  // Nichts blockieren: sonst wäre die Markierung nur noch lokal und für
+  // Cosima gar nicht sichtbar.
+  const { doc, w, serverTasks } = await starte({ speicher: MIT_CLICKUP });
+  await warte(w, 600);
+  klick(w, chip(doc, 2, 'followup'));   // Willi, keine Karte vorhanden
+  await warte(w, 1500);
+  pruefe('Task existiert', serverTasks.length === 1, String(serverTasks.length));
+  pruefe('Name bleibt vorerst ohne Handle',
+    serverTasks[0] && serverTasks[0].name === 'Willi', serverTasks[0] && serverTasks[0].name);
+}
+
+gruppe('Ohne Kontaktkarte erscheint die Nachfrage');
+{
+  const { doc, w } = await starte({ speicher: MIT_CLICKUP });
+  await warte(w, 600);
+  klick(w, chip(doc, 2, 'followup'));
+  await warte(w, 6500);                 // Kartensuche läuft erst ab
+  const frage = doc.querySelector('#igfu-frage');
+  pruefe('Nachfrage ist da', !!frage);
+  pruefe('Sie nennt den Namen', !!frage && /Willi/.test(frage.textContent || ''));
+  pruefe('Sie lässt sich überspringen',
+    !!frage && /Später nachtragen/.test(frage.textContent || ''));
+}
+
+gruppe('Das Panel listet Tasks ohne Handle zum Nachtragen');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'Willi', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T3'), tags: [TAG] }],
+  });
+  await warte(w, 900);
+  const launcher = doc.querySelector('#igfu-launch');
+  pruefe('Zähler an der Pille', /ohne Handle/.test((launcher && launcher.textContent) || ''),
+    (launcher && launcher.textContent) || '');
+  klick(w, launcher);
+  await warte(w, 200);
+  const panel = doc.querySelector('#igfu-panel');
+  pruefe('Abschnitt im Panel',
+    /Handles nachtragen/.test((panel && panel.textContent) || ''));
+  const feld = [...doc.querySelectorAll('#igfu-panel input')].find((i) => i.placeholder === 'Handle');
+  pruefe('Eingabefeld vorhanden', !!feld);
+  if (feld) {
+    feld.value = 'willi__83';
+    const uebernehmen = [...doc.querySelectorAll('#igfu-panel button')]
+      .find((b) => (b.textContent || '').trim() === 'Übernehmen');
+    klick(w, uebernehmen);
+    await warte(w, 1200);
+    pruefe('Handle landet im Task',
+      serverTasks[0].name === 'willi__83 — Willi', serverTasks[0].name);
+  }
+}
+
 gruppe('Handle wandert als Markerzeile in die Beschreibung');
 {
   const { doc, w, serverTasks } = await starte({

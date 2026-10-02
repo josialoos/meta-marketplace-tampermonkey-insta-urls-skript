@@ -126,6 +126,30 @@ dankbarste Gelegenheit zum Nachhaken.
 
 ---
 
+## Wenn der Handle fehlt
+
+Ohne Instagram-Handle ist ein Task für jede Automatik unsichtbar. Deshalb geht
+das Skript ihm beim Anlegen hinterher:
+
+1. Es **öffnet die Unterhaltung** und liest den Handle aus der Kontaktkarte.
+   Meistens reicht das, und du merkst nichts davon außer dass die Unterhaltung
+   aufgeht.
+2. Gibt die Karte nichts her, fragt ein kleiner Kasten nach. Du kannst ihn mit
+   **„Später nachtragen"** wegklicken — der Task wird trotzdem angelegt.
+3. Alles, was offen bleibt, sammelt sich im Panel unter **„Handles nachtragen"**,
+   mit Eingabefeld pro Eintrag. An der Pille unten rechts steht dann
+   „N ohne Handle".
+
+Der Task entsteht also immer. Nichts wird blockiert — eine Markierung, die es
+nicht nach ClickUp schafft, wäre für Cosima unsichtbar, und das wäre schlimmer
+als ein Task ohne Handle.
+
+**Instagram wird nicht automatisch durchsucht.** Der Knopf öffnet nur einen
+Tab; das Suchen bleibt Handarbeit. Automatische Suchläufe über euren Account
+bergen das Risiko einer Sperre.
+
+---
+
 ## Die Nachfass-Frist
 
 Jeder Task bekommt automatisch ein **Fälligkeitsdatum** — deine Deadline, bis zu

@@ -165,6 +165,38 @@ noch gar keine da ist, für Tasks, deren Unterhaltung das Skript nicht zu
 Gesicht bekommen hat. Ein von Hand gesetztes Datum bleibt in beiden Fällen
 unangetastet.
 
+#### Kein neuer Task ohne Handle
+
+Weil ein Task ohne Handle für jede Automatik unsichtbar ist, wird der Handle
+beim Anlegen aktiv beschafft — in drei Stufen.
+
+**Stufe 1, Kontaktkarte.** Markiert jemand eine Unterhaltung, zu der kein
+Handle bekannt ist, öffnet das Skript sie und liest die Kontaktkarte aus. Das
+ist die einzige zweifelsfreie Quelle: dort steht das Profil der Person, mit der
+tatsächlich geschrieben wird. Bis zu fünf Sekunden wird gewartet, dann gibt es
+auf.
+
+**Stufe 2, Nachfrage.** Gibt die Karte nichts her — es gibt nicht zu jeder
+Unterhaltung eine —, erscheint ein Kasten mit Eingabefeld, einem Link nach
+Instagram und dem Ausgang „Später nachtragen".
+
+**Stufe 3, Werkbank.** Im Panel listet der Abschnitt „Handles nachtragen" alle
+Tasks ohne Handle, jeweils mit Eingabefeld. An der Pille steht zusätzlich
+„N ohne Handle".
+
+> **Warum nicht einfach das Anlegen verweigern?**
+> Weil die Markierung dann trotzdem bestünde — nur noch lokal im Browser. Der
+> Datensatz wäre nicht mehr in ClickUp unvollständig, sondern für Cosima
+> überhaupt nicht vorhanden. Das Anlegen läuft deshalb immer durch; der Handle
+> kommt nach.
+
+**Einwortige Namen gelten nur klein geschrieben als Handle.** `naturpedal` und
+`hansj.stolz` sind Handles, `Willi` und `Sophie` sind Vornamen. Ohne diese
+Schranke hielt `handleAusTaskname` jeden einwortigen Anzeigenamen für einen
+Handle, machte daraus kleingeschrieben einen Suchschlüssel und nahm solche
+Tasks aus der Lücken-Erkennung heraus — sie galten als versorgt, obwohl der
+Handle geraten war.
+
 #### Der Tag `ad-code`
 
 Sobald zu einem Creator zum ersten Mal nutzbarer Content gesehen wurde, bekommt
