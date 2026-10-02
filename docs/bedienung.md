@@ -122,6 +122,20 @@ dankbarste Gelegenheit zum Nachhaken.
 
 ---
 
+## Die Nachfass-Frist
+
+Sobald eine Warensendung erkannt wird, bekommt der Task automatisch ein
+**Fälligkeitsdatum: Versanddatum plus 10 Wochentage.** Samstag und Sonntag
+zählen nicht mit. Das ist die Deadline, bis zu der nachgehakt sein sollte.
+
+Fällige Fristen siehst du ohne Umweg an der farbigen Pille unten rechts — dort
+erscheint dann zusätzlich „N fällig".
+
+Ein Fälligkeitsdatum, das du **selbst** gesetzt hast, bleibt unangetastet. Die
+Automatik trägt nur dort ein, wo noch keines steht.
+
+---
+
 ## Das Panel
 
 | Knopf | Was er tut |

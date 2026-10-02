@@ -65,6 +65,7 @@ Zugängen, die ohnehin außerhalb des Browsers liegen.
 | E-Mail des Affiliates | UpPromote | `email` | Kernskript |
 | Nutzbarer Content | Creator Marketing Hub | React-Fiber, `content.ad_ready_status` | Kernskript |
 | Warensendung | Shopify | Bestellung mit Tag `uppromote_gift` **oder** `Affiliate`, 0,00 € | Geplanter Lauf |
+| Nachfass-Frist | abgeleitet | Versanddatum + 10 Wochentage | Geplanter Lauf |
 
 ### UpPromote
 
@@ -127,6 +128,24 @@ Behalten wird nur, was **0,00 €** kostet und auf `FULFILLED` oder
 Bestellungen zu einer Adresse zählt die älteste. Zugeordnet wird
 **ausschließlich über exakte E-Mail-Übereinstimmung**, nie über
 Namensähnlichkeit.
+
+#### Nachfass-Frist
+
+Wo eine Warensendung erkannt wird, setzt der Lauf zugleich das **Fälligkeitsdatum**
+des Tasks: Versanddatum **plus 10 Wochentage**, gezählt ab dem Tag nach dem
+Versand, Samstag und Sonntag übersprungen, Feiertage unberücksichtigt. Das ist
+die Deadline zum Nachhaken.
+
+Kontrollbeispiel: Versand Freitag 31.07.2026 → Frist Freitag 14.08.2026.
+
+**Nur, wenn der Task noch kein Fälligkeitsdatum hat.** Ein vorhandenes bleibt
+unangetastet — es könnte von Hand gesetzt sein. Dieselbe Linie wie bei Status
+und Priorität: was jemand selbst entschieden hat, überschreibt die Automatik
+nicht.
+
+Es gibt hier keine Kollision mit dem Skript: das schreibt `due_date` nur, wenn
+jemand im Panel ein Datum einträgt, und liest es sonst aus ClickUp zurück. Die
+Frist taucht dadurch von selbst in der „fällig"-Anzeige an der Pille auf.
 
 > Die erste Fassung suchte nur nach `uppromote_gift` und übersah damit über
 > hundert Altfälle aus der Handarbeits-Zeit — aufgefallen an einem Affiliate,
