@@ -775,6 +775,59 @@ gruppe('Das Panel listet Tasks ohne Handle zum Nachtragen');
   }
 }
 
+gruppe('Notizen aus UpPromote landen als Kommentar');
+{
+  const { doc, w, serverTasks, aufrufe } = await starte({
+    speicher: MIT_UP,
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: beschreibungMit('T1'), tags: [] }],
+    affiliates: [{ first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de', instagram: 'annabolko.runs',
+                   internal_note: 'Will nur Reels machen', personal_detail: 'Läuft Ultratrails' }],
+  });
+  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await warte(w, 2000);
+  const kommentare = aufrufe.filter((a) => a.methode === 'POST' && /\/comment$/.test(a.pfad));
+  pruefe('Genau ein Kommentar', kommentare.length === 1, String(kommentare.length));
+  const text = kommentare[0] ? kommentare[0].data.comment_text : '';
+  pruefe('Eure Notiz ist drin', /Notiz aus UpPromote:\nWill nur Reels machen/.test(text), text);
+  pruefe('Angaben des Affiliates getrennt beschriftet',
+    /Angaben des Affiliates:\nLäuft Ultratrails/.test(text), text);
+  pruefe('Prüfsumme steht in der Beschreibung',
+    /igfu-notiz:\s*\w+/.test(serverTasks[0].beschreibung || ''),
+    (serverTasks[0].beschreibung || '').slice(-60));
+}
+
+gruppe('Dieselbe Notiz kommt kein zweites Mal');
+{
+  const { doc, w, aufrufe } = await starte({
+    speicher: MIT_UP,
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: beschreibungMit('T1'), tags: [] }],
+    affiliates: [{ first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de', instagram: 'annabolko.runs',
+                   internal_note: 'Will nur Reels machen' }],
+  });
+  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await warte(w, 2000);
+  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await warte(w, 2000);
+  const kommentare = aufrufe.filter((a) => a.methode === 'POST' && /\/comment$/.test(a.pfad));
+  pruefe('Immer noch nur ein Kommentar', kommentare.length === 1, String(kommentare.length));
+}
+
+gruppe('Ohne Notiz passiert nichts');
+{
+  const { doc, w, aufrufe } = await starte({
+    speicher: MIT_UP,
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: beschreibungMit('T1'), tags: [] }],
+    affiliates: [{ first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de', instagram: 'annabolko.runs' }],
+  });
+  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await warte(w, 2000);
+  pruefe('Kein Kommentar',
+    !aufrufe.some((a) => a.methode === 'POST' && /\/comment$/.test(a.pfad)));
+}
+
 const PROG = 'TZAMPAS Affiliate Programm';
 
 gruppe('Import: erster Klick zählt nur');
@@ -1051,155 +1104,4 @@ gruppe('Neuer Task bekommt das Datum gleich mit');
 {
   const { doc, w, aufrufe } = await starte({ speicher: MIT_CLICKUP });
   await warte(w, 600);
-  klick(w, chip(doc, 1, 'followup'));   // Corina, letzte Nachricht 20.09.2026
-  await warte(w, 900);
-  const neu = angelegte(aufrufe)[0];
-  pruefe('Startdatum ist beim Anlegen dabei',
-    neu && alsDatum(neu.data.start_date) === '2026-09-20',
-    neu && String(neu.data.start_date));
-}
-
-gruppe('Liegt die Antwort bei uns, wird der Task dringend');
-{
-  // T2 = Corina, Vorschau „Corina: Hallo Josia, danke dir!" — sie hat zuletzt geschrieben
-  const { w, serverTasks, aufrufe } = await starte({
-    speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'Corina Bösch', status: 'angeschrieben', farbe: '#87909e',
-              beschreibung: beschreibungMit('T2'), tags: [TAG] }],
-  });
-  await warte(w, 1200);
-  pruefe('Prioritaet wird auf urgent gesetzt', serverTasks[0].prio === 'urgent', String(serverTasks[0].prio));
-  pruefe('Als urgent uebertragen',
-    aufrufe.some((a) => a.methode === 'PUT' && a.data && a.data.priority === 1));
-}
-
-gruppe('Haben wir zuletzt geschrieben, faellt urgent wieder weg');
-{
-  // T3 = Willi, Vorschau „Du: Melde dich gern nochmal"
-  const { w, serverTasks } = await starte({
-    speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'Willi', status: 'angeschrieben', farbe: '#87909e',
-              beschreibung: beschreibungMit('T3'), tags: [TAG], prio: 'urgent' }],
-  });
-  await warte(w, 1200);
-  pruefe('Prioritaet ist wieder leer', !serverTasks[0].prio, String(serverTasks[0].prio));
-}
-
-gruppe('Eine blosse Reaktion aendert die Prioritaet nicht');
-{
-  // T1 = Anna, Vorschau „annabolko.runs gefällt eine Nachricht" — keine offene Nachricht
-  const { w, serverTasks, aufrufe } = await starte({
-    speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
-              beschreibung: beschreibungMit('T1'), tags: [TAG], prio: 'urgent' }],
-  });
-  await warte(w, 1200);
-  pruefe('urgent bleibt unangetastet', serverTasks[0].prio === 'urgent', String(serverTasks[0].prio));
-  pruefe('Keine Prioritaets-Uebertragung',
-    !aufrufe.some((a) => a.methode === 'PUT' && a.data && 'priority' in a.data),
-    JSON.stringify(aufrufe.filter((a) => a.methode === 'PUT').map((a) => a.data)));
-}
-
-gruppe('Hat Josia den Task schon einsortiert, bleibt die Prioritaet seine');
-{
-  // T2 = Corina, Gegenueber zuletzt. Status ist aber nicht mehr angeschrieben,
-  // also hat Josia den Fall selbst in der Hand.
-  const { w, serverTasks, aufrufe } = await starte({
-    speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'Corina Bösch', status: 'kommunikation', farbe: '#7b68ee',
-              beschreibung: beschreibungMit('T2'), tags: [TAG] }],
-  });
-  await warte(w, 1200);
-  pruefe('Keine Prioritaet gesetzt', !serverTasks[0].prio, String(serverTasks[0].prio));
-  pruefe('Nichts uebertragen',
-    !aufrufe.some((a) => a.methode === 'PUT' && a.data && 'priority' in a.data),
-    JSON.stringify(aufrufe.filter((a) => a.methode === 'PUT').map((a) => a.data)));
-}
-
-gruppe('Ohne Task legt die Prioritaet nichts an');
-{
-  const { w, aufrufe } = await starte({ speicher: MIT_CLICKUP });
-  await warte(w, 1200);
-  pruefe('Kein Task nur wegen der Prioritaet',
-    !aufrufe.some((a) => a.methode === 'POST' && a.data && a.data.name));
-}
-
-gruppe('Der Aktualisieren-Knopf und sein Tooltip');
-{
-  const { doc, w } = await starte({ speicher: MIT_CLICKUP });
-  const b = doc.querySelector('#igfu-refresh');
-  pruefe('Knopf ist da und sichtbar', !!b && b.hidden === false);
-  pruefe('Knopf ist beschriftet', b && b.textContent === 'Aktualisieren', b && b.textContent);
-  const tipp = doc.querySelector('#igfu-tipp');
-  pruefe('Tooltip existiert', !!tipp);
-  pruefe('Tooltip ist zunächst unsichtbar', tipp && !tipp.classList.contains('show'));
-  b.dispatchEvent(new w.MouseEvent('mouseenter', { bubbles: false }));
-  pruefe('Tooltip erscheint beim Überfahren', tipp.classList.contains('show'));
-  pruefe('Tooltip nennt das Startdatum', /Startdatum/.test(tipp.textContent));
-  pruefe('Tooltip nennt die Handles', /Handles/.test(tipp.textContent));
-  pruefe('Tooltip sagt, was er nicht tut', /Legt keine neuen Tasks an/.test(tipp.textContent));
-  pruefe('Tooltip nennt das Abschichten', /letzten Lauf/.test(tipp.textContent), tipp.textContent.slice(0, 120));
-  pruefe('Tooltip nennt beide Richtungen', /beide Richtungen/.test(tipp.textContent));
-  pruefe('Tooltip nennt urgent', /urgent/.test(tipp.textContent));
-  pruefe('Tooltip nennt UpPromote', /UpPromote/.test(tipp.textContent));
-  pruefe('Tooltip verweist auf den vollen Durchlauf', /vollständigen Durchlauf/.test(tipp.textContent));
-  b.dispatchEvent(new w.MouseEvent('mouseleave', { bubbles: false }));
-  pruefe('Tooltip verschwindet wieder', !tipp.classList.contains('show'));
-}
-
-gruppe('Unsichtbare Knöpfe fangen keine Klicks ab');
-{
-  const { doc } = await starte({ speicher: MIT_CLICKUP });
-  const stil = doc.getElementById('igfu-style').textContent;
-  pruefe('Der Knopfstreifen ist klickdurchlässig',
-    /\.igfu-tags \{[^}]*pointer-events: none/s.test(stil));
-  pruefe('Unsichtbare Knöpfe nehmen keine Klicks an',
-    /\.igfu-tags > \.igfu-tag \{[^}]*pointer-events: none/s.test(stil));
-  pruefe('Beim Überfahren nehmen sie wieder Klicks an',
-    /:hover \.igfu-tag[^{]*\{[^}]*pointer-events: auto/.test(stil));
-  pruefe('Aktive Knöpfe bleiben klickbar',
-    /\.igfu-tag\.on \{[^}]*pointer-events: auto/.test(stil));
-}
-
-gruppe('Rücksprung aus ClickUp öffnet die richtige Unterhaltung');
-{
-  const { w } = await starte({ pfad: '/latest/inbox/all/#igfu=T2', speicher: MIT_CLICKUP });
-  await warte(w, 1600);
-  pruefe('Genau eine Zeile wurde angeklickt', w.__zeilenKlicks.length === 1, JSON.stringify(w.__zeilenKlicks));
-  pruefe('Es ist die aus dem Link', w.__zeilenKlicks[0] === 1, JSON.stringify(w.__zeilenKlicks));
-  pruefe('Die Zeile wird hervorgehoben', w.__flashGesehen.includes(1), JSON.stringify(w.__flashGesehen));
-  pruefe('Das Fragment ist danach weg', !w.location.hash, w.location.hash);
-}
-
-gruppe('Ohne Rücksprung-Link wird nichts geöffnet');
-{
-  const { w } = await starte({ speicher: MIT_CLICKUP });
-  await warte(w, 1600);
-  pruefe('Keine Zeile angeklickt', w.__zeilenKlicks.length === 0, JSON.stringify(w.__zeilenKlicks));
-}
-
-gruppe('Speicher übersteht ein Neuladen');
-{
-  const erst = await starte({ speicher: MIT_CLICKUP });
-  klick(erst.w, chip(erst.doc, 0, 'followup'));
-  await warte(erst.w, 600);
-  const zweit = await starte({ speicher: Object.fromEntries(erst.store) });
-  pruefe('Markierung ist noch da', zweit.doc.querySelectorAll('.row')[0].hasAttribute('data-igfu-follow'));
-  pruefe('Knopf ist aktiv', chip(zweit.doc, 0, 'followup').classList.contains('on'));
-}
-
-gruppe('Token löschen schaltet ClickUp sauber ab');
-{
-  const { doc, w, store } = await starte({ speicher: MIT_CLICKUP });
-  pruefe('CRM-Pille ist sichtbar', chip(doc, 0, 'crm').hidden === false);
-  klick(w, knopf(doc, 'Token löschen'));
-  await warte(w, 200);
-  pruefe('Token ist weg', !store.get('clickup:token:v1'));
-  pruefe('CRM-Pille verschwindet', chip(doc, 0, 'crm').hidden === true);
-  pruefe('Follow-up läuft weiter lokal', (klick(w, chip(doc, 1, 'followup')), !!store.get('igfu:v1').T2));
-}
-
-console.log('\n' + (fehlgeschlagen
-  ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
-  : `Alle ${gelaufen} Prüfungen bestanden`));
-process.exit(fehlgeschlagen ? 1 : 0);
+  klick(w, chip(

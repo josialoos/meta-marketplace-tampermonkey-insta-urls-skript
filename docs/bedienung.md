@@ -186,6 +186,20 @@ fehlt. Im Alltag reicht der normale Knopf.
 
 ---
 
+## Notizen aus UpPromote
+
+Was in UpPromote am Affiliat-Profil als Notiz steht, landet beim Abgleich
+automatisch als **Kommentar** am ClickUp-Task — getrennt danach, ob ihr es
+notiert habt oder der Affiliate selbst.
+
+Jede Notiz kommt nur **einmal**. Änderst du sie in UpPromote, kommt ein neuer
+Kommentar dazu, der alte bleibt als Verlauf stehen.
+
+Beim ersten Abgleich nach dem Update kommen alle vorhandenen Notizen auf
+einmal rüber.
+
+---
+
 ## Affiliates aus UpPromote holen
 
 Der Knopf **„Affiliates importieren"** im Panel legt alle aktiven Affiliates
@@ -235,29 +249,4 @@ unterscheidbar nur an der Nummer. Steht dort eine ältere Version als die des
 Kernskripts, die Rohadresse des Kernskripts aufrufen und neu bestätigen.
 
 Hilft das nicht: in `chrome://extensions` unter Tampermonkey › Details prüfen,
-ob **„Allow user scripts"** an ist und der Websitezugriff auf allen Websites
-steht.
-
-**Die Inhalte-Seite zeigt das falsche Konto**
-Oben rechts auf das richtige Business umstellen. Wenn der Knopf im Panel das
-falsche Konto öffnet, stand es auch im Postfach nicht in der Adresse — das
-Skript sagt dann Bescheid.
-
-**„Die Unterhaltungsliste wurde nicht gefunden"**
-Meta hat die Seite umgebaut. Der Rest läuft weiter, nur das Durchgehen fällt
-aus. Das Skript muss angepasst werden.
-
-**Ein Task bekommt keinen Status**
-Fast immer fehlt das Instagram-Handle. Ohne Handle gibt es keinen
-UpPromote-Treffer, ohne den keine E-Mail, ohne die keine Zuordnung zur
-Warensendung — und auch keinen Content und keine Frist.
-
-Solche Tasks tragen in ClickUp den roten Tag **`handle-fehlt`**. Danach filtern,
-Handle ergänzen, fertig: Format `handle — Anzeigename` im Titel. Beim nächsten
-Aktualisieren verschwindet der Tag von selbst, und das Skript schreibt den
-Handle zusätzlich als Zeile `igfu-handle:` in die Beschreibung — die ist dann
-die maßgebliche Stelle, eine spätere Umbenennung schadet nicht mehr.
-
-**Nach dem Aktualisieren steht „… Änderungen gehen noch raus"**
-Normal. Die Warteschlange wird nach und nach abgearbeitet; beim nächsten Lauf
-ist sie leer. Bleibt die Zahl stehen, stimmt etwas mit dem Token nicht.
+ob 

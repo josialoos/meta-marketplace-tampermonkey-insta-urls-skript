@@ -236,6 +236,28 @@ gesetzt werden, wenn das Skript die Unterhaltung schon einmal gesehen hat —
 `threadZuHandle()` schlägt im GM-Speicher nach. Viele Affiliates wurden nie
 über das Partner-Postfach angeworben und haben schlicht keine.
 
+### Notizen aus UpPromote
+
+Zwei Felder am Affiliate werden als **ClickUp-Kommentar** übernommen, getrennt
+beschriftet:
+
+- `internal_note` — was ihr über den Affiliate notiert habt
+- `personal_detail` — was der Affiliate selbst angegeben hat
+
+Das passiert im UpPromote-Abgleich, also für **alle** passenden Tasks, nicht
+nur für frisch importierte.
+
+**Gegen Doppelungen** steht eine Kurzprüfsumme der Notiz als Markerzeile
+`igfu-notiz` in der Beschreibung — bewusst dort und nicht im GM-Speicher, denn
+der ist pro Browser: sonst postet der Mac, was Windows schon gepostet hat.
+Ändert sich die Notiz, ändert sich die Prüfsumme und es kommt ein **neuer**
+Kommentar dazu; der alte bleibt stehen, weil ein Verlauf hier nützlicher ist
+als stilles Überschreiben.
+
+Die Sperre liegt doppelt: einmal als Filter in `upAbgleichen`, einmal in
+`notizUebertragen`. Ein Mutationstest, der nur eine davon entfernt, bleibt
+deshalb wirkungslos — erst wenn beide fallen, kommt der Kommentar zweimal.
+
 ### Nachträglich verbinden
 
 Wird später doch eine Unterhaltung angefangen, taucht sie im Postfach auf.
@@ -421,88 +443,4 @@ Meta räumt den Seitenspeicher beim Laden auf.
 
 Beide tragen `@updateURL` und `@downloadURL`, aktualisieren sich also selbst.
 
-> **Nie löschen und neu installieren.** Der GM-Speicher hängt an Name und
-> Namespace; beim Löschen gehen Token und Markierungen mit.
-
-### ClickUp
-
-Liste mit genau diesen Status anlegen, in dieser Reihenfolge (Abschnitt 5).
-Dazu ein Tag `follow-up`.
-
-Im Skript-Panel eintragen:
-
-- **Token** — ClickUp › Einstellungen › Apps › API-Token. Wer sich über Google
-  anmeldet, muss vorher über „Passwort vergessen" ein lokales Passwort setzen,
-  sonst gibt ClickUp keinen Token heraus.
-- **Listen-ID** — steht in der Adresse der Liste.
-
-Jeder Rechner und jede Person braucht eigene Werte; der GM-Speicher ist pro
-Browser.
-
-### UpPromote
-
-Schlüssel aus UpPromote › Einstellungen › Integrationen, ebenfalls ins Panel.
-Ab Professional-Plan.
-
-### Geplanter Lauf für die Warensendungen
-
-Läuft außerhalb des Browsers und braucht Zugriff auf Shopify und ClickUp. Er
-ordnet nur über `igfu-mail` zu und rät nie über Namen.
-
-> **Reihenfolge beim ersten Mal:** Skript installieren → einmal aktualisieren
-> (dadurch bekommen die Tasks ihre `igfu-mail`-Zeile) → erst danach findet der
-> Shopify-Lauf etwas.
-
----
-
-## 9. Der Lader
-
-`postfach-lader.user.js` sollte den Code bei jedem Seitenaufruf frisch aus dem
-Repo holen. Er zeigt nach der Installation **gar keine Oberfläche**, Ursache
-ungeklärt. CSP ist ausgeschlossen, `new Function` ist auf der Domain erlaubt.
-
-**Die Falle:** Er trägt absichtlich denselben `@name` und `@namespace` wie das
-Kernskript, damit der GM-Speicher erhalten bleibt. Im Dashboard heißt er
-deshalb genauso und steht auf aktiv — zu unterscheiden **nur an der
-Versionsnummer**. Seine `@updateURL` zeigt auf die Lader-Datei, er zieht also
-nie auf eine neuere Kernversion nach.
-
-Genau das ist einmal passiert: Lader installiert, im Postfach keine einzige
-Pille, von außen sah alles normal aus. Die Suche lief lange über
-Skript-Syntax, CSP und Chrome-Schalter — dabei war schlicht ein anderes Skript
-installiert.
-
-**Erste Diagnosefrage bei „keine Pillen": Versionsnummer im Dashboard.**
-
-Vor einer Wiederbelebung braucht der Lader eine eigene Kennung und eine
-bewusste Speicherübernahme.
-
----
-
-## 10. Tests
-
-```bash
-node tests/postfach.test.mjs
-node tests/lader.test.mjs
-```
-
-jsdom mit nachgebauten GM-Funktionen, ClickUp- und UpPromote-Antworten. Keine
-echten Anfragen, keine echten Zugangsdaten.
-
-**Gewohnheit: Mutationstest.** Nach jedem neuen Test die Zeile, die er absichern
-soll, kurz kaputt machen und prüfen, dass der Test wirklich umfällt. Mehrere
-Prüfungen liefen anfangs leer durch und hätten nichts gemerkt.
-
----
-
-## 11. Regeln für Zugangsdaten
-
-- Token liegen **ausschließlich** im GM-Speicher und werden bei jeder Anfrage
-  frisch von dort gelesen.
-- Niemals am `window`-Objekt, niemals im DOM, niemals in einer Fehlermeldung
-  oder einem Log.
-- Alle Anfragen über `GM_xmlhttpRequest` mit passendem `@connect`, nie über
-  `fetch` — sonst greift Metas CSP, und der Token stünde im Seitenkontext.
-- **Dieses Repo ist öffentlich.** Keine echten IDs, keine Namen, keine
-  E-Mail-Adressen, keine Thread- oder Task-IDs in Code, Tests oder
-  Commit-Nachrichten. Platzhalter in Beispielen sind frei erfunden.
+> **Nie lösche

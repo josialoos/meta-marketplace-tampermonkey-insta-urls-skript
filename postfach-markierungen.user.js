@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      4.1
+// @version      4.2
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -695,6 +695,17 @@
     return HANDLE_MUSTER.test(t) ? t : '';
   }
 
+  // Zwei Felder, getrennt beschriftet: internal_note ist, was ihr ueber den
+  // Affiliate notiert habt, personal_detail was er selbst angegeben hat.
+  function notizAusAffiliate(a) {
+    const teile = [];
+    const intern = String((a && a.internal_note) || '').trim();
+    const selbst = String((a && a.personal_detail) || '').trim();
+    if (intern) teile.push('Notiz aus UpPromote:\n' + intern);
+    if (selbst) teile.push('Angaben des Affiliates:\n' + selbst);
+    return teile.join('\n\n');
+  }
+
   function handleAusAffiliate(a) {
     const kandidaten = [a.instagram, a.instagram_url, a.social_instagram];
     for (const f of (a.custom_fields || [])) {
@@ -734,6 +745,7 @@
         gefunden[h] = {
           name: [a.first_name, a.last_name].filter(Boolean).join(' '),
           email: String(a.email || '').trim().toLowerCase(),
+          notiz: notizAusAffiliate(a),
           umsatz,
         };
       }
@@ -769,6 +781,18 @@
   // Traegt die E-Mail als Markerzeile nach, damit eine Shopify-Geschenkbestellung
   // spaeter diesem Task zugeordnet werden kann. Ergaenzt nur, ersetzt nie, damit
   // eigene Notizen in der Beschreibung erhalten bleiben.
+  // Wie markerEintragen, ersetzt aber eine vorhandene Zeile. Fuer Werte, die
+  // sich aendern duerfen.
+  async function markerSetzen(task, feld, wert) {
+    const voll = await cuRequest('GET', '/task/' + task.taskId + '?include_markdown_description=true');
+    const bisher = voll.markdown_description || voll.description || '';
+    const muster = new RegExp('^' + feld + ':.*$', 'mi');
+    const neu = muster.test(bisher)
+      ? bisher.replace(muster, feld + ': ' + wert)
+      : bisher.replace(/\s*$/, '') + '\n' + feld + ': ' + wert;
+    await cuRequest('PUT', '/task/' + task.taskId, { markdown_description: neu });
+  }
+
   async function markerEintragen(task, feld, wert) {
     const voll = await cuRequest('GET', '/task/' + task.taskId + '?include_markdown_description=true');
     const bisher = voll.markdown_description || voll.description || '';
@@ -776,6 +800,22 @@
     await cuRequest('PUT', '/task/' + task.taskId, {
       markdown_description: bisher.replace(/\s*$/, '') + '\n' + feld + ': ' + wert,
     });
+    return true;
+  }
+
+  // Traegt die Notiz als Kommentar nach, aber nur einmal je Fassung. Aendert
+  // sie sich in UpPromote, kommt ein neuer Kommentar dazu und der alte bleibt
+  // stehen — ein Verlauf ist hier nuetzlicher als stilles Ueberschreiben.
+  async function notizUebertragen(task, notiz) {
+    const text = String(notiz || '').trim();
+    if (!text) return false;
+    const pruef = kurzHash(text);
+    if (task.notiz === pruef) return false;
+    await cuRequest('POST', '/task/' + task.taskId + '/comment', {
+      comment_text: text, notify_all: false,
+    });
+    await markerSetzen(task, 'igfu-notiz', pruef);
+    task.notiz = pruef;
     return true;
   }
 
@@ -845,6 +885,7 @@
           email: String(a.email || '').trim().toLowerCase(),
           name: [a.first_name, a.last_name].filter(Boolean).join(' ').trim(),
           programm: String(a.program_name || '').trim(),
+          notiz: notizAusAffiliate(a),
           umsatz: ['approved_amount', 'pending_amount', 'paid_amount']
             .reduce((summe, feld) => summe + (parseFloat(a[feld]) || 0), 0),
         });
@@ -889,6 +930,7 @@
       await cuTagSetzen(angelegt.taskId, CU_TAG_OHNE_HANDLE, '#e5484d', true);
       angelegt.ohneHandle = true;
     }
+    await notizUebertragen(angelegt, a.notiz);
     return angelegt;
   }
 
@@ -963,7 +1005,10 @@
         const ziel = a.umsatz > 0 ? CU_STATUS_SALES : CU_STATUS_ONBOARD;
         const statusNoetig = darfSetzen(t.status, ziel);
         const mailNoetig = !!a.email && !t.mail;
-        if (statusNoetig || mailNoetig) treffer.push({ t, ziel, statusNoetig, mailNoetig, mail: a.email });
+        const notizNoetig = !!a.notiz && t.notiz !== kurzHash(a.notiz.trim());
+        if (statusNoetig || mailNoetig || notizNoetig) {
+          treffer.push({ t, ziel, statusNoetig, mailNoetig, mail: a.email, notiz: a.notiz });
+        }
       }
       if (!treffer.length) {
         toast(Object.keys(aktive).length + ' bestätigte Affiliates bei UpPromote, nichts Neues im CRM.');
@@ -971,6 +1016,7 @@
       }
       let fertig = 0;
       let mails = 0;
+      let notizen = 0;
       for (const x of treffer) {
         if (x.statusNoetig) {
           toast('Setze auf „' + x.ziel + '" …');
@@ -979,10 +1025,12 @@
           fertig++;
         }
         if (x.mailNoetig) { await mailEintragen(x.t, x.mail); mails++; }
+        if (await notizUebertragen(x.t, x.notiz)) notizen++;
       }
       cuSpeichern();
       toast(fertig + ' Status gesetzt'
         + (mails ? ', ' + mails + ' E-Mail(s) nachgetragen' : '')
+        + (notizen ? ', ' + notizen + ' Notiz(en) als Kommentar' : '')
         + ', von ' + Object.keys(aktive).length + ' bestätigten Affiliates.');
       scanRows();
     } catch (e) {
@@ -1050,6 +1098,17 @@
     const h = (String(text || '').match(/igfu-handle:\s*([a-z0-9._]{2,30})/i) || [])[1] || '';
     return HANDLE_MUSTER.test(h.toLowerCase()) ? h.toLowerCase() : '';
   };
+  // Kurze Pruefsumme, damit dieselbe Notiz nicht bei jedem Lauf erneut als
+  // Kommentar landet. Sie steht in der Beschreibung und nicht im GM-Speicher,
+  // denn der ist pro Browser — sonst postet der Mac, was Windows schon hat.
+  function kurzHash(text) {
+    let h = 0;
+    const t = String(text || '');
+    for (let i = 0; i < t.length; i++) { h = ((h * 31) + t.charCodeAt(i)) | 0; }
+    return (h >>> 0).toString(36);
+  }
+  const notizAusText = (text) => (String(text || '').match(/igfu-notiz:\s*([a-z0-9]+)/i) || [])[1] || '';
+
   // Versanddatum der Warenprobe, vom geplanten Shopify-Lauf eingetragen.
   const wareAusText = (text) => (String(text || '').match(/igfu-ware:\s*(\d{4}-\d{2}-\d{2})/) || [])[1] || '';
 
@@ -1071,6 +1130,8 @@
     for (const x of texte) { ware = ware || wareAusText(x); }
     let handle = '';
     for (const x of texte) { handle = handle || handleAusText(x); }
+    let notiz = '';
+    for (const x of texte) { notiz = notiz || notizAusText(x); }
     const tags = (t.tags || []).map((x) => String(x.name || '').toLowerCase());
     return {
       tid: tid ? String(tid) : '',
@@ -1078,6 +1139,7 @@
       mail,
       ware,
       handle,
+      notiz,
       taskId: t.id,
       titel: t.name,
       status: (t.status && t.status.status) || '',
