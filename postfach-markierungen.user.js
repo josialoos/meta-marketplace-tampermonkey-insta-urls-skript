@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      3.9
+// @version      4.0
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -403,6 +403,13 @@
 
   let cuTasks = (GM_getValue(CU_TASKS, {}) || {}).tasks || {};
   let cuBilder = (GM_getValue(CU_TASKS, {}) || {}).bilder || {};
+  // Tasks ohne Unterhaltung. Bis Version 3.9 fielen die beim Laden einfach
+  // heraus, weil cuTasks nach Thread-ID gefuehrt wird — ein importierter
+  // Affiliate, der nie ueber das Partner-Postfach angeschrieben wurde, waere
+  // damit fuer jede Automatik unsichtbar gewesen.
+  let cuOhneThread = (GM_getValue(CU_TASKS, {}) || {}).ohneThread || [];
+  // Alles, was die Automatiken durchgehen muessen — mit und ohne Unterhaltung.
+  const alleTasks = () => Object.values(cuTasks).concat(cuOhneThread);
   let cuLetzterAbruf = 0;
   let cuLaeuft = false;
 
@@ -789,7 +796,7 @@
     let fehlt = 0;
     try {
       await cuTasksLaden();
-      for (const t of Object.values(cuTasks)) {
+      for (const t of alleTasks()) {
         // Abgesagt, keine Antwort, beendet: dort interessiert kein Handle mehr.
         if (STATUS_ENDE.includes(String(t.status || '').toLowerCase())) continue;
         const h = handleVonTask(t);
@@ -807,7 +814,7 @@
           t.ohneHandle = false;
         }
       }
-      GM_setValue(CU_TASKS, { stand: Date.now(), tasks: cuTasks, bilder: cuBilder });
+      cuSpeichern();
     } catch (e) {
       toast('Handles: ' + e.message);
     } finally {
@@ -826,7 +833,7 @@
       const aktive = await upAktive(toast);
       await cuTasksLaden();
       const treffer = [];
-      for (const t of Object.values(cuTasks)) {
+      for (const t of alleTasks()) {
         const h = handleVonTask(t);
         const a = h && aktive[h];
         if (!a) continue;
@@ -851,7 +858,7 @@
         }
         if (x.mailNoetig) { await mailEintragen(x.t, x.mail); mails++; }
       }
-      GM_setValue(CU_TASKS, { stand: Date.now(), tasks: cuTasks, bilder: cuBilder });
+      cuSpeichern();
       toast(fertig + ' Status gesetzt'
         + (mails ? ', ' + mails + ' E-Mail(s) nachgetragen' : '')
         + ', von ' + Object.keys(aktive).length + ' bestätigten Affiliates.');
@@ -970,12 +977,13 @@
     const liste = encodeURIComponent(cuListe());
     const gefunden = {};
     const nachBild = {};
+    const ohneThread = [];
     for (let seite = 0; seite < 25; seite++) {
       const d = await cuRequest('GET', '/list/' + liste + '/task?include_closed=true&subtasks=false&page=' + seite);
       for (const t of d.tasks || []) {
         const neu = taskAufbereiten(t);
         if (neu.bild && !nachBild[neu.bild]) nachBild[neu.bild] = neu;
-        if (!neu.tid) continue;
+        if (!neu.tid) { ohneThread.push(neu); continue; }
         // Zu einer Unterhaltung kann versehentlich ein zweiter Task existieren.
         // Dann gewinnt der getaggte, sonst loescht ein leerer Doppelgaenger die
         // Markierung. Bei Gleichstand der zuletzt gefundene.
@@ -986,8 +994,15 @@
     }
     cuTasks = gefunden;
     cuBilder = nachBild;
-    GM_setValue(CU_TASKS, { stand: Date.now(), tasks: gefunden, bilder: nachBild });
+    cuOhneThread = ohneThread;
+    cuSpeichern();
     return gefunden;
+  }
+
+  function cuSpeichern() {
+    GM_setValue(CU_TASKS, {
+      stand: Date.now(), tasks: cuTasks, bilder: cuBilder, ohneThread: cuOhneThread,
+    });
   }
 
   async function cuTaskSichern(tid, titel, handle) {
@@ -1009,7 +1024,7 @@
     angelegt.bild = angelegt.bild || (w && w.bild) || '';
     cuTasks[tid] = angelegt;
     if (angelegt.bild) cuBilder[angelegt.bild] = angelegt;
-    GM_setValue(CU_TASKS, { stand: Date.now(), tasks: cuTasks, bilder: cuBilder });
+    cuSpeichern();
     return cuTasks[tid];
   }
 
@@ -1122,7 +1137,7 @@
       if (aenderung.status) ziel.status = aenderung.status;
       if (aenderung.name) ziel.titel = aenderung.name;
       cuTasks[a.tid] = ziel;
-      GM_setValue(CU_TASKS, { stand: Date.now(), tasks: cuTasks, bilder: cuBilder });
+      cuSpeichern();
       return;
     }
     const task = await cuTaskSichern(a.tid, a.titel);
@@ -1175,7 +1190,7 @@
         await cuRequest('POST', '/task/' + task.taskId + '/comment', { comment_text: a.wert, notify_all: false });
       }
     }
-    GM_setValue(CU_TASKS, { stand: Date.now(), tasks: cuTasks });
+    cuSpeichern();
   }
 
   async function cuAktualisieren(erzwingen) {
@@ -1632,7 +1647,7 @@
     try {
       await cuTasksLaden();
       let fertig = 0;
-      for (const t of Object.values(cuTasks)) {
+      for (const t of alleTasks()) {
         const h = handleVonTask(t);
         if (!h || !alle[h]) continue;
         // Der Tag ist eine Tatsache, kein Zustand: er wird auch dann gesetzt,
@@ -1646,7 +1661,7 @@
         t.status = CU_STATUS_CONTENT;
         fertig++;
       }
-      if (fertig) GM_setValue(CU_TASKS, { stand: Date.now(), tasks: cuTasks, bilder: cuBilder });
+      if (fertig) cuSpeichern();
       return fertig;
     } catch (e) {
       toast('Inhalte: ' + e.message);
@@ -1719,7 +1734,7 @@
       const neu = taskAufbereiten(t);
       neu.bild = neu.bild || bild;
       if (neu.bild) cuBilder[neu.bild] = neu;
-      GM_setValue(CU_TASKS, { stand: Date.now(), tasks: cuTasks, bilder: cuBilder });
+      cuSpeichern();
       setzeMarktPille(pille);
     } catch (e) {
       setzeMarktPille(pille);
@@ -2025,7 +2040,7 @@
           await cuRequest('POST', '/task/' + task.taskId + '/comment', { comment_text: eintrag.note, notify_all: false });
         }
         fertig++;
-        GM_setValue(CU_TASKS, { stand: Date.now(), tasks: cuTasks });
+        cuSpeichern();
       }
       toast(fertig + ' von ' + offen.length + ' übertragen.');
     } catch (e) {
@@ -2062,10 +2077,28 @@
   // bleiben aussen vor, dort interessiert er nicht mehr.
   function ohneHandle() {
     if (!cuEingerichtet()) return [];
-    return Object.entries(cuTasks)
-      .filter(([, t]) => !STATUS_ENDE.includes(String(t.status || '').toLowerCase()))
-      .filter(([, t]) => !handleVonTask(t))
-      .sort((a, b) => String(a[1].titel || '').localeCompare(String(b[1].titel || '')));
+    return alleTasks()
+      .filter((t) => !STATUS_ENDE.includes(String(t.status || '').toLowerCase()))
+      .filter((t) => !handleVonTask(t))
+      .sort((a, b) => String(a.titel || '').localeCompare(String(b.titel || '')));
+  }
+
+  // Fuer Tasks ohne Unterhaltung: Name und Markerzeile direkt schreiben.
+  async function handleDirektSetzen(task, h) {
+    try {
+      const neuerName = taskName(h, rohTitel(task.titel));
+      if (neuerName && neuerName !== task.titel) {
+        await cuRequest('PUT', '/task/' + task.taskId, { name: neuerName });
+        task.titel = neuerName;
+      }
+      await markerEintragen(task, 'igfu-handle', h);
+      task.handle = h;
+      cuSpeichern();
+      if (panelOpen) renderPanel();
+      updateLauncher();
+    } catch (e) {
+      toast('ClickUp: ' + e.message);
+    }
   }
 
   function renderPanel() {
@@ -2085,12 +2118,18 @@
         'Ohne Handle greift bei diesen Tasks keine Automatik — weder UpPromote '
         + 'noch Content noch die Warensendung.'));
       const ul = el('ol', 'igfu-list');
-      for (const [tid, t] of luecken) {
+      for (const t of luecken) {
+        const tid = t.tid;
         const li = el('li', 'igfu-item');
         const top = el('div', 'igfu-item-top');
         top.append(
-          button('igfu-name', rohTitel(t.titel), () => reveal(tid), 'In der Liste anzeigen'),
-          button('igfu-link', 'Unterhaltung öffnen', () => reveal(tid)),
+          tid
+            ? button('igfu-name', rohTitel(t.titel), () => reveal(tid), 'In der Liste anzeigen')
+            : el('span', 'igfu-name', rohTitel(t.titel)),
+          // Ohne Unterhaltung gibt es nichts zu zeigen, dafuer den Task selbst
+          tid
+            ? button('igfu-link', 'Unterhaltung öffnen', () => reveal(tid))
+            : button('igfu-link', 'Task öffnen', () => window.open(t.url, '_blank', 'noopener')),
           button('igfu-link', 'Instagram', () => window.open('https://www.instagram.com/', '_blank', 'noopener'),
             'Öffnet Instagram in einem neuen Tab. Das Suchen bleibt Handarbeit.'),
         );
@@ -2102,8 +2141,14 @@
           const h = String(feld.value || '').trim().replace(/^@/, '').toLowerCase();
           if (!h) return;
           if (!HANDLE_MUSTER.test(h)) { toast('Das sieht nicht nach einem Instagram-Handle aus.'); return; }
-          handleMerken(tid, h, 'hand');
-          vormerken({ art: 'handle', tid, titel: t.titel, wert: h });
+          if (tid) {
+            handleMerken(tid, h, 'hand');
+            vormerken({ art: 'handle', tid, titel: t.titel, wert: h });
+          } else {
+            // Ohne Unterhaltung geht es nicht ueber die Warteschlange, die ist
+            // nach Thread-ID gefuehrt.
+            handleDirektSetzen(t, h);
+          }
           toast('Handle übernommen: ' + h);
           renderPanel();
         };

@@ -241,6 +241,13 @@ man ihn dort sieht und danach suchen kann. Und als Markerzeile, weil die die
 dann den Namen. Eine Umbenennung in ClickUp kann die Zuordnung damit nicht mehr
 stillschweigend zerreißen.
 
+**Ein Task braucht nicht zwingend eine Unterhaltung.** Intern wird `cuTasks`
+nach Thread-ID geführt, weil jede Zeile im Postfach ihren Task finden muss.
+Bis Version 3.9 fielen Tasks ohne Thread-ID beim Laden ersatzlos heraus —
+damit waren sie für jede Automatik unsichtbar. Seit 4.0 liegen sie in
+`cuOhneThread`, und alles, was über „alle Tasks" läuft, geht über
+`alleTasks()`. Gezielte Zugriffe per Thread-ID bleiben unverändert.
+
 **Kein Handle heißt: der Task ist für sämtliche Automatiken unsichtbar** —
 Content, UpPromote, Sales, E-Mail-Brücke, Warensendung, Frist, alles hängt
 daran. Am 02.10.2026 betraf das **17 von rund 54 Tasks**, und aufgefallen ist es
