@@ -182,4 +182,6 @@ export async function starte({
 }
 
 export const warte = (w, ms) => new Promise((r) => w.setTimeout(r, ms));
-export const chip = (doc, i, art) => doc.querySelectorAll('.row')[i]
+export const chip = (doc, i, art) => doc.querySelectorAll('.row')[i].querySelector(`.igfu-tag[data-kind="${art}"]`);
+export const klick = (w, el) => el.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true }));
+export const knopf = (doc, text) => [...doc.querySelectorAll('.igfu-form button')].find((b) => b.textContent === text);

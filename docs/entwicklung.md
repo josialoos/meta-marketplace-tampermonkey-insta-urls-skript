@@ -430,4 +430,145 @@ Liste man steht. Für uns macht das nichts, beide sind `INSTAGRAM_DIRECT` und
 nutzen denselben Link.
 
 **`commPlatform` ist der brauchbare Unterscheider:** `INSTAGRAM_DIRECT` gegen
-`MESSENGER`. Im Hauptpostfach stehen auch Messenger- und What
+`MESSENGER`. Im Hauptpostfach stehen auch Messenger- und WhatsApp-Threads, die
+bekommen keine Pillen.
+
+**Dieselbe Person kann zwei Unterhaltungen haben**, eine als Partner-Nachricht
+und eine als normale DM — bei naturpedal, Chiara Waldner und Sina ist das so.
+Werden beide markiert, entstehen zwei Tasks. Verboten wird das nicht, es gibt
+auch echte Fälle mit zwei getrennten Gesprächen, aber `cuTaskSichern` warnt.
+
+**`snippet` ist kein Text,** sondern ein React-Element. Der Text steht in
+`snippet.props.children`, und eigene Nachrichten tragen davor `Du: `.
+
+**Speicher.** Markierungen liegen im GM-Speicher, nicht in `localStorage` —
+Meta räumt den Seitenspeicher beim Laden auf.
+
+---
+
+## 8. Einrichtung
+
+### Tampermonkey
+
+1. Tampermonkey in Chrome installieren.
+2. In `chrome://extensions` unter Tampermonkey › Details prüfen:
+   **„Allow user scripts"** an und **Websitezugriff auf allen Websites**.
+   Ohne den ersten Schalter stehen Skripte im Dashboard auf aktiv und laufen
+   trotzdem nie.
+3. Die Rohadressen aufrufen und die Installation bestätigen:
+
+```
+.../main/postfach-markierungen.user.js
+.../main/creator-marketplace-links.user.js
+```
+
+Beide tragen `@updateURL` und `@downloadURL`, aktualisieren sich also selbst.
+
+> **Nie löschen und neu installieren.** Der GM-Speicher hängt an Name und
+> Namespace; beim Löschen gehen Token und Markierungen mit.
+
+### ClickUp
+
+Liste mit genau diesen Status anlegen, in dieser Reihenfolge (Abschnitt 5).
+Dazu ein Tag `follow-up`.
+
+Im Skript-Panel eintragen:
+
+- **Token** — ClickUp › Einstellungen › Apps › API-Token. Wer sich über Google
+  anmeldet, muss vorher über „Passwort vergessen" ein lokales Passwort setzen,
+  sonst gibt ClickUp keinen Token heraus.
+- **Listen-ID** — steht in der Adresse der Liste.
+
+Jeder Rechner und jede Person braucht eigene Werte; der GM-Speicher ist pro
+Browser.
+
+### UpPromote
+
+Schlüssel aus UpPromote › Einstellungen › Integrationen, ebenfalls ins Panel.
+Ab Professional-Plan.
+
+### Geplanter Lauf für die Warensendungen
+
+Läuft außerhalb des Browsers und braucht Zugriff auf Shopify und ClickUp. Er
+ordnet nur über `igfu-mail` zu und rät nie über Namen.
+
+> **Reihenfolge beim ersten Mal:** Skript installieren → einmal aktualisieren
+> (dadurch bekommen die Tasks ihre `igfu-mail`-Zeile) → erst danach findet der
+> Shopify-Lauf etwas.
+
+---
+
+## 9. Der Lader
+
+`postfach-lader.user.js` sollte den Code bei jedem Seitenaufruf frisch aus dem
+Repo holen. Er zeigt nach der Installation **gar keine Oberfläche**, Ursache
+ungeklärt. CSP ist ausgeschlossen, `new Function` ist auf der Domain erlaubt.
+
+**Die Falle:** Er trägt absichtlich denselben `@name` und `@namespace` wie das
+Kernskript, damit der GM-Speicher erhalten bleibt. Im Dashboard heißt er
+deshalb genauso und steht auf aktiv — zu unterscheiden **nur an der
+Versionsnummer**. Seine `@updateURL` zeigt auf die Lader-Datei, er zieht also
+nie auf eine neuere Kernversion nach.
+
+Genau das ist einmal passiert: Lader installiert, im Postfach keine einzige
+Pille, von außen sah alles normal aus. Die Suche lief lange über
+Skript-Syntax, CSP und Chrome-Schalter — dabei war schlicht ein anderes Skript
+installiert.
+
+**Erste Diagnosefrage bei „keine Pillen": Versionsnummer im Dashboard.**
+
+Vor einer Wiederbelebung braucht der Lader eine eigene Kennung und eine
+bewusste Speicherübernahme.
+
+---
+
+## 10. Tests
+
+```bash
+node tests/postfach.test.mjs
+node tests/lader.test.mjs
+```
+
+jsdom mit nachgebauten GM-Funktionen, ClickUp- und UpPromote-Antworten. Keine
+echten Anfragen, keine echten Zugangsdaten.
+
+**Gewohnheit: Mutationstest.** Nach jedem neuen Test die Zeile, die er absichern
+soll, kurz kaputt machen und prüfen, dass der Test wirklich umfällt. Mehrere
+Prüfungen liefen anfangs leer durch und hätten nichts gemerkt.
+
+### Der Commit-Wächter
+
+`.git/hooks/pre-commit` führt `node --check` auf dem **gestagten** Inhalt jeder
+`*.user.js` aus und bricht den Commit ab, wenn die Datei sich nicht parsen lässt.
+
+Der Hook liegt in `.git/hooks/` und wird von Git **nicht** mitgeklont. Auf einem
+frischen Klon muss er neu angelegt werden.
+
+**Warum er existiert:** Am 05.10.2026 landete Version 4.3 abgeschnitten auf
+GitHub — die letzten 40 Zeilen fehlten, mitten in einem `setTimeout`. Die Datei
+im Arbeitsverzeichnis war vollständig und alle 211 Tests liefen grün, denn die
+Tests lesen das Arbeitsverzeichnis, nicht den Commit. Tampermonkey lud über
+`@downloadURL` den kaputten Stand, und damit war das ganze Skript tot: keine
+Pillen, keine Knöpfe, kein Panel. Ein Skript, das sich nicht parsen lässt, läuft
+nicht teilweise, sondern gar nicht.
+
+**Merksatz:** Nach jedem Push die Rohdatei gegenprüfen, nicht nur die lokale:
+
+```bash
+curl -sS https://raw.githubusercontent.com/josialoos/meta-marketplace-tampermonkey-insta-urls-skript/main/postfach-markierungen.user.js \
+  | tee /tmp/pruef.js | tail -1 && node --check /tmp/pruef.js && echo "GitHub-Stand ist in Ordnung"
+```
+
+---
+
+## 11. Regeln für Zugangsdaten
+
+- Token liegen **ausschließlich** im GM-Speicher und werden bei jeder Anfrage
+  frisch von dort gelesen.
+- Niemals am `window`-Objekt, niemals im DOM, niemals in einer Fehlermeldung
+  oder einem Log.
+- Alle Anfragen über `GM_xmlhttpRequest` mit passendem `@connect`, nie über
+  `fetch` — sonst greift Metas CSP, und der Token stünde im Seitenkontext.
+- **Dieses Repo ist öffentlich.** Keine echten IDs, keine Namen, keine
+  E-Mail-Adressen, keine Thread- oder Task-IDs in Code, Tests oder
+  Commit-Nachrichten. Platzhalter in Beispielen sind frei erfunden.

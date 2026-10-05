@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      4.3
+// @version      4.4
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -2830,4 +2830,42 @@
       abarbeiten();
       hashOeffnen();
       setTimeout(() => {
-       
+        // Läuft noch eine zweite Version dieses Skripts (z. B. die alte 1.0)?
+        if (document.querySelectorAll('#igfu-launch').length > 1) {
+          console.warn('[Markierungen] Mehrere Versionen des Skripts aktiv.');
+          toast('Es laufen zwei Versionen dieses Skripts. Lösche in Tampermonkey die ältere, sonst überlagern sich die Knöpfe.');
+        }
+        if (isInbox() && !threadRows().length && document.querySelectorAll('div[role="presentation"]').length > 5) {
+          console.warn('[Markierungen] Die Unterhaltungsliste konnte nicht gelesen werden.');
+          toast('Markierungen: Die Unterhaltungsliste lässt sich nicht lesen. Vermutlich hat Meta die Seite umgebaut, dann muss das Skript angepasst werden.');
+        }
+      }, 8000);
+    } else if (launcher) {
+      launcher.hidden = true;
+      if (refreshBtn) refreshBtn.hidden = true;
+      if (tippEl) tippEl.classList.remove('show');
+      closePanel();
+    }
+    if (isMarkt()) { stilEinspielen(); cuAktualisieren(false); scanMarkt(); scanInhalte(); }
+  }
+
+  let scheduled = null;
+  const observer = new MutationObserver(() => {
+    if (scheduled) return;
+    scheduled = setTimeout(() => {
+      scheduled = null;
+      syncActive();
+      if (isInbox()) { scanRows(); positionUI(); }
+      if (isMarkt()) { scanMarkt(); scanInhalte(); }
+    }, 250);
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+  setInterval(syncActive, 1500);
+  // Alle zwei Minuten nachsehen, was in ClickUp passiert ist. cuAktualisieren
+  // bremst sich selbst, haeufigere Aufrufe kosten also keine Anfragen.
+  setInterval(() => { if (isInbox()) { cuAktualisieren(false); abarbeiten(); } }, 120000);
+  // Die Kontaktkarte der geoeffneten Unterhaltung nebenbei auslesen. Kostet nichts
+  // und fuellt die fehlenden Handles waehrend der normalen Arbeit nach.
+  setInterval(karteAuslesen, 3000);
+  syncActive();
+})();
