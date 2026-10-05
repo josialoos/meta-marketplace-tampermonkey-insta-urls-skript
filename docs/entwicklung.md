@@ -212,6 +212,40 @@ wegen der Leiter nicht mehr geändert wird.
 
 ---
 
+### Affiliates aus UpPromote importieren
+
+Knopf „Affiliates importieren" im Panel. Holt alle **aktiven** Affiliates des
+Programms `TZAMPAS Affiliate Programm` und legt die an, die noch fehlen.
+
+**Erster Klick zählt nur**, zweiter legt an. Bei über hundert Datensätzen will
+man vorher sehen, was passiert. Die Vorschau verfällt nach fünf Minuten.
+
+Als „schon vorhanden" gilt, wer über **Handle oder E-Mail** zu einem
+bestehenden Task passt. Tasks ohne Handle und ohne `igfu-mail` sind damit nicht
+erkennbar — die würden doppelt angelegt. Vor einem Import also erst die Lücken
+füllen.
+
+Neue Tasks bekommen Titel `handle — Name`, Status nach der Leiter
+(`ongeboardet`, bei Provision `hat sales`), die Instagram-Zeile und die Marker
+`igfu-handle` und `igfu-mail`. Ohne Handle zusätzlich den Tag `handle-fehlt`.
+
+**Der Unterhaltungs-Link lässt sich nicht aus dem Handle bauen.**
+`selected_item_id` ist Metas interne, 39-stellige Unterhaltungs-ID; der Handle
+kommt darin nicht vor und es gibt keine Rechenvorschrift. Der Link kann nur
+gesetzt werden, wenn das Skript die Unterhaltung schon einmal gesehen hat —
+`threadZuHandle()` schlägt im GM-Speicher nach. Viele Affiliates wurden nie
+über das Partner-Postfach angeworben und haben schlicht keine.
+
+### Nachträglich verbinden
+
+Wird später doch eine Unterhaltung angefangen, taucht sie im Postfach auf.
+`scanRows` erkennt den Handle und verbindet sie über den Auftrag
+`verbinden-handle` mit dem vorhandenen Task: Link und `igfu-thread` werden
+nachgetragen, der Task wandert von `cuOhneThread` nach `cuTasks`. Ohne Zutun.
+
+Das Anschreiben selbst ist **bewusst nicht automatisiert** — Nachrichten im
+Namen des Nutzers verschickt das Skript nicht.
+
 ## 4. Die Brücke zwischen den Welten
 
 Jedes System kennt den Affiliate unter einem anderen Schlüssel:

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      4.0
+// @version      4.1
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -387,6 +387,9 @@
   // Mehr als das braucht keine realistische Affiliate-Liste. Schuetzt davor,
   // minutenlang gegen eine Schnittstelle zu laufen, die nicht blaettert.
   const UP_MAX_SEITEN = 10;
+  // Nur dieses Programm wird importiert. Andere Programme im selben Konto
+  // bleiben aussen vor.
+  const UP_PROGRAMM = 'TZAMPAS Affiliate Programm';
   const upToken = () => String(GM_getValue(UP_TOKEN, '') || '').trim();
 
   const cuListe = () => String(GM_getValue(CU_LIST, '') || '').trim();
@@ -823,6 +826,125 @@
     return { marker, fehlt };
   }
 
+  // Wie upAktive, aber mit allem, was der Import braucht, und ohne die
+  // Beschraenkung auf Affiliates mit Handle.
+  async function upAktiveVoll(melden) {
+    const raus = [];
+    let vorige = '';
+    for (let seite = 1; seite <= UP_MAX_SEITEN; seite++) {
+      if (melden) melden('Frage UpPromote ab, Seite ' + seite + ' \u2026');
+      const d = await upRequest('/affiliates?status=active&per_page=100&page=' + seite);
+      const liste = d.data || d.affiliates || (Array.isArray(d) ? d : []);
+      if (!liste.length) break;
+      const kennung = liste.map((a) => (a && (a.id || a.email)) || '').join(',');
+      if (kennung === vorige) break;
+      vorige = kennung;
+      for (const a of liste) {
+        raus.push({
+          handle: handleAusAffiliate(a),
+          email: String(a.email || '').trim().toLowerCase(),
+          name: [a.first_name, a.last_name].filter(Boolean).join(' ').trim(),
+          programm: String(a.program_name || '').trim(),
+          umsatz: ['approved_amount', 'pending_amount', 'paid_amount']
+            .reduce((summe, feld) => summe + (parseFloat(a[feld]) || 0), 0),
+        });
+      }
+      if (liste.length < 100) break;
+    }
+    return raus;
+  }
+
+  // Zu einem Handle die Unterhaltung finden, sofern das Skript ihr schon einmal
+  // begegnet ist. Metas Thread-ID laesst sich nicht aus dem Handle berechnen,
+  // sie muss nachgeschlagen werden.
+  function threadZuHandle(h) {
+    if (!h) return '';
+    const alle = handles();
+    for (const tid of Object.keys(alle)) {
+      if (alle[tid] && alle[tid].handle === h) return tid;
+    }
+    return '';
+  }
+
+  async function importAnlegen(a) {
+    const tid = threadZuHandle(a.handle);
+    const z = [];
+    if (tid) z.push('[Unterhaltung im Postfach öffnen](' + postfachLink(tid) + ')', '');
+    if (a.handle) z.push('Instagram: [@' + a.handle + '](https://www.instagram.com/' + a.handle + '/)', '');
+    z.push('---', 'Aus UpPromote übernommen. Die folgenden Zeilen bitte nicht ändern.');
+    if (tid) z.push('igfu-thread: ' + tid);
+    if (a.handle) z.push('igfu-handle: ' + a.handle);
+    if (a.email) z.push('igfu-mail: ' + a.email);
+    const t = await cuRequest('POST', '/list/' + encodeURIComponent(cuListe()) + '/task', {
+      name: taskName(a.handle, a.name || a.email || 'Unbekannt'),
+      status: a.umsatz > 0 ? CU_STATUS_SALES : CU_STATUS_ONBOARD,
+      markdown_description: z.join('\n'),
+    });
+    const angelegt = taskAufbereiten(t);
+    angelegt.tid = tid;
+    angelegt.handle = a.handle;
+    angelegt.mail = a.email;
+    if (tid) cuTasks[tid] = angelegt; else cuOhneThread.push(angelegt);
+    if (!a.handle) {
+      await cuTagSetzen(angelegt.taskId, CU_TAG_OHNE_HANDLE, '#e5484d', true);
+      angelegt.ohneHandle = true;
+    }
+    return angelegt;
+  }
+
+  // Erster Aufruf zaehlt nur, zweiter legt an. Bei dieser Menge will man vorher
+  // sehen, was passiert.
+  let importVorschau = null;
+  async function upImport() {
+    if (!cuEingerichtet()) { toast('Bitte erst ClickUp einrichten.'); return; }
+    if (!upToken()) { toast('Bitte erst den UpPromote-Token eintragen.'); return; }
+    if (cuLaeuft) { toast('Es läuft gerade eine Übertragung, bitte kurz warten.'); return; }
+    cuLaeuft = true;
+    try {
+      const alle = await upAktiveVoll(toast);
+      const imProgramm = alle.filter((a) => a.programm === UP_PROGRAMM);
+      await cuTasksLaden();
+      const handlesDa = new Set();
+      const mailsDa = new Set();
+      for (const t of alleTasks()) {
+        const h = handleVonTask(t);
+        if (h) handlesDa.add(h);
+        if (t.mail) mailsDa.add(t.mail);
+      }
+      const neu = imProgramm.filter((a) => !(a.handle && handlesDa.has(a.handle))
+        && !(a.email && mailsDa.has(a.email)));
+      const ohneH = neu.filter((a) => !a.handle).length;
+
+      if (!importVorschau || importVorschau.stand < Date.now() - 300000) {
+        importVorschau = { stand: Date.now(), anzahl: neu.length };
+        toast(imProgramm.length + ' aktive im Programm „' + UP_PROGRAMM + '", '
+          + (imProgramm.length - neu.length) + ' schon im CRM, ' + neu.length + ' neu'
+          + (ohneH ? ', davon ' + ohneH + ' ohne Handle' : '')
+          + (alle.length - imProgramm.length ? '. ' + (alle.length - imProgramm.length)
+            + ' aus anderen Programmen übersprungen' : '')
+          + '. Nochmal klicken legt sie an.');
+        return;
+      }
+      importVorschau = null;
+      let fertig = 0;
+      let verknuepft = 0;
+      for (const a of neu) {
+        toast('Lege an: ' + (fertig + 1) + ' von ' + neu.length + ' \u2026');
+        const angelegt = await importAnlegen(a);
+        if (angelegt.tid) verknuepft += 1;
+        fertig += 1;
+      }
+      cuSpeichern();
+      toast(fertig + ' angelegt, davon ' + verknuepft + ' mit Unterhaltung verknüpft.');
+      scanRows();
+      updateLauncher();
+    } catch (e) {
+      toast('Import: ' + e.message);
+    } finally {
+      cuLaeuft = false;
+    }
+  }
+
   async function upAbgleichen() {
     if (!cuEingerichtet()) { toast('Bitte erst ClickUp einrichten.'); return; }
     if (!upToken()) { toast('Bitte erst den UpPromote-Token eintragen.'); return; }
@@ -1113,6 +1235,26 @@
     if (a.art === 'prio' && !cuTasks[a.tid]) return;   // Prioritaet legt nichts an
     if (a.art === 'handle' && !cuTasks[a.tid]) return; // Handle legt nichts an
 
+    if (a.art === 'verbinden-handle') {
+      if (cuTasks[a.tid]) return;
+      const i = cuOhneThread.findIndex((x) => !x.tid && handleVonTask(x) === a.handle);
+      if (i < 0) return;
+      const ziel = cuOhneThread[i];
+      const voll = await cuRequest('GET', '/task/' + ziel.taskId + '?include_markdown_description=true');
+      const bisher = voll.markdown_description || voll.description || '';
+      if (!threadAusText(bisher)) {
+        await cuRequest('PUT', '/task/' + ziel.taskId, {
+          markdown_description: '[Unterhaltung im Postfach öffnen](' + postfachLink(a.tid) + ')\n\n'
+            + bisher.replace(/^\s*/, '').replace(/\s*$/, '') + '\nigfu-thread: ' + a.tid,
+        });
+      }
+      ziel.tid = a.tid;
+      cuOhneThread.splice(i, 1);
+      cuTasks[a.tid] = ziel;
+      cuSpeichern();
+      return;
+    }
+
     if (a.art === 'verbinden') {
       // Im Marketplace erfasster Task bekommt jetzt seine Unterhaltung. Die
       // Beschreibung wird nur ergaenzt, nicht ersetzt, damit eigene Notizen
@@ -1370,6 +1512,17 @@
       // Marketplace erfassten mit demselben Profilbild, gehoeren sie zusammen.
       if (!cuTasks[tid] && bild && cuBilder[bild] && !cuBilder[bild].tid) {
         vormerken({ art: 'verbinden', tid, titel: t.title, bild });
+      }
+
+      // Aus UpPromote importierte Tasks haben keine Unterhaltung, weil viele
+      // Affiliates nie ueber das Partner-Postfach angeschrieben wurden. Faengt
+      // Josia spaeter doch eine an, taucht sie hier auf und wird ueber den
+      // Handle mit dem vorhandenen Task verbunden — ohne Zutun.
+      if (!cuTasks[tid]) {
+        const hier = (handleVon(tid) || {}).handle || vorschau;
+        if (hier && cuOhneThread.some((x) => !x.tid && handleVonTask(x) === hier)) {
+          vormerken({ art: 'verbinden-handle', tid, titel: t.title, handle: hier });
+        }
       }
 
       if (fOn && follow[tid].title !== t.title) { follow[tid].title = t.title; followTitles = true; }
@@ -1949,6 +2102,9 @@
       button('igfu-link', 'Lokale Follow-ups übernehmen', async () => { await uebernehmen(); standAnzeigen(); }),
       button('igfu-link', 'UpPromote abgleichen', async () => { await upAbgleichen(); standAnzeigen(); },
         'Bestätigte Affiliates aus UpPromote auf „' + CU_STATUS_ONBOARD + '" setzen'),
+      button('igfu-link', 'Affiliates importieren', () => upImport(),
+        'Legt aktive Affiliates aus „' + UP_PROGRAMM + '" als Tasks an. '
+        + 'Erster Klick zählt nur, zweiter legt an.'),
       button('igfu-link', 'Inhalte-Seite öffnen', () => {
         const ziel = inhalteZiel();
         closePanel();

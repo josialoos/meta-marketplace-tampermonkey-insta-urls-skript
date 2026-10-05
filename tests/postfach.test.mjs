@@ -775,6 +775,110 @@ gruppe('Das Panel listet Tasks ohne Handle zum Nachtragen');
   }
 }
 
+const PROG = 'TZAMPAS Affiliate Programm';
+
+gruppe('Import: erster Klick zählt nur');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_UP,
+    affiliates: [
+      { first_name: 'Neu', last_name: 'Eins', email: 'n1@b.de', instagram: 'neu_eins', program_name: PROG },
+      { first_name: 'Neu', last_name: 'Zwei', email: 'n2@b.de', instagram: 'neu_zwei', program_name: PROG },
+    ],
+  });
+  klick(w, knopf(doc, 'Affiliates importieren'));
+  await warte(w, 1500);
+  pruefe('Noch nichts angelegt', serverTasks.length === 0, String(serverTasks.length));
+  const toastEl = doc.querySelector('#igfu-toast');
+  pruefe('Zählung wird gemeldet', /2 neu/.test((toastEl && toastEl.textContent) || ''),
+    (toastEl && toastEl.textContent) || '');
+}
+
+gruppe('Import: zweiter Klick legt an');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_UP,
+    affiliates: [
+      { first_name: 'Neu', last_name: 'Eins', email: 'N1@B.de', instagram: 'neu_eins',
+        program_name: PROG, approved_amount: '0' },
+      { first_name: 'Mit', last_name: 'Sales', email: 'n2@b.de', instagram: 'neu_zwei',
+        program_name: PROG, paid_amount: '42.00' },
+    ],
+  });
+  klick(w, knopf(doc, 'Affiliates importieren'));
+  await warte(w, 1500);
+  klick(w, knopf(doc, 'Affiliates importieren'));
+  await warte(w, 2500);
+  pruefe('Zwei Tasks angelegt', serverTasks.length === 2, String(serverTasks.length));
+  const eins = serverTasks.find((x) => /neu_eins/.test(x.name));
+  const zwei = serverTasks.find((x) => /neu_zwei/.test(x.name));
+  pruefe('Name ist handle — Name', eins && eins.name === 'neu_eins — Neu Eins', eins && eins.name);
+  pruefe('Ohne Umsatz ongeboardet', eins && eins.status === 'ongeboardet', eins && eins.status);
+  pruefe('Mit Umsatz hat sales', zwei && zwei.status === 'hat sales', zwei && zwei.status);
+  pruefe('Handle als Marker', /igfu-handle:\s*neu_eins/.test((eins || {}).beschreibung || ''));
+  pruefe('E-Mail klein als Marker', /igfu-mail:\s*n1@b\.de/.test((eins || {}).beschreibung || ''),
+    ((eins || {}).beschreibung || '').slice(-70));
+}
+
+gruppe('Import: Vorhandene und fremde Programme bleiben aussen vor');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_UP,
+    tasks: [
+      { id: 'a1', name: 'neu_eins — Neu Eins', status: 'ongeboardet', farbe: '#b660e0',
+        beschreibung: beschreibungMit('T1'), tags: [] },
+      { id: 'a2', name: 'Jemand', status: 'ongeboardet', farbe: '#b660e0',
+        beschreibung: beschreibungMit('T2') + '\nigfu-mail: n2@b.de', tags: [] },
+    ],
+    affiliates: [
+      { first_name: 'Neu', last_name: 'Eins', email: 'n1@b.de', instagram: 'neu_eins', program_name: PROG },
+      { first_name: 'Per', last_name: 'Mail', email: 'n2@b.de', instagram: 'per_mail', program_name: PROG },
+      { first_name: 'Anderes', last_name: 'Programm', email: 'n3@b.de', instagram: 'woanders',
+        program_name: 'Zweitprogramm' },
+    ],
+  });
+  klick(w, knopf(doc, 'Affiliates importieren'));
+  await warte(w, 1500);
+  klick(w, knopf(doc, 'Affiliates importieren'));
+  await warte(w, 2500);
+  pruefe('Nichts Neues angelegt', serverTasks.length === 2, String(serverTasks.length));
+}
+
+gruppe('Import: ohne Handle gibt es den roten Tag');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_UP,
+    affiliates: [{ first_name: 'Ohne', last_name: 'Handle', email: 'oh@b.de',
+                   instagram: '', program_name: PROG }],
+  });
+  klick(w, knopf(doc, 'Affiliates importieren'));
+  await warte(w, 1500);
+  klick(w, knopf(doc, 'Affiliates importieren'));
+  await warte(w, 2500);
+  pruefe('Task heißt nach der Person',
+    serverTasks[0] && serverTasks[0].name === 'Ohne Handle', serverTasks[0] && serverTasks[0].name);
+  pruefe('Tag handle-fehlt ist dran',
+    (serverTasks[0] || {}).tags && serverTasks[0].tags.includes('handle-fehlt'),
+    JSON.stringify((serverTasks[0] || {}).tags));
+}
+
+gruppe('Ein Task ohne Unterhaltung wird später über den Handle verbunden');
+{
+  // T1 = Anna, Vorschau nennt annabolko.runs. Der Task kennt den Handle, aber
+  // keine Unterhaltung — genau der Fall nach einem Import.
+  const { w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: 'Instagram: @annabolko.runs\n\nigfu-handle: annabolko.runs', tags: [] }],
+  });
+  await warte(w, 2000);
+  pruefe('Thread-Marker wurde nachgetragen',
+    /igfu-thread:\s*T1/.test(serverTasks[0].beschreibung || ''),
+    (serverTasks[0].beschreibung || '').slice(0, 120));
+  pruefe('Link steht in der Beschreibung',
+    /selected_item_id=T1/.test(serverTasks[0].beschreibung || ''));
+}
+
 gruppe('Handle wandert als Markerzeile in die Beschreibung');
 {
   const { doc, w, serverTasks } = await starte({

@@ -177,11 +177,31 @@ Automatik nicht von sich aus.
 | Speichern | Token und Listen-ID übernehmen |
 | UpPromote abgleichen | Nur den UpPromote-Teil, ohne Listendurchlauf |
 | Inhalte-Seite öffnen | Metas Inhalte, datumssortiert, richtiges Konto |
+| Affiliates importieren | Legt aktive Affiliates aus UpPromote als Tasks an. **Erster Klick zählt nur**, zweiter legt an. |
 | Ganze Liste durchgehen | Kompletter Durchlauf statt nur bis zum letzten Lauf |
 | Token löschen | Trennt die ClickUp-Verbindung. Follow-ups bleiben lokal erhalten. |
 
 „Ganze Liste durchgehen" brauchst du nach längerer Abwesenheit oder wenn etwas
 fehlt. Im Alltag reicht der normale Knopf.
+
+---
+
+## Affiliates aus UpPromote holen
+
+Der Knopf **„Affiliates importieren"** im Panel legt alle aktiven Affiliates
+des Programms an, die noch nicht im CRM sind.
+
+**Der erste Klick legt nichts an**, er zählt nur und sagt dir, wie viele neu
+wären. Erst der zweite legt an.
+
+Wichtig vorher: Tasks, denen der Handle fehlt, kann der Import nicht
+wiedererkennen und legt sie doppelt an. Also erst die Liste „Handles
+nachtragen" abarbeiten.
+
+**Nicht jeder bekommt einen Unterhaltungs-Link.** Viele Affiliates wurden nie
+über das Partner-Postfach angeworben — dann gibt es keine Unterhaltung, und
+der Link kann nicht erfunden werden. Schreibst du später doch jemanden an,
+verbindet das Skript Unterhaltung und Task beim nächsten Durchlauf von selbst.
 
 ---
 
