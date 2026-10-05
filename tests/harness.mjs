@@ -19,6 +19,8 @@ export const THREADS = [
   { threadID: 'T2', title: 'Corina Bösch', snippet: vorschau('Corina: Hallo Josia, danke dir!'), participantProfileURIs: avatar('222222222'), timestamp: new Date(2026, 8, 20, 9, 30, 0).getTime() },
   // Du hast zuletzt geschrieben, kein Handle zu holen
   { threadID: 'T3', title: 'Willi', snippet: vorschau('Du: Melde dich gern nochmal'), participantProfileURIs: avatar('333333333'), timestamp: new Date(2026, 7, 30, 18, 0, 0).getTime() },
+  // Kein Instagram. Steht im Hauptpostfach mit drin und darf keine Pillen bekommen.
+  { threadID: 'T4', title: 'Manage AI', snippet: vorschau('Du: Test'), participantProfileURIs: avatar('444444444'), timestamp: new Date(2026, 8, 25, 9, 0, 0).getTime(), commPlatform: 'MESSENGER' },
 ];
 
 // Baut die Beschreibung so, wie das Skript sie schreibt.
@@ -180,6 +182,4 @@ export async function starte({
 }
 
 export const warte = (w, ms) => new Promise((r) => w.setTimeout(r, ms));
-export const chip = (doc, i, art) => doc.querySelectorAll('.row')[i].querySelector(`.igfu-tag[data-kind="${art}"]`);
-export const klick = (w, el) => el.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true }));
-export const knopf = (doc, text) => [...doc.querySelectorAll('.igfu-form button')].find((b) => b.textContent === text);
+export const chip = (doc, i, art) => doc.querySelectorAll('.row')[i]

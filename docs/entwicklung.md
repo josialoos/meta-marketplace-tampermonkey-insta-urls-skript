@@ -407,9 +407,15 @@ werden.
 **Deep-Link.** Eine bestimmte Unterhaltung öffnet man mit
 
 ```
-/latest/inbox/all/?partnership_messages=true
+/latest/inbox/all/?asset_id=<…>&business_id=<…>
   &selected_item_id=<threadID>&thread_type=IG_MESSAGE
 ```
+
+Dasselbe Format öffnet **Partner-Nachrichten und normale Instagram-DMs**, am
+05.10.2026 für beide live geprüft. `partnership_messages=true` braucht es
+nicht; es stand früher nur drin, weil der Link aus der Partner-Ansicht stammte.
+Business und Asset kommen aus der aktuellen Adresse, sonst öffnet Meta unter
+Umständen das zuletzt benutzte Konto.
 
 Ein eigenes URL-Fragment funktioniert **nicht**: Meta entfernt es binnen etwa
 zwei Sekunden beim Laden, die Liste braucht aber rund fünf.
@@ -417,30 +423,11 @@ zwei Sekunden beim Laden, die Liste braucht aber rund fünf.
 **`isFollowUp` am Thread-Objekt ist unbrauchbar** — das Feature ist bei Meta
 kaputt. Die Follow-up-Markierung bleibt die eigene im GM-Speicher.
 
-**`snippet` ist kein Text,** sondern ein React-Element. Der Text steht in
-`snippet.props.children`, und eigene Nachrichten tragen davor `Du: `.
+**`isPartnershipThread` ebenfalls nicht verwendbar:** es steht auch in der
+Partner-Ansicht auf `false`. Partner-Unterhaltungen und normale DMs sind an den
+Daten überhaupt nicht zu unterscheiden — der Unterschied ist allein, in welcher
+Liste man steht. Für uns macht das nichts, beide sind `INSTAGRAM_DIRECT` und
+nutzen denselben Link.
 
-**Speicher.** Markierungen liegen im GM-Speicher, nicht in `localStorage` —
-Meta räumt den Seitenspeicher beim Laden auf.
-
----
-
-## 8. Einrichtung
-
-### Tampermonkey
-
-1. Tampermonkey in Chrome installieren.
-2. In `chrome://extensions` unter Tampermonkey › Details prüfen:
-   **„Allow user scripts"** an und **Websitezugriff auf allen Websites**.
-   Ohne den ersten Schalter stehen Skripte im Dashboard auf aktiv und laufen
-   trotzdem nie.
-3. Die Rohadressen aufrufen und die Installation bestätigen:
-
-```
-.../main/postfach-markierungen.user.js
-.../main/creator-marketplace-links.user.js
-```
-
-Beide tragen `@updateURL` und `@downloadURL`, aktualisieren sich also selbst.
-
-> **Nie lösche
+**`commPlatform` ist der brauchbare Unterscheider:** `INSTAGRAM_DIRECT` gegen
+`MESSENGER`. Im Hauptpostfach stehen auch Messenger- und What

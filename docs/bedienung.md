@@ -5,6 +5,23 @@ stehen in [entwicklung.md](entwicklung.md).
 
 ---
 
+## Welche Unterhaltungen erfasst werden
+
+**Alle Instagram-Unterhaltungen** — sowohl Partner-Nachrichten als auch normale
+Direktnachrichten. Das Skript behandelt beide gleich, für dich macht es keinen
+Unterschied, in welcher Liste du stehst.
+
+**Messenger und WhatsApp bleiben außen vor.** Die stehen im Hauptpostfach zwar
+mit drin, bekommen aber keine Knöpfe.
+
+Eine Besonderheit: Manche Leute haben **zwei** Unterhaltungen mit euch, eine
+als Partner-Nachricht und eine als normale DM. Markierst du beide, entstehen
+zwei Tasks für dieselbe Person. Das Skript sagt dir dann Bescheid — verhindern
+tut es das nicht, weil es auch Fälle gibt, in denen zwei getrennte Gespräche
+richtig sind.
+
+---
+
 ## Was du im Postfach siehst
 
 An jeder Unterhaltung hängt unten ein schmaler Streifen mit drei Knöpfen:
@@ -232,21 +249,4 @@ verloren.
 
 ## Zwei Regeln für den Alltag
 
-**Nur ein Rechner gleichzeitig im Postfach.** Laufen zwei Browser parallel,
-legen beide Skripte Tasks an und es entstehen Dubletten.
-
-**Jeder braucht eigene Zugangsdaten.** Ohne eigenen ClickUp-Token laufen alle
-Einträge unter dem Namen dessen, dem der Token gehört.
-
----
-
-## Wenn etwas nicht stimmt
-
-**Gar keine Pillen und kein Knopf im Postfach**
-Zuerst die **Versionsnummer** im Tampermonkey-Dashboard ansehen. Es gibt ein
-zweites, zurückgestelltes Skript mit identischem Namen, das nichts anzeigt —
-unterscheidbar nur an der Nummer. Steht dort eine ältere Version als die des
-Kernskripts, die Rohadresse des Kernskripts aufrufen und neu bestätigen.
-
-Hilft das nicht: in `chrome://extensions` unter Tampermonkey › Details prüfen,
-ob 
+**Nur ein Rechner gleichzeitig im Postfach.** 

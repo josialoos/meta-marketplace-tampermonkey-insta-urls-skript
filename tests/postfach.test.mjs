@@ -828,6 +828,29 @@ gruppe('Ohne Notiz passiert nichts');
     !aufrufe.some((a) => a.methode === 'POST' && /\/comment$/.test(a.pfad)));
 }
 
+gruppe('Messenger-Unterhaltungen bekommen keine Pillen');
+{
+  const { doc, w } = await starte({ speicher: MIT_CLICKUP });
+  await warte(w, 600);
+  const zeilen = doc.querySelectorAll('.row').length;
+  const markiert = doc.querySelectorAll('[data-igfu-row]').length;
+  pruefe('Vier Zeilen, aber nur drei mit Knöpfen',
+    zeilen === 4 && markiert === 3, zeilen + ' Zeilen, ' + markiert + ' markiert');
+}
+
+gruppe('Der Link gilt für Partner-Nachrichten und normale DMs gleichermaßen');
+{
+  const { doc, w, aufrufe } = await starte({ speicher: MIT_CLICKUP });
+  await warte(w, 600);
+  klick(w, chip(doc, 1, 'followup'));   // Corina
+  await warte(w, 1200);
+  const neu = aufrufe.find((a) => a.methode === 'POST' && a.data && a.data.markdown_description);
+  const text = neu ? neu.data.markdown_description : '';
+  pruefe('Thread steht im Link', /selected_item_id=T2/.test(text), text.slice(0, 120));
+  pruefe('Kein partnership_messages mehr', !/partnership_messages/.test(text), text.slice(0, 120));
+  pruefe('thread_type bleibt', /thread_type=IG_MESSAGE/.test(text));
+}
+
 const PROG = 'TZAMPAS Affiliate Programm';
 
 gruppe('Import: erster Klick zählt nur');
@@ -1078,30 +1101,4 @@ gruppe('Datum der letzten Nachricht landet im Startdatum');
 {
   const { w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
-              beschreibung: beschreibungMit('T1'), tags: [TAG] }],
-  });
-  await warte(w, 1200);
-  pruefe('Startdatum entspricht der letzten Nachricht',
-    alsDatum(serverTasks[0].start) === '2026-09-14', String(serverTasks[0].start) + ' -> ' + alsDatum(serverTasks[0].start));
-}
-
-gruppe('Stimmt das Startdatum schon, wird nicht geschrieben');
-{
-  const passend = new Date(2026, 8, 14, 12, 0, 0).getTime();
-  const { w, aufrufe } = await starte({
-    speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
-              beschreibung: beschreibungMit('T1'), tags: [TAG], start: passend }],
-  });
-  await warte(w, 1200);
-  pruefe('Kein überflüssiger Schreibvorgang',
-    !aufrufe.some((a) => a.methode === 'PUT' && a.data && 'start_date' in a.data),
-    JSON.stringify(aufrufe.filter((a) => a.methode === 'PUT').map((a) => a.data)));
-}
-
-gruppe('Neuer Task bekommt das Datum gleich mit');
-{
-  const { doc, w, aufrufe } = await starte({ speicher: MIT_CLICKUP });
-  await warte(w, 600);
-  klick(w, chip(
+    tasks: [{ id: 'a1', name: 'Anna Bolko', status: 'angeschrieben', far

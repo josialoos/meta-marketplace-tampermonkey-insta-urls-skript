@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      4.2
+// @version      4.3
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -419,9 +419,23 @@
   // Metas eigener Link auf eine Unterhaltung. Das Briefing sagte, so etwas
   // gebe es nicht, inzwischen gibt es das: selected_item_id oeffnet die
   // Unterhaltung direkt, ganz ohne Zutun des Skripts. Live geprueft.
-  const postfachLink = (tid) =>
-    'https://business.facebook.com/latest/inbox/all/?partnership_messages=true'
-    + '&selected_item_id=' + tid + '&thread_type=IG_MESSAGE';
+  // Ein Format fuer beides. Am 05.10.2026 live geprueft: dieselbe Adresse
+  // oeffnet eine normale Instagram-DM genauso wie eine Partner-Unterhaltung.
+  // partnership_messages=true braucht es dafuer nicht — es stand bisher nur
+  // drin, weil der Link aus der Partner-Ansicht stammte.
+  //
+  // Business und Asset kommen aus der aktuellen Adresse, sonst oeffnet Meta
+  // unter Umstaenden das zuletzt benutzte Konto.
+  function postfachLink(tid) {
+    const p = new URLSearchParams();
+    const jetzt = new URLSearchParams(location.search);
+    for (const k of ['asset_id', 'business_id']) {
+      if (jetzt.get(k)) p.set(k, jetzt.get(k));
+    }
+    p.set('selected_item_id', tid);
+    p.set('thread_type', 'IG_MESSAGE');
+    return 'https://business.facebook.com/latest/inbox/all/?' + p.toString();
+  }
 
   // Die Markerzeile ist die Verbindung zwischen Unterhaltung und Task. Sie steht
   // sichtbar in der Beschreibung, damit jeder sieht, dass sie dazugehoert.
@@ -1193,6 +1207,16 @@
     if (cuTasks[tid]) return cuTasks[tid];
     const w = handleVon(tid);
     const h = handle || (w && w.handle) || '';
+    // Dieselbe Person kann zwei Unterhaltungen haben: eine als
+    // Partner-Nachricht, eine als normale DM. Dann entsteht ein zweiter Task.
+    // Verbieten waere falsch, es gibt auch echte Faelle mit zwei getrennten
+    // Unterhaltungen — aber stillschweigend passieren soll es nicht.
+    if (h) {
+      const schon = alleTasks().find((x) => x.tid !== tid && handleVonTask(x) === h);
+      if (schon) {
+        toast('Achtung: für @' + h + ' gibt es schon einen Task. Es entsteht ein zweiter.');
+      }
+    }
     const rumpf = {
       name: taskName(h, titel),
       status: CU_STATUS_NEU,
@@ -1460,11 +1484,23 @@
     return candidates.find((t) => t && t.title && text.includes(t.title)) || null;
   }
 
+  // Im Hauptpostfach stehen auch Messenger- und WhatsApp-Unterhaltungen. Die
+  // gehen uns nichts an, sonst haengen CRM-Pillen an Gespraechen, die mit
+  // Affiliates nichts zu tun haben.
+  //
+  // Unterschieden wird ueber commPlatform. isPartnershipThread taugt dafuer
+  // nicht: das steht am 05.10.2026 auch in der Partner-Ansicht auf false,
+  // genau wie das kaputte isFollowUp. Partner-Unterhaltungen und normale DMs
+  // sind an den Daten ohnehin nicht zu unterscheiden — der Unterschied ist
+  // allein, in welcher Liste man steht. Fuer uns macht das keinen Unterschied,
+  // beide sind INSTAGRAM_DIRECT und nutzen denselben Link.
+  const istInstagram = (t) => !t.commPlatform || t.commPlatform === 'INSTAGRAM_DIRECT';
+
   function threadRows() {
     const out = [];
     for (const row of document.querySelectorAll('div[role="presentation"]')) {
       const t = threadOf(row);
-      if (t) out.push([row, t]);
+      if (t && istInstagram(t)) out.push([row, t]);
     }
     return out;
   }
@@ -2794,42 +2830,4 @@
       abarbeiten();
       hashOeffnen();
       setTimeout(() => {
-        // Läuft noch eine zweite Version dieses Skripts (z. B. die alte 1.0)?
-        if (document.querySelectorAll('#igfu-launch').length > 1) {
-          console.warn('[Markierungen] Mehrere Versionen des Skripts aktiv.');
-          toast('Es laufen zwei Versionen dieses Skripts. Lösche in Tampermonkey die ältere, sonst überlagern sich die Knöpfe.');
-        }
-        if (isInbox() && !threadRows().length && document.querySelectorAll('div[role="presentation"]').length > 5) {
-          console.warn('[Markierungen] Die Unterhaltungsliste konnte nicht gelesen werden.');
-          toast('Markierungen: Die Unterhaltungsliste lässt sich nicht lesen. Vermutlich hat Meta die Seite umgebaut, dann muss das Skript angepasst werden.');
-        }
-      }, 8000);
-    } else if (launcher) {
-      launcher.hidden = true;
-      if (refreshBtn) refreshBtn.hidden = true;
-      if (tippEl) tippEl.classList.remove('show');
-      closePanel();
-    }
-    if (isMarkt()) { stilEinspielen(); cuAktualisieren(false); scanMarkt(); scanInhalte(); }
-  }
-
-  let scheduled = null;
-  const observer = new MutationObserver(() => {
-    if (scheduled) return;
-    scheduled = setTimeout(() => {
-      scheduled = null;
-      syncActive();
-      if (isInbox()) { scanRows(); positionUI(); }
-      if (isMarkt()) { scanMarkt(); scanInhalte(); }
-    }, 250);
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
-  setInterval(syncActive, 1500);
-  // Alle zwei Minuten nachsehen, was in ClickUp passiert ist. cuAktualisieren
-  // bremst sich selbst, haeufigere Aufrufe kosten also keine Anfragen.
-  setInterval(() => { if (isInbox()) { cuAktualisieren(false); abarbeiten(); } }, 120000);
-  // Die Kontaktkarte der geoeffneten Unterhaltung nebenbei auslesen. Kostet nichts
-  // und fuellt die fehlenden Handles waehrend der normalen Arbeit nach.
-  setInterval(karteAuslesen, 3000);
-  syncActive();
-})();
+       
