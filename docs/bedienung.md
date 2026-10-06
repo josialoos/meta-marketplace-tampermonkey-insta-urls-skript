@@ -167,6 +167,26 @@ bergen das Risiko einer Sperre.
 
 ---
 
+## Karteileichen stilllegen
+
+Manche Datensätze willst du nicht mehr sehen, aber auch nicht löschen: ein alter
+Account von jemandem, der inzwischen einen neuen hat, ein Testkonto, eine
+Dopplung, die in UpPromote wirklich zweimal existiert.
+
+**Löschen bringt nichts** — beim nächsten Import ist der Eintrag wieder da, weil
+der Import anhand von Handle und Mailadresse prüft, was schon vorhanden ist.
+
+Häng solchen Tasks stattdessen den Tag **`karteileiche`** an. Dann lässt das
+Skript sie komplett in Ruhe: kein Status, keine Frist, keine Priorität, kein
+`handle-fehlt`, und sie tauchen auch nicht mehr unter „Handles nachtragen" auf.
+Nur beim Import zählen sie weiter mit — und genau deshalb kommt der Eintrag
+nicht wieder.
+
+Schreib in die Beschreibung dazu, **warum** der Task stillgelegt ist. Das Skript
+überschreibt deine Notizen nicht, es ergänzt nur.
+
+---
+
 ## Die Nachfass-Frist
 
 Jeder Task bekommt automatisch ein **Fälligkeitsdatum** — deine Deadline, bis zu
@@ -184,6 +204,17 @@ erscheint dann zusätzlich „N fällig".
 
 Ein Fälligkeitsdatum, das du **selbst** im Panel einträgst, überschreibt die
 Automatik nicht von sich aus.
+
+**Importierte Kontakte bekommen ihre Frist, sobald eine Unterhaltung da ist.**
+Direkt nach dem Import haben sie keine, weil es kein Datum gibt, von dem aus
+gerechnet werden könnte. Das Skript verbindet sie aber selbständig mit der
+passenden Unterhaltung im Postfach, sobald es eine sieht — über den Handle, und
+wenn der nirgends auftaucht, über den Anzeigenamen. Danach läuft die Frist wie
+bei allen anderen.
+
+Zwei Fälle bleiben ohne Frist, und zwar bewusst: wenn der Anzeigename bei Meta
+ein anderer ist als der Name in UpPromote, und wenn zwei Tasks denselben Namen
+tragen. Im zweiten Fall wäre jede Zuordnung geraten.
 
 ---
 

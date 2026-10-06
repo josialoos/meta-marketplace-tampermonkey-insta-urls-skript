@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      4.4
+// @version      4.5
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -347,6 +347,17 @@
   // Macht sichtbar, was sonst stillschweigend durchfaellt: ohne Handle ist ein
   // Task fuer saemtliche Automatiken unsichtbar.
   const CU_TAG_OHNE_HANDLE = 'handle-fehlt';
+  // Ein als Karteileiche markierter Task ist absichtlich stillgelegt: ein altes
+  // Konto, ein Testkonto, eine Dopplung, die nicht geloescht werden darf, weil
+  // der naechste Import sie sonst wieder anlegt. Das Skript laesst ihn
+  // vollstaendig in Ruhe — kein Status, keine Frist, keine Prioritaet, keine
+  // Tags, keine Luecken-Meldung.
+  //
+  // Eine Ausnahme, und die ist der Zweck der Sache: beim Import zaehlt er
+  // weiter mit. Sein Handle und seine Mailadresse gelten als vergeben, damit
+  // derselbe Datensatz nicht beim naechsten Lauf erneut entsteht.
+  const CU_TAG_LEICHE = 'karteileiche';
+  const ROT = '#e5484d';
   const FELD_THREAD = 'Thread-ID';   // wird nur noch gelesen, falls vorhanden
   const CU_HANDLES = 'clickup:handles:v1';
   // { handle: { bereit: bool, anfragen: bool, stand: ms } }
@@ -493,6 +504,32 @@
 
   // „handle — Anzeigename" wieder auf den Anzeigenamen zurueckfuehren
   const rohTitel = (name) => String(name || '').replace(/^[a-z0-9._]{2,30}\s+—\s+/, '');
+
+  // Anzeigenamen vergleichbar machen: Grossschreibung, Satzzeichen, Emoji und
+  // mehrfache Leerzeichen fallen weg, der Rest muss uebereinstimmen.
+  const namensform = (s) => String(s || '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+
+  // Die Bruecke fuer die aus UpPromote importierten Tasks. Meta zeigt bei
+  // normalen Instagram-DMs fast immer den Anzeigenamen und nicht den Handle —
+  // und genau der Anzeigename steht bei diesen Tasks im Namen, weil er aus
+  // Vor- und Nachnamen des Affiliates gebaut wurde. Darueber findet eine
+  // Unterhaltung ihren Task auch dann, wenn der Handle nirgends auftaucht.
+  //
+  // Zwei Schranken, damit nichts geraten wird:
+  //   1. Mindestens zwei Wortteile. Ein einzelner Vorname („Willi") ist zu
+  //      wenig, davon gibt es in jeder Liste mehrere.
+  //   2. Genau ein passender Task. Bei zwei Treffern waere jede Wahl geraten,
+  //      dann bleibt die Unterhaltung lieber unverbunden.
+  function nameTreffer(titel) {
+    const soll = namensform(titel);
+    if (soll.split(' ').filter(Boolean).length < 2) return null;
+    const passend = cuOhneThread.filter((x) => !x.tid && !x.leiche
+      && namensform(rohTitel(x.titel)) === soll);
+    return passend.length === 1 ? passend[0] : null;
+  }
 
   function textAusSnippet(node, tiefe, raus) {
     if (tiefe > 6 || node == null) return raus;
@@ -856,6 +893,7 @@
       for (const t of alleTasks()) {
         // Abgesagt, keine Antwort, beendet: dort interessiert kein Handle mehr.
         if (STATUS_ENDE.includes(String(t.status || '').toLowerCase())) continue;
+        if (t.leiche) continue;
         const h = handleVonTask(t);
         if (h && !t.handle) {
           await markerEintragen(t, 'igfu-handle', h);
@@ -863,11 +901,11 @@
           marker += 1;
         }
         if (!h && !t.ohneHandle) {
-          await cuTagSetzen(t.taskId, CU_TAG_OHNE_HANDLE, '#e5484d', true);
+          await cuTagSetzen(t.taskId, CU_TAG_OHNE_HANDLE, ROT, true);
           t.ohneHandle = true;
           fehlt += 1;
         } else if (h && t.ohneHandle) {
-          await cuTagSetzen(t.taskId, CU_TAG_OHNE_HANDLE, '#e5484d', false);
+          await cuTagSetzen(t.taskId, CU_TAG_OHNE_HANDLE, ROT, false);
           t.ohneHandle = false;
         }
       }
@@ -941,7 +979,7 @@
     angelegt.mail = a.email;
     if (tid) cuTasks[tid] = angelegt; else cuOhneThread.push(angelegt);
     if (!a.handle) {
-      await cuTagSetzen(angelegt.taskId, CU_TAG_OHNE_HANDLE, '#e5484d', true);
+      await cuTagSetzen(angelegt.taskId, CU_TAG_OHNE_HANDLE, ROT, true);
       angelegt.ohneHandle = true;
     }
     await notizUebertragen(angelegt, a.notiz);
@@ -1012,6 +1050,7 @@
       await cuTasksLaden();
       const treffer = [];
       for (const t of alleTasks()) {
+        if (t.leiche) continue;
         const h = handleVonTask(t);
         const a = h && aktive[h];
         if (!a) continue;
@@ -1161,6 +1200,7 @@
       follow: tags.includes(CU_TAG),
       adcode: tags.includes(CU_TAG_ADCODE),
       ohneHandle: tags.includes(CU_TAG_OHNE_HANDLE),
+      leiche: tags.includes(CU_TAG_LEICHE),
       prio: (t.priority && t.priority.priority) || '',
       due: isoVonMs(t.due_date),
       // Das Startdatum traegt bei uns das Datum der letzten Nachricht. Ein
@@ -1212,7 +1252,7 @@
     // Verbieten waere falsch, es gibt auch echte Faelle mit zwei getrennten
     // Unterhaltungen — aber stillschweigend passieren soll es nicht.
     if (h) {
-      const schon = alleTasks().find((x) => x.tid !== tid && handleVonTask(x) === h);
+      const schon = alleTasks().find((x) => x.tid !== tid && !x.leiche && handleVonTask(x) === h);
       if (schon) {
         toast('Achtung: für @' + h + ' gibt es schon einen Task. Es entsteht ein zweiter.');
       }
@@ -1257,6 +1297,15 @@
 
   function vormerken(auftrag) {
     if (!cuEingerichtet()) return;
+    // Fuer einen stillgelegten Task wird gar kein Auftrag vorgemerkt. Das muss
+    // hier stehen und nicht erst beim Ausfuehren: abarbeiten() ruft am Ende
+    // scanRows() auf, und scanRows merkt denselben Auftrag sofort wieder vor.
+    // Ein Auftrag, der erst beim Ausfuehren verworfen wird, dreht deshalb
+    // endlos im Kreis — am 06.10.2026 blieb damit das ganze Skript beim Laden
+    // haengen, weil der Startdatums-Auftrag fuer eine Karteileiche sich selbst
+    // immer wieder nachgelegt hat.
+    const stillgelegt = cuTasks[auftrag.tid];
+    if (stillgelegt && stillgelegt.leiche) return;
     const w = warteschlange();
     // Gleichartige Auftraege zum selben Thread ersetzen statt anhaengen
     const rest = w.filter((a) => !(a.art === auftrag.art && a.tid === auftrag.tid));
@@ -1320,10 +1369,18 @@
     if (a.art === 'letzte' && !cuTasks[a.tid]) return; // Datum legt nichts an
     if (a.art === 'prio' && !cuTasks[a.tid]) return;   // Prioritaet legt nichts an
     if (a.art === 'handle' && !cuTasks[a.tid]) return; // Handle legt nichts an
+    // Faengt Auftraege ab, die schon in der gespeicherten Warteschlange lagen,
+    // bevor der Tag gesetzt wurde. Neue entstehen keine mehr, darum kann das
+    // hier nicht in eine Schleife laufen — siehe vormerken().
+    if (cuTasks[a.tid] && cuTasks[a.tid].leiche) return;
 
     if (a.art === 'verbinden-handle') {
+      // Verbindet eine Unterhaltung mit einem Task, der noch keine hat. Gesucht
+      // wird entweder ueber den Handle oder, wenn keiner zu holen war, ueber die
+      // Task-ID, die der Namensvergleich ermittelt hat.
       if (cuTasks[a.tid]) return;
-      const i = cuOhneThread.findIndex((x) => !x.tid && handleVonTask(x) === a.handle);
+      const i = cuOhneThread.findIndex((x) => !x.tid && !x.leiche
+        && (a.taskId ? x.taskId === a.taskId : handleVonTask(x) === a.handle));
       if (i < 0) return;
       const ziel = cuOhneThread[i];
       const voll = await cuRequest('GET', '/task/' + ziel.taskId + '?include_markdown_description=true');
@@ -1426,6 +1483,9 @@
     if (!erzwingen && Date.now() - cuLetzterAbruf < 120000) return;
     cuLetzterAbruf = Date.now();
     try {
+      // Einmal je Seitenaufruf: der Tag muss im Space liegen, sonst laesst er
+      // sich weder vom Skript noch von Hand an einen Task haengen.
+      await cuTagSichern(CU_TAG_LEICHE, ROT);
       await cuTasksLaden();
       zusammenfuehren();
       scanRows();
@@ -1618,8 +1678,12 @@
       // Handle mit dem vorhandenen Task verbunden — ohne Zutun.
       if (!cuTasks[tid]) {
         const hier = (handleVon(tid) || {}).handle || vorschau;
-        if (hier && cuOhneThread.some((x) => !x.tid && handleVonTask(x) === hier)) {
+        if (hier && cuOhneThread.some((x) => !x.tid && !x.leiche && handleVonTask(x) === hier)) {
           vormerken({ art: 'verbinden-handle', tid, titel: t.title, handle: hier });
+        } else if (!hier) {
+          // Kein Handle zu holen: dann ueber den Anzeigenamen versuchen.
+          const ziel = nameTreffer(t.title);
+          if (ziel) vormerken({ art: 'verbinden-handle', tid, titel: t.title, taskId: ziel.taskId });
         }
       }
 
@@ -1899,6 +1963,7 @@
       await cuTasksLaden();
       let fertig = 0;
       for (const t of alleTasks()) {
+        if (t.leiche) continue;
         const h = handleVonTask(t);
         if (!h || !alle[h]) continue;
         // Der Tag ist eine Tatsache, kein Zustand: er wird auch dann gesetzt,
@@ -2333,6 +2398,7 @@
     if (!cuEingerichtet()) return [];
     return alleTasks()
       .filter((t) => !STATUS_ENDE.includes(String(t.status || '').toLowerCase()))
+      .filter((t) => !t.leiche)
       .filter((t) => !handleVonTask(t))
       .sort((a, b) => String(a.titel || '').localeCompare(String(b.titel || '')));
   }

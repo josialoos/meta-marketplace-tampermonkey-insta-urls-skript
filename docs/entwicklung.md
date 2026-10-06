@@ -297,6 +297,71 @@ man ihn dort sieht und danach suchen kann. Und als Markerzeile, weil die die
 dann den Namen. Eine Umbenennung in ClickUp kann die Zuordnung damit nicht mehr
 stillschweigend zerreißen.
 
+### Wie ein importierter Task seine Unterhaltung findet
+
+Aus UpPromote importierte Tasks haben beim Anlegen keine `igfu-thread`-Zeile,
+weil mit den meisten dieser Affiliates nie über das Partner-Postfach geschrieben
+wurde. Verbunden wird nachträglich, und zwar über zwei Wege in dieser Reihenfolge:
+
+```
+Unterhaltung im Postfach
+        │
+        ├── Handle bekannt?  ──ja──► Task mit gleichem igfu-handle   (verbinden-handle)
+        │   (Vorschautext,
+        │    Kontaktkarte)
+        │
+        └── nein ──► Anzeigename  ──► Task mit gleichem Namen        (Namensbrücke)
+```
+
+**Die Namensbrücke ist der Normalfall, nicht die Ausnahme.** Bei normalen
+Instagram-DMs zeigt Meta in der Liste fast immer den Anzeigenamen und nirgends
+den Handle — der Handle steht nur im Vorschautext („handle gefällt …") oder in
+der Kontaktkarte der geöffneten Unterhaltung. Der Anzeigename dagegen ist genau
+das, was bei einem importierten Task im Namen steht, weil er aus Vor- und
+Nachnamen des Affiliates gebaut wurde.
+
+Verglichen wird über `namensform()`: Kleinschreibung, Satzzeichen und Emoji
+fallen weg, mehrfache Leerzeichen werden zu einem. Zwei Schranken verhindern,
+dass geraten wird:
+
+1. **Mindestens zwei Wortteile.** Ein einzelner Vorname („Willi") passt in jeder
+   Liste auf mehrere Leute.
+2. **Genau ein passender Task.** Bei zwei Treffern bleibt die Unterhaltung
+   unverbunden — eine Wahl wäre geraten.
+
+Sobald die Verbindung steht, läuft der Rest von selbst: der nächste Scan setzt
+das Startdatum auf das Datum der letzten Nachricht, und `fristFuer()` leitet
+daraus die Nachfass-Frist ab.
+
+**Was die Brücke nicht kann:** Ändert jemand seinen Anzeigenamen auf Instagram,
+passt er nicht mehr. Und zwei verschiedene Leute mit demselben Anzeigenamen
+können nicht unterschieden werden — darum die zweite Schranke.
+
+### Der Tag `karteileiche`
+
+Manche Datensätze müssen bleiben, obwohl sie niemand mehr bearbeiten will: ein
+altes Affiliate-Konto, ein Testkonto, eine Dopplung, die in UpPromote wirklich
+zweimal existiert. **Löschen hilft nicht** — der nächste Import legt sie wieder
+an, weil der Import über Handle und E-Mail prüft, was schon da ist.
+
+Der Tag `karteileiche` (rot) macht aus dem Task ein Stoppschild. Das Skript
+lässt ihn vollständig in Ruhe:
+
+| Automatik | Karteileiche |
+|---|---|
+| `handle-fehlt` setzen, Lückenliste | übersprungen |
+| UpPromote-Status, Sales | übersprungen |
+| Content, Tag `ad-code` | übersprungen |
+| Status, Frist, Priorität, Name | übersprungen |
+| Namensbrücke, Handle-Verbindung | übersprungen |
+| Dopplungs-Hinweis beim Anlegen | zählt nicht als vorhandener Task |
+| **Import: Handle und Mail gelten als vergeben** | **zählt mit** |
+
+Die letzte Zeile ist der ganze Zweck: der Task blockiert seinen eigenen
+Neu-Import und steht sonst niemandem im Weg. `cuTagSichern()` legt den Tag beim
+Aktualisieren einmal je Seitenaufruf im Space an, sonst ließe er sich auch von
+Hand nicht anhängen.
+
 **Ein Task braucht nicht zwingend eine Unterhaltung.** Intern wird `cuTasks`
 nach Thread-ID geführt, weil jede Zeile im Postfach ihren Task finden muss.
 Bis Version 3.9 fielen Tasks ohne Thread-ID beim Laden ersatzlos heraus —

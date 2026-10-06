@@ -27,6 +27,19 @@ export const THREADS = [
 export const beschreibungMit = (tid) =>
   `Unterhaltung im Postfach öffnen\n\nVom Postfach-Skript verwaltet.\nigfu-thread: ${tid}`;
 
+// Jede Gruppe laesst sonst ein jsdom-Fenster mit laufenden Timern zurueck:
+// syncActive alle 1,5 s, karteAuslesen alle 3 s, der ClickUp-Abruf alle zwei
+// Minuten. Bei ueber siebzig Gruppen feuern am Ende Hunderte Timer gleichzeitig,
+// der Lauf wird immer langsamer, und Pruefungen mit einem Zeitfenster fallen
+// irgendwann um, obwohl am Skript nichts falsch ist. Genau das ist am 06.10.2026
+// passiert, als acht neue Gruppen dazukamen.
+//
+// Deshalb wird das Fenster der vorigen Gruppe geschlossen. Sicher ist das, weil
+// keine Gruppe zwei Fenster gleichzeitig braucht — „Speicher uebersteht ein
+// Neuladen" greift nach dem zweiten starte() nur noch auf den Speicher zu, und
+// der ist eine gewoehnliche Map.
+let voriges = null;
+
 export async function starte({
   pfad = '/latest/inbox/all/',
   speicher = {},
@@ -46,6 +59,7 @@ export async function starte({
   const body = markt
     ? '<body><div id="markt">' + karten + '</div></body>'
     : '<body><div id="liste">' + THREADS.map((t) => zeile(t.title, 'Hallo')).join('') + '</div>' + seitenleiste + '</body>';
+  if (voriges) { try { voriges.close(); } catch { /* schon zu */ } }
   const dom = new JSDOM(body, {
     url: 'https://business.facebook.com' + pfad,
     runScripts: 'outside-only',
@@ -177,6 +191,7 @@ export async function starte({
   }).observe(doc.body, { attributes: true, subtree: true, attributeFilter: ['data-igfu-flash'] });
 
   w.eval(readFileSync(SKRIPT, 'utf8'));
+  voriges = w;
   await warte(w, 400);
   return { dom, w, doc, store, aufrufe, serverTasks, spaceTags };
 }

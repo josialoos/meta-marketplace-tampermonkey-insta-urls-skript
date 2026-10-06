@@ -92,8 +92,11 @@ gruppe('Fehlender Tag wird einmalig im Space angelegt');
   pruefe('Tag existiert danach im Space', spaceTags.includes(TAG), JSON.stringify(spaceTags));
   klick(w, chip(doc, 1, 'followup'));
   await warte(w, 600);
+  // Nur der Follow-up-Tag wird gezaehlt: „karteileiche" legt das Skript beim
+  // Aktualisieren ebenfalls an, das gehoert hier nicht zur Frage.
   pruefe('Tag wird nur einmal angelegt',
-    aufrufe.filter((a) => a.methode === 'POST' && /^\/space\/[^/]+\/tag$/.test(a.pfad)).length === 1);
+    aufrufe.filter((a) => a.methode === 'POST' && /^\/space\/[^/]+\/tag$/.test(a.pfad)
+      && a.data && a.data.tag && a.data.tag.name === TAG).length === 1);
 }
 
 gruppe('Follow-up abräumen entfernt den Tag');
@@ -1273,6 +1276,105 @@ gruppe('Token löschen schaltet ClickUp sauber ab');
   pruefe('Token ist weg', !store.get('clickup:token:v1'));
   pruefe('CRM-Pille verschwindet', chip(doc, 0, 'crm').hidden === true);
   pruefe('Follow-up läuft weiter lokal', (klick(w, chip(doc, 1, 'followup')), !!store.get('igfu:v1').T2));
+}
+
+gruppe('Eine Karteileiche wird nicht mehr angefasst');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'Sherin Rassoul', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: 'Testkonto, bleibt stehen.', tags: ['karteileiche'] }],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 2500);
+  pruefe('Kein Tag „handle-fehlt", obwohl kein Handle da ist',
+    !(serverTasks[0].tags || []).includes('handle-fehlt'), JSON.stringify(serverTasks[0].tags));
+  pruefe('Die Beschreibung bleibt unverändert',
+    serverTasks[0].beschreibung === 'Testkonto, bleibt stehen.', serverTasks[0].beschreibung);
+}
+
+gruppe('Der Tag karteileiche wird im Space angelegt');
+{
+  const { doc, w, spaceTags } = await starte({ speicher: MIT_CLICKUP });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 1500);
+  pruefe('Der Tag liegt im Space, damit er sich anhängen lässt',
+    spaceTags.includes('karteileiche'), JSON.stringify(spaceTags));
+}
+
+gruppe('Die Karteileiche bleibt beim UpPromote-Abgleich stehen');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_UP,
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1'), tags: [TAG, 'karteileiche'] }],
+    affiliates: [{ first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de', instagram: 'annabolko.runs' }],
+  });
+  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await warte(w, 1200);
+  pruefe('Der Status wandert nicht auf ongeboardet',
+    serverTasks[0].status === 'angeschrieben', serverTasks[0].status);
+}
+
+gruppe('Eine Unterhaltung findet ihren Task über den Anzeigenamen');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'Corina Bösch', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: 'Aus UpPromote übernommen.\nigfu-mail: c@b.de' }],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 2500);
+  pruefe('Die Markerzeile igfu-thread wurde nachgetragen',
+    /igfu-thread:\s*T2/.test(serverTasks[0].beschreibung || ''),
+    (serverTasks[0].beschreibung || '').slice(-120));
+  pruefe('Der Link ins Postfach steht in der Beschreibung',
+    /selected_item_id=T2/.test(serverTasks[0].beschreibung || ''),
+    (serverTasks[0].beschreibung || '').slice(0, 120));
+  pruefe('Das Datum der letzten Nachricht landet im Startdatum',
+    !!serverTasks[0].start, String(serverTasks[0].start));
+}
+
+gruppe('Zwei gleich benannte Tasks bleiben unverbunden');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [
+      { id: 'a1', name: 'Corina Bösch', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'eine' },
+      { id: 'a2', name: 'Corina Bösch', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'andere' },
+    ],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 2500);
+  pruefe('Keiner der beiden bekommt die Unterhaltung',
+    !/igfu-thread/.test(serverTasks[0].beschreibung || '')
+    && !/igfu-thread/.test(serverTasks[1].beschreibung || ''),
+    JSON.stringify([serverTasks[0].beschreibung, serverTasks[1].beschreibung]));
+}
+
+gruppe('Ein einzelner Vorname verbindet nicht');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'Willi', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'nur Vorname' }],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 2500);
+  pruefe('Kein Thread angehängt',
+    !/igfu-thread/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+}
+
+gruppe('Eine Karteileiche wird nicht über den Namen verbunden');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'Corina Bösch', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: 'altes Konto', tags: ['karteileiche'] }],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 2500);
+  pruefe('Kein Thread angehängt',
+    !/igfu-thread/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
 }
 
 console.log('\n' + (fehlgeschlagen
