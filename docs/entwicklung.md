@@ -597,6 +597,15 @@ node tests/lader.test.mjs
 jsdom mit nachgebauten GM-Funktionen, ClickUp- und UpPromote-Antworten. Keine
 echten Anfragen, keine echten Zugangsdaten.
 
+**Der Lauf dauert einige Minuten** und ist auf Zeitfenster angewiesen —
+mehrere Prüfungen warten auf Vorgänge, die im Skript bewusst verzögert laufen.
+Deshalb schließt `starte()` das jsdom-Fenster der vorigen Gruppe. Ohne das
+bleiben pro Gruppe drei Intervalle stehen (`syncActive`, `karteAuslesen`, der
+ClickUp-Abruf); bei über siebzig Gruppen feuern am Ende Hunderte gleichzeitig,
+der Lauf wird immer langsamer, und Prüfungen mit Zeitfenster fallen um, **obwohl
+am Skript nichts falsch ist**. Am 06.10.2026 sah das nach drei Regressionen aus
+und war keine.
+
 **Gewohnheit: Mutationstest.** Nach jedem neuen Test die Zeile, die er absichern
 soll, kurz kaputt machen und prüfen, dass der Test wirklich umfällt. Mehrere
 Prüfungen liefen anfangs leer durch und hätten nichts gemerkt.
