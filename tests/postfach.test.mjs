@@ -1638,6 +1638,100 @@ gruppe('Die zweite Unterhaltung findet den Task auch über den Namen');
     (serverTasks[0].beschreibung || '').slice(-180));
 }
 
+gruppe('Fehlende Fristen nachtragen: Warenversand');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'zzz.niemand — Zzz Niemand', status: 'erste ware versendet', farbe: '#b660e0',
+              beschreibung: 'aus UpPromote\nigfu-handle: zzz.niemand\nigfu-ware: 2026-09-21' }],
+  });
+  klick(w, knopf(doc, 'Fehlende Fristen nachtragen'));
+  await warte(w, 1500);
+  // 21.09.2026 ist ein Montag. Zehn Wochentage weiter, Wochenenden
+  // uebersprungen, ist Montag der 05.10.
+  const gesetzt = new Date(Number(serverTasks[0].due)).toISOString().slice(0, 10);
+  pruefe('Versand plus 10 Wochentage', gesetzt === '2026-10-05', gesetzt);
+}
+
+gruppe('Fehlende Fristen nachtragen: Onboarding-Datum');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_UP,
+    tasks: [{ id: 'a1', name: 'zzz.niemand — Zzz Niemand', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: 'aus UpPromote\nigfu-handle: zzz.niemand' }],
+    affiliates: [{ first_name: 'Zzz', last_name: 'Niemand', email: 'a@b.de', instagram: 'zzz.niemand',
+                   approved_at: '2026-09-01T10:00:00Z' }],
+  });
+  klick(w, knopf(doc, 'Fehlende Fristen nachtragen'));
+  await warte(w, 2000);
+  const gesetzt = new Date(Number(serverTasks[0].due)).toISOString().slice(0, 10);
+  pruefe('Onboarding plus 14 Tage', gesetzt === '2026-09-15', gesetzt);
+}
+
+gruppe('Fehlende Fristen nachtragen: letzte Nachricht');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'zzz.niemand — Zzz Niemand', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: 'aus UpPromote\nigfu-handle: zzz.niemand',
+              start: new Date(2026, 8, 1, 12, 0, 0).getTime() }],
+  });
+  klick(w, knopf(doc, 'Fehlende Fristen nachtragen'));
+  await warte(w, 1500);
+  const gesetzt = new Date(Number(serverTasks[0].due)).toISOString().slice(0, 10);
+  pruefe('Letzte Nachricht plus 14 Tage', gesetzt === '2026-09-15', gesetzt);
+}
+
+gruppe('Fehlende Fristen nachtragen: vorhandene bleiben unangetastet');
+{
+  const vorhanden = new Date(2026, 0, 5, 12, 0, 0).getTime();
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'zzz.niemand — Zzz Niemand', status: 'erste ware versendet', farbe: '#b660e0',
+              beschreibung: 'aus UpPromote\nigfu-handle: zzz.niemand\nigfu-ware: 2026-09-21',
+              due: vorhanden }],
+  });
+  klick(w, knopf(doc, 'Fehlende Fristen nachtragen'));
+  await warte(w, 1500);
+  pruefe('Die Frist ist unverändert', Number(serverTasks[0].due) === vorhanden, String(serverTasks[0].due));
+}
+
+gruppe('Fehlende Fristen nachtragen: Endstatus und Karteileichen bleiben außen vor');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'zzz.niemand — Zzz Niemand', status: 'abgesagt', farbe: '#87909e',
+              beschreibung: 'x\nigfu-handle: zzz.niemand\nigfu-ware: 2026-09-21' },
+            { id: 'a2', name: 'yyy.niemand — Yyy Niemand', status: 'erste ware versendet', farbe: '#b660e0',
+              beschreibung: 'x\nigfu-handle: yyy.niemand\nigfu-ware: 2026-09-21', tags: ['karteileiche'] }],
+  });
+  klick(w, knopf(doc, 'Fehlende Fristen nachtragen'));
+  await warte(w, 1500);
+  pruefe('Abgesagt bekommt keine Frist', !serverTasks[0].due, String(serverTasks[0].due));
+  pruefe('Die Karteileiche bekommt keine Frist', !serverTasks[1].due, String(serverTasks[1].due));
+}
+
+gruppe('Fehlende Fristen nachtragen: nie vor das Startdatum');
+{
+  // Ware vom Mai, Gespräch vom Oktober. Die Warenregel allein ergäbe eine Frist
+  // vor dem Startdatum, und die lehnt ClickUp ab.
+  const { doc, w, serverTasks, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'zzz.niemand — Zzz Niemand', status: 'erste ware versendet', farbe: '#b660e0',
+              beschreibung: 'x\nigfu-handle: zzz.niemand\nigfu-ware: 2026-05-12',
+              start: new Date(2026, 9, 1, 12, 0, 0).getTime() }],
+  });
+  klick(w, knopf(doc, 'Fehlende Fristen nachtragen'));
+  await warte(w, 1500);
+  const gesetzt = new Date(Number(serverTasks[0].due)).toISOString().slice(0, 10);
+  pruefe('Es gilt die spätere Regel', gesetzt === '2026-10-15', gesetzt);
+  pruefe('Die Frist liegt nach dem Startdatum',
+    Number(serverTasks[0].due) > Number(serverTasks[0].start), gesetzt);
+  pruefe('Kein Startdatum mitgeschickt',
+    !aufrufe.some((a) => a.methode === 'PUT' && a.data && 'start_date' in a.data),
+    JSON.stringify(aufrufe.filter((a) => a.methode === 'PUT').map((a) => a.data)));
+}
+
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));

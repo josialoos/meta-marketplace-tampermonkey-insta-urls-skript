@@ -256,6 +256,27 @@ passenden Unterhaltung im Postfach, sobald es eine sieht — über den Handle, u
 wenn der nirgends auftaucht, über den Anzeigenamen. Danach läuft die Frist wie
 bei allen anderen.
 
+### Fehlende Fristen nachtragen
+
+Im Menü unter ClickUp liegt **„Fehlende Fristen nachtragen"**. Der Knopf versorgt
+jeden Task, der noch **keine** Fälligkeit hat — nach Status:
+
+| Status | Frist |
+|---|---|
+| ab `erste ware versendet` | Versanddatum + 10 Wochentage |
+| `ongeboardet` | Onboarding-Datum aus UpPromote + 14 Tage |
+| darunter | letzte Nachricht + 14 Tage |
+
+**Tasks, die schon eine Frist haben, werden nicht angefasst** — auch nicht
+„nur korrigiert". Deshalb kannst du den Knopf gefahrlos mehrfach drücken.
+
+Außen vor bleiben die Endstatus `abgesagt`, `keine antwort`, `beendet` und alles
+mit `karteileiche`. Dort nachzufassen hat keinen Zweck.
+
+Findet sich kein brauchbares Datum — kein Versand, kein Onboarding-Datum bei
+UpPromote, keine Nachricht —, bleibt der Task ohne Frist. Die Meldung am Ende
+sagt, wie viele das betrifft.
+
 Zwei Fälle bleiben ohne Frist, und zwar bewusst: wenn der Anzeigename bei Meta
 ein anderer ist als der Name in UpPromote, und wenn zwei Tasks denselben Namen
 tragen. Im zweiten Fall wäre jede Zuordnung geraten.

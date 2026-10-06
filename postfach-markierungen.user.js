@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      5.0
+// @version      5.1
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -985,6 +985,22 @@
     return { marker, fehlt };
   }
 
+  // Das Onboarding-Datum. UpPromote benennt es je nach Konto unterschiedlich,
+  // deshalb werden mehrere Felder der Reihe nach probiert und das erste
+  // genommen, das sich als Datum lesen laesst. Findet sich keines, bleibt es
+  // leer — dann bekommt der Task eben keine Frist statt einer erfundenen.
+  const DATUM_FELDER = ['approved_at', 'created_at', 'joined_at', 'registered_at',
+    'approved_date', 'created', 'date_created'];
+  function datumAusAffiliate(a) {
+    for (const feld of DATUM_FELDER) {
+      const roh = a && a[feld];
+      if (!roh) continue;
+      const d = new Date(typeof roh === 'number' && roh < 1e12 ? roh * 1000 : roh);
+      if (!isNaN(d.getTime()) && d.getFullYear() > 2000) return isoVonMs(d.getTime());
+    }
+    return '';
+  }
+
   // Wie upAktive, aber mit allem, was der Import braucht, und ohne die
   // Beschraenkung auf Affiliates mit Handle.
   async function upAktiveVoll(melden) {
@@ -1005,6 +1021,7 @@
           name: [a.first_name, a.last_name].filter(Boolean).join(' ').trim(),
           programm: String(a.program_name || '').trim(),
           notiz: notizAusAffiliate(a),
+          seit: datumAusAffiliate(a),
           umsatz: ['approved_amount', 'pending_amount', 'paid_amount']
             .reduce((summe, feld) => summe + (parseFloat(a[feld]) || 0), 0),
         });
@@ -1101,6 +1118,87 @@
       updateLauncher();
     } catch (e) {
       toast('Import: ' + e.message);
+    } finally {
+      cuLaeuft = false;
+    }
+  }
+
+  // Traegt fehlende Nachfass-Fristen nach. Einmalig gedacht, aber beliebig oft
+  // wiederholbar, weil Tasks mit Frist unangetastet bleiben.
+  //
+  // Drei Regeln, nach Status:
+  //   ab „erste ware versendet"  Versand + 10 Wochentage
+  //   „ongeboardet"              Onboarding-Datum aus UpPromote + 14 Tage
+  //   darunter                   letzte Nachricht + 14 Tage
+  //
+  // Zwei Dinge, die hier zwingend sind:
+  //   1. Nur Tasks ohne Frist. Wer eine hat, wird nicht angefasst — auch nicht
+  //      „nur korrigiert". So verlangt, und es macht den Lauf wiederholbar.
+  //   2. Nie vor das Startdatum. ClickUp lehnt eine Faelligkeit vor dem
+  //      Startdatum ab („Enable the Duration ClickApp"), und das Startdatum
+  //      traegt bei uns die letzte Nachricht. Eine Warensendung von Mai ergaebe
+  //      bei einem Gespraech von Oktober sonst eine Frist in der Vergangenheit
+  //      und einen Fehler 400. Deshalb gilt wie ueberall die spaetere der
+  //      beiden Regeln.
+  async function fristenNachtragen() {
+    if (!cuEingerichtet()) { toast('Bitte erst ClickUp einrichten.'); return; }
+    if (cuLaeuft) { toast('Es läuft gerade eine Übertragung, bitte kurz warten.'); return; }
+    cuLaeuft = true;
+    const zahl = { ware: 0, onboard: 0, gespraech: 0, ohne: 0, fehler: 0 };
+    try {
+      await cuTasksLaden();
+      // Das Onboarding-Datum gibt es nur bei UpPromote. Ohne Token wird dieser
+      // Teil uebersprungen, der Rest laeuft trotzdem.
+      const nachHandle = {};
+      const nachMail = {};
+      if (upToken()) {
+        toast('Frage UpPromote nach den Onboarding-Daten …');
+        for (const a of await upAktiveVoll(toast)) {
+          if (a.handle && !nachHandle[a.handle]) nachHandle[a.handle] = a;
+          if (a.email && !nachMail[a.email]) nachMail[a.email] = a;
+        }
+      }
+      const offen = alleTasks().filter((t) => !t.due && !t.leiche
+        && !STATUS_ENDE.includes(String(t.status || '').toLowerCase().trim()));
+      if (!offen.length) { toast('Alle Tasks haben bereits eine Frist.'); return; }
+      toast(offen.length + ' Tasks ohne Frist werden versorgt …');
+      for (const t of offen) {
+        const rang = statusRang(t.status);
+        let frist = '';
+        let art = '';
+        if (rang >= statusRang(CU_STATUS_WARE) && t.ware) {
+          frist = wochentagePlus(t.ware, 10);
+          art = 'ware';
+        } else if (String(t.status || '').toLowerCase().trim() === CU_STATUS_ONBOARD) {
+          const a = nachHandle[handleVonTask(t)] || nachMail[t.mail];
+          if (a && a.seit) { frist = tagePlus(a.seit, 14); art = 'onboard'; }
+        } else if (rang >= 0 && rang < statusRang(CU_STATUS_ONBOARD) && t.letzte) {
+          frist = tagePlus(t.letzte, 14);
+          art = 'gespraech';
+        }
+        if (frist && t.letzte) {
+          const mindestens = tagePlus(t.letzte, 14);
+          if (mindestens && mindestens > frist) frist = mindestens;
+        }
+        const ms = frist ? msVonIso(frist) : 0;
+        if (!ms) { zahl.ohne += 1; continue; }
+        try {
+          await cuRequest('PUT', '/task/' + t.taskId, { due_date: ms, due_date_time: false });
+          t.due = frist;
+          zahl[art] += 1;
+        } catch (e) {
+          zahl.fehler += 1;
+        }
+      }
+      cuSpeichern();
+      toast('Fristen nachgetragen: ' + zahl.ware + ' über den Warenversand, '
+        + zahl.onboard + ' über das Onboarding, ' + zahl.gespraech + ' über die letzte Nachricht. '
+        + zahl.ohne + ' ohne brauchbares Datum'
+        + (zahl.fehler ? ', ' + zahl.fehler + ' abgelehnt' : '') + '.');
+      scanRows();
+      updateLauncher();
+    } catch (e) {
+      toast('Fristen: ' + e.message);
     } finally {
       cuLaeuft = false;
     }
@@ -2414,6 +2512,11 @@
       },
         'Öffnet die Inhalte des Creator-Marketing-Hubs, nach Datum sortiert. Was dort sichtbar wird, '
         + 'sammelt das Skript ein. Beim nächsten Aktualisieren landet es in ClickUp.'),
+      button('igfu-link', 'Fehlende Fristen nachtragen',
+        async () => { await fristenNachtragen(); standAnzeigen(); },
+        'Setzt eine Nachfass-Frist bei jedem Task, der noch keine hat: ab „erste ware versendet" '
+        + 'Versand plus 10 Wochentage, bei „ongeboardet" das Onboarding-Datum plus 14 Tage, '
+        + 'darunter die letzte Nachricht plus 14 Tage. Tasks mit Frist bleiben unangetastet.'),
       button('igfu-link', 'Ganze Liste durchgehen', () => { closePanel(); allesAktualisieren(true); },
         'Scrollt die komplette Unterhaltungsliste durch statt nur bis zum letzten Lauf. '
         + 'Dauert deutlich länger. Nötig nach längerer Abwesenheit oder wenn etwas fehlt.'),
