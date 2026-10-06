@@ -185,6 +185,16 @@ nicht wieder.
 Schreib in die Beschreibung dazu, **warum** der Task stillgelegt ist. Das Skript
 überschreibt deine Notizen nicht, es ergänzt nur.
 
+### Abgeschlossen: der Tag `ignore`
+
+`ignore` hängt an Profilen, mit denen wir fertig sind — aus welchem Grund auch
+immer wird dort kein positives Ergebnis mehr erwartet.
+
+Der Tag ist eine Notiz für euch, **kein Schalter**: das Skript kennt ihn nicht
+und zieht Status, Frist und Priorität dort weiter mit. Soll ein Task wirklich
+nicht mehr angefasst werden, braucht er zusätzlich `karteileiche` oder einen der
+Endstatus `abgesagt`, `keine antwort`, `beendet`.
+
 ---
 
 ## Die Nachfass-Frist

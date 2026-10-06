@@ -337,6 +337,32 @@ daraus die Nachfass-Frist ab.
 passt er nicht mehr. Und zwei verschiedene Leute mit demselben Anzeigenamen
 können nicht unterschieden werden — darum die zweite Schranke.
 
+### Welche Tags es gibt
+
+| Tag | Farbe | Wer setzt ihn | Was das Skript damit macht |
+|---|---|---|---|
+| `follow-up` | gelb | Skript (Chip im Postfach) | setzt und entfernt ihn |
+| `ad-code` | grün | Skript (Content erkannt) | setzt ihn, entfernt ihn **nie** |
+| `handle-fehlt` | rot | Skript | setzt ihn, entfernt ihn, sobald der Handle da ist |
+| `karteileiche` | rot | **Josia von Hand** | **lässt den Task vollständig in Ruhe** |
+| `ignore` | — | **Josia von Hand** | **nichts, der Tag ist rein organisatorisch** |
+| `big`, `bug` | — | Josia von Hand | nichts |
+
+`ignore` steht an Profilen, mit denen abgeschlossen ist: aus welchem Grund auch
+immer wird dort kein positives Ergebnis mehr erwartet. Er ist eine Notiz für
+Menschen, kein Schalter — das Skript kennt ihn nicht und zieht Status, Frist und
+Priorität dort weiter mit.
+
+**Nicht verwechseln:** `ignore` sagt „wir sind hier fertig", `karteileiche` sagt
+„dieser Datensatz ist ein Duplikat oder ein Testeintrag und darf nur deshalb
+nicht gelöscht werden, weil der Import ihn sonst wieder anlegt". Das erste ist
+eine inhaltliche Einschätzung, das zweite eine technische Notwendigkeit. Wer
+beides zugleich will, hängt beide Tags an.
+
+Für „abgeschlossen" gibt es außerdem die drei Endstatus `abgesagt`,
+`keine antwort` und `beendet`, die die Statusleiter sperren (Abschnitt 5). `ignore`
+ist davon unabhängig und trägt eine Einschätzung, die ein Status nicht ausdrückt.
+
 ### Der Tag `karteileiche`
 
 Manche Datensätze müssen bleiben, obwohl sie niemand mehr bearbeiten will: ein
