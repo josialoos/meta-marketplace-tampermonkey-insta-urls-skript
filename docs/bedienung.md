@@ -5,6 +5,34 @@ stehen in [entwicklung.md](entwicklung.md).
 
 ---
 
+## Das Wichtigste zuerst: das Skript liest nur, was auf dem Bildschirm steht
+
+Es fragt bei Meta **nichts** ab. Es liest die Unterhaltungsliste, die gerade
+angezeigt wird. Daraus folgt alles andere:
+
+- Stehst du in den **Partner-Nachrichten**, sieht es ausschließlich
+  Partner-Unterhaltungen. Normale Instagram-DMs sind dann gar nicht in der Liste,
+  also kann es sie auch nicht verbinden und keine Frist daraus berechnen.
+- Für normale DMs musst du in das **normale Instagram-Postfach** wechseln. Erst
+  dort tauchen diese Unterhaltungen auf, bekommen Chips und werden mit ihren
+  Tasks verbunden.
+- Die Liste ist **virtualisiert**: Meta hält nur gut ein Dutzend Zeilen im
+  Dokument. Was weiter unten liegt, sieht das Skript erst, wenn gescrollt wurde —
+  dafür gibt es im Menü den vollen Durchlauf.
+
+**Woran du erkennst, dass es greift:** Öffne das Panel über die Pille unten
+rechts. Ganz oben steht eine Zeile wie
+
+> 14 Unterhaltungen im Blick, 9 mit Task, 11 mit bekanntem Handle.
+
+Die erste Zahl sagt, wie viele Instagram-Unterhaltungen das Skript gerade
+erkennt. Steht dort stattdessen „Keine Instagram-Unterhaltung in dieser Liste
+erkannt", bist du im falschen Postfach oder die Liste zeigt nur
+Messenger-Unterhaltungen. Wechsel ins normale Instagram-Postfach und die Zahl
+muss hochgehen.
+
+---
+
 ## Welche Unterhaltungen erfasst werden
 
 **Alle Instagram-Unterhaltungen** — sowohl Partner-Nachrichten als auch normale

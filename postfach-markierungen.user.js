@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      4.6
+// @version      4.7
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -2475,10 +2475,35 @@
     }
   }
 
+  // Was das Skript in diesem Augenblick vor sich hat. Ohne diese Zeile bleibt
+  // „es passiert nichts" nicht von „es sieht nichts" zu unterscheiden — und der
+  // haeufigste Fall ist das zweite: das Skript liest ausschliesslich die Zeilen,
+  // die gerade auf dem Bildschirm stehen. Steht man in den Partner-Nachrichten,
+  // sind die normalen DMs gar nicht in der Liste.
+  function diagnoseZeile() {
+    const zeilen = threadRows();
+    const alleZeilen = document.querySelectorAll('div[role="presentation"]').length;
+    const mitTask = zeilen.filter(([, t]) => cuTasks[t.threadID]).length;
+    const mitHandle = zeilen.filter(([, t]) => (handleVon(t.threadID) || {}).handle).length;
+    if (!zeilen.length) {
+      return alleZeilen > 5
+        ? 'Keine Instagram-Unterhaltung in dieser Liste erkannt. Stehst du im richtigen Postfach?'
+        : 'Die Liste ist noch nicht geladen.';
+    }
+    return zeilen.length + ' Unterhaltung' + (zeilen.length === 1 ? '' : 'en') + ' im Blick, '
+      + mitTask + ' mit Task, ' + mitHandle + ' mit bekanntem Handle.';
+  }
+
   function renderPanel() {
     bodyEl.textContent = '';
     const uEntries = sortedUnread();
     const fEntries = sortedFollow();
+
+    if (isInbox()) {
+      const d = el('p', 'igfu-empty', diagnoseZeile());
+      d.id = 'igfu-diagnose';
+      bodyEl.appendChild(d);
+    }
 
     if (!uEntries.length && !fEntries.length && !ohneHandle().length) {
       bodyEl.appendChild(el('p', 'igfu-empty', 'Noch nichts markiert. Fahr mit der Maus über eine Unterhaltung und klick auf „Ungelesen" oder „Follow-up".'));

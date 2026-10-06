@@ -1439,6 +1439,41 @@ gruppe('Eine Karteileiche fängt die zweite Unterhaltung nicht ab');
     (serverTasks[0].beschreibung || '').slice(-120));
 }
 
+gruppe('Das Panel sagt, was das Skript gerade sieht');
+{
+  const { doc, w } = await starte({ speicher: MIT_CLICKUP });
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const d = doc.querySelector('#igfu-diagnose');
+  pruefe('Die Diagnosezeile ist da', !!d);
+  pruefe('Sie nennt die drei erkannten Instagram-Unterhaltungen',
+    !!d && /^3 Unterhaltungen im Blick/.test(d.textContent || ''), d && d.textContent);
+  pruefe('Sie nennt, wie viele einen Task haben',
+    !!d && /0 mit Task/.test(d.textContent || ''), d && d.textContent);
+}
+
+gruppe('Die Diagnosezeile zählt Tasks und Handles mit');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1'), tags: [TAG] }],
+  });
+  await warte(w, 900);
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const d = doc.querySelector('#igfu-diagnose');
+  pruefe('Ein Task wird gezählt', !!d && /1 mit Task/.test(d.textContent || ''), d && d.textContent);
+  pruefe('Ein bekannter Handle wird gezählt',
+    !!d && /1 mit bekanntem Handle/.test(d.textContent || ''), d && d.textContent);
+}
+
+gruppe('Außerhalb der Unterhaltungsliste sagt sie Bescheid');
+{
+  const { doc, w } = await starte({ speicher: MIT_CLICKUP, markt: [{ handle: 'jemand', bild: '555' }] });
+  pruefe('Im Marketplace steht keine Diagnosezeile', !doc.querySelector('#igfu-diagnose'));
+}
+
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));
