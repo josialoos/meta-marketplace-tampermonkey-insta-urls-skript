@@ -23,7 +23,12 @@ angezeigt wird. Daraus folgt alles andere:
 **Woran du erkennst, dass es greift:** Öffne das Panel über die Pille unten
 rechts. Ganz oben steht eine Zeile wie
 
-> 14 Unterhaltungen im Blick, 9 mit Task, 11 mit bekanntem Handle.
+> Version 5.2 · 14 Unterhaltungen im Blick, 9 mit Task, 11 mit bekanntem Handle.
+
+**Ganz vorn steht die installierte Version.** Stimmt sie nicht mit der im
+Install-Link überein, hat Tampermonkey das Update nicht gezogen — dann ist jede
+weitere Fehlersuche verschwendet. Ein Tab, der schon vor dem Update offen war,
+zeigt übrigens den alten Stand; vor jeder Messung neu laden.
 
 Darunter steht die Liste **„Unterhaltungen ohne Task"**: jede erkannte
 Unterhaltung, die noch nicht mit ClickUp verbunden ist, mit dem Namen **so, wie

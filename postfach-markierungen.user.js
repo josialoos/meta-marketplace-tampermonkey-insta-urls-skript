@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      5.1
+// @version      5.2
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -250,6 +250,10 @@
     }
   `;
 
+  // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
+  // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
+  // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
+  const VERSION = '5.2';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   const isInbox = () => INBOX_PATH.test(location.pathname);
   // Der Marketplace ist die Stelle, an der das Handle sicher bekannt ist. Wer hier
@@ -2671,11 +2675,12 @@
     const mitTask = zeilen.filter(([, t]) => cuTasks[t.threadID]).length;
     const mitHandle = zeilen.filter(([, t]) => (handleVon(t.threadID) || {}).handle).length;
     if (!zeilen.length) {
-      return alleZeilen > 5
+      return 'Version ' + VERSION + ' · ' + (alleZeilen > 5
         ? 'Keine Instagram-Unterhaltung in dieser Liste erkannt. Stehst du im richtigen Postfach?'
-        : 'Die Liste ist noch nicht geladen.';
+        : 'Die Liste ist noch nicht geladen.');
     }
-    return zeilen.length + ' Unterhaltung' + (zeilen.length === 1 ? '' : 'en') + ' im Blick, '
+    return 'Version ' + VERSION + ' · '
+      + zeilen.length + ' Unterhaltung' + (zeilen.length === 1 ? '' : 'en') + ' im Blick, '
       + mitTask + ' mit Task, ' + mitHandle + ' mit bekanntem Handle.';
   }
 
@@ -2690,7 +2695,7 @@
     bodyEl.appendChild(el('h3', 'igfu-section-title', 'Unterhaltungen ohne Task'));
     bodyEl.appendChild(el('p', 'igfu-empty',
       'So liest das Skript den Namen. Steht rechts „kein Treffer", gibt es in '
-      + 'ClickUp keinen Task ohne Unterhaltung, dessen Name genau so lautet.'));
+      + 'ClickUp keinen passenden Task — oder es passen zwei, dann wird keiner genommen.'));
     const ul = el('ol', 'igfu-list');
     for (const [, t] of offen.slice(0, 20)) {
       const tid = t.threadID;

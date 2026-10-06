@@ -743,6 +743,10 @@ der Lauf wird immer langsamer, und Prüfungen mit Zeitfenster fallen um, **obwoh
 am Skript nichts falsch ist**. Am 06.10.2026 sah das nach drei Regressionen aus
 und war keine.
 
+**Die Versionsnummer steht an zwei Stellen** — im `@version`-Kopf und als
+`const VERSION`, damit sie im Panel angezeigt werden kann. Eine Prüfung
+vergleicht beide; auseinanderlaufen können sie also nicht unbemerkt.
+
 **Gewohnheit: Mutationstest.** Nach jedem neuen Test die Zeile, die er absichern
 soll, kurz kaputt machen und prüfen, dass der Test wirklich umfällt. Mehrere
 Prüfungen liefen anfangs leer durch und hätten nichts gemerkt.

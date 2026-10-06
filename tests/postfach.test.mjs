@@ -1,4 +1,5 @@
 import { starte, warte, chip, klick, knopf, beschreibungMit, macheThread, LISTE, SPACE, TAG } from './harness.mjs';
+import { readFileSync } from 'node:fs';
 
 let fehlgeschlagen = 0, gelaufen = 0;
 const pruefe = (name, bedingung, extra = '') => {
@@ -1447,7 +1448,7 @@ gruppe('Das Panel sagt, was das Skript gerade sieht');
   const d = doc.querySelector('#igfu-diagnose');
   pruefe('Die Diagnosezeile ist da', !!d);
   pruefe('Sie nennt die drei erkannten Instagram-Unterhaltungen',
-    !!d && /^3 Unterhaltungen im Blick/.test(d.textContent || ''), d && d.textContent);
+    !!d && /3 Unterhaltungen im Blick/.test(d.textContent || ''), d && d.textContent);
   pruefe('Sie nennt, wie viele einen Task haben',
     !!d && /0 mit Task/.test(d.textContent || ''), d && d.textContent);
 }
@@ -1730,6 +1731,21 @@ gruppe('Fehlende Fristen nachtragen: nie vor das Startdatum');
   pruefe('Kein Startdatum mitgeschickt',
     !aufrufe.some((a) => a.methode === 'PUT' && a.data && 'start_date' in a.data),
     JSON.stringify(aufrufe.filter((a) => a.methode === 'PUT').map((a) => a.data)));
+}
+
+gruppe('Die Versionsnummer steht im Panel und stimmt mit dem Kopf überein');
+{
+  const quelle = readFileSync(new URL('../postfach-markierungen.user.js', import.meta.url), 'utf8');
+  const imKopf = (quelle.match(/@version\s+([0-9.]+)/) || [])[1];
+  const alsKonstante = (quelle.match(/const VERSION = '([0-9.]+)'/) || [])[1];
+  pruefe('Kopf und Konstante sind gleich', imKopf === alsKonstante, imKopf + ' vs ' + alsKonstante);
+
+  const { doc, w } = await starte({ speicher: MIT_CLICKUP });
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const d = doc.querySelector('#igfu-diagnose');
+  pruefe('Die Version steht in der Diagnosezeile',
+    !!d && d.textContent.includes('Version ' + imKopf), d && d.textContent);
 }
 
 console.log('\n' + (fehlgeschlagen
