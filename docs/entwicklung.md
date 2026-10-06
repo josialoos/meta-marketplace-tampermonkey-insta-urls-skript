@@ -369,6 +369,42 @@ igfu-thread: B
   existiert, sondern hängt die Unterhaltung über `threadAnhaengen()` dort an.
   Karteileichen zählen dabei nicht mit, die sind absichtlich stillgelegt.
 
+#### Welcher Schlüssel wofür — und warum das Profilbild gewinnt
+
+```
+Partner-Nachricht  ─┐
+                    ├─ gleiche Bild-ID  ──► derselbe Task
+normale DM         ─┘
+```
+
+Zum Zusammenführen stehen drei Schlüssel zur Wahl, und sie sind sehr
+unterschiedlich brauchbar:
+
+| Schlüssel | Bei Partner-Nachrichten | Bei normalen DMs |
+|---|---|---|
+| Handle | oft im Vorschautext („handle gefällt …") | **so gut wie nie** |
+| Anzeigename | vorhanden | vorhanden, aber selten „Vorname Nachname" |
+| **Bild-ID des Profilfotos** | **immer** | **immer** |
+
+Am 06.10.2026 im Postfach gemessen: von neun normalen DMs hatten **null** einen
+bekannten Handle. Der Vorschautext lautet dort „Name: Text" und nennt den Handle
+nicht. Damit fällt der Schlüssel genau dort aus, wo er gebraucht würde.
+
+Die Bild-ID steckt dagegen in der Adresse des Profilfotos und ist an jeder Zeile
+da. Zwei Unterhaltungen derselben Person haben dieselbe. Deshalb führt
+`scanRows()` über sie zusammen, wenn `cuBilder[bild]` einen Task liefert, der
+schon eine Unterhaltung hat.
+
+**Die Brücke wächst mit.** `threadAnhaengen()` schreibt die Bild-ID in den Task,
+wenn er noch keine hat. Ein aus UpPromote importierter Task bringt keine mit —
+UpPromote kennt kein Meta-Profilbild. Er lernt sie beim ersten Kontakt und findet
+darüber jede weitere Unterhaltung derselben Person, ohne Handle und ohne
+Namensvergleich.
+
+**Was sie nicht kann:** einen importierten Task, der noch nie eine Unterhaltung
+hatte, findet sie nicht. Der erste Kontakt läuft über den Namen, danach
+übernimmt das Bild.
+
 **Das Startdatum wandert nur nach vorn.** Sonst setzt die ältere Unterhaltung
 zurück, was die neuere gerade gesetzt hat, und das in jedem Durchlauf — eine
 Endlosschleife. Für die Nachfass-Frist zählt ohnehin die letzte Aktivität, also

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      4.7
+// @version      4.9
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -1273,7 +1273,7 @@
   // keine, kommt der Link nach oben; hat er schon eine, kommt die zweite
   // darunter. Die Beschreibung wird nur ergaenzt, nie ersetzt, damit eigene
   // Notizen stehen bleiben.
-  async function threadAnhaengen(task, tid) {
+  async function threadAnhaengen(task, tid, bildID) {
     if (!task || !tid) return task;
     const voll = await cuRequest('GET', '/task/' + task.taskId + '?include_markdown_description=true');
     const bisher = voll.markdown_description || voll.description || '';
@@ -1285,6 +1285,16 @@
         ? bisher.replace(/\s*$/, '') + '\n\n' + link + '\nigfu-thread: ' + tid
         : link + '\n\n' + bisher.replace(/^\s*/, '').replace(/\s*$/, '') + '\nigfu-thread: ' + tid;
       await cuRequest('PUT', '/task/' + task.taskId, { markdown_description: text });
+    }
+    // Die Bild-ID gleich festhalten, wenn der Task noch keine hat. Erst damit
+    // waechst die Bild-Bruecke: ein aus UpPromote importierter Task bringt keine
+    // mit, lernt sie hier und findet darueber spaeter weitere Unterhaltungen
+    // derselben Person — auch dann, wenn der Handle nirgends auftaucht.
+    const bild = bildID || (handleVon(tid) || {}).bild || '';
+    if (bild && !task.bild) {
+      await markerEintragen(task, 'igfu-bild', bild);
+      task.bild = bild;
+      cuBilder[bild] = task;
     }
     task.tids = task.tids || (task.tid ? [task.tid] : []);
     if (!task.tids.includes(tid)) task.tids.push(tid);
@@ -1436,10 +1446,14 @@
       // wird entweder ueber den Handle oder, wenn keiner zu holen war, ueber die
       // Task-ID, die der Namensvergleich ermittelt hat.
       if (cuTasks[a.tid]) return;
-      const i = cuOhneThread.findIndex((x) => !x.tid && !x.leiche
-        && (a.taskId ? x.taskId === a.taskId : handleVonTask(x) === a.handle));
-      if (i < 0) return;
-      await threadAnhaengen(cuOhneThread[i], a.tid);
+      // Mit Task-ID wird im ganzen Bestand gesucht, denn beim Zusammenfuehren
+      // hat das Ziel schon eine Unterhaltung. Ohne Task-ID geht es ueber den
+      // Handle, und dann kommen nur Tasks ohne Unterhaltung in Frage.
+      const ziel = a.taskId
+        ? alleTasks().find((x) => x.taskId === a.taskId && !x.leiche)
+        : cuOhneThread.find((x) => !x.tid && !x.leiche && handleVonTask(x) === a.handle);
+      if (!ziel) return;
+      await threadAnhaengen(ziel, a.tid, a.bild);
       return;
     }
 
@@ -1724,6 +1738,20 @@
       // Marketplace erfassten mit demselben Profilbild, gehoeren sie zusammen.
       if (!cuTasks[tid] && bild && cuBilder[bild] && !cuBilder[bild].tid) {
         vormerken({ art: 'verbinden', tid, titel: t.title, bild });
+      }
+
+      // Dasselbe Profilbild, aber der Task hat schon eine Unterhaltung: dann ist
+      // das dieselbe Person ein zweites Mal — einmal als Partner-Nachricht,
+      // einmal als normale DM. Beide gehoeren in denselben Task.
+      //
+      // Das Profilbild ist dafuer der bessere Schluessel als der Handle. Bei
+      // normalen DMs nennt der Vorschautext den Handle naemlich nie, dort steht
+      // „Name: Text" — am 06.10.2026 im Postfach gemessen: null von neun
+      // Unterhaltungen mit bekanntem Handle. Die Bild-ID steht dagegen an jeder
+      // Zeile, weil sie in der Adresse des Profilfotos steckt.
+      if (!cuTasks[tid] && bild && cuBilder[bild] && cuBilder[bild].tid
+          && !cuBilder[bild].leiche && !(cuBilder[bild].tids || []).includes(tid)) {
+        vormerken({ art: 'verbinden-handle', tid, titel: t.title, taskId: cuBilder[bild].taskId, bild });
       }
 
       // Aus UpPromote importierte Tasks haben keine Unterhaltung, weil viele
@@ -2494,6 +2522,35 @@
       + mitTask + ' mit Task, ' + mitHandle + ' mit bekanntem Handle.';
   }
 
+  // Zeigt die Unterhaltungen, zu denen kein Task gefunden wurde — und zwar mit
+  // dem Namen, wie das Skript ihn liest. Nur so laesst sich sehen, warum die
+  // Namensbruecke nicht greift: ein Instagram-Anzeigename ist selten genau
+  // „Vorname Nachname", und ein Vergleich, der nichts findet, sagt von sich aus
+  // nicht, woran er gescheitert ist.
+  function zeigeOhneTask() {
+    const offen = threadRows().filter(([, t]) => !cuTasks[t.threadID]);
+    if (!offen.length) return;
+    bodyEl.appendChild(el('h3', 'igfu-section-title', 'Unterhaltungen ohne Task'));
+    bodyEl.appendChild(el('p', 'igfu-empty',
+      'So liest das Skript den Namen. Steht rechts „kein Treffer", gibt es in '
+      + 'ClickUp keinen Task ohne Unterhaltung, dessen Name genau so lautet.'));
+    const ul = el('ol', 'igfu-list');
+    for (const [, t] of offen.slice(0, 20)) {
+      const tid = t.threadID;
+      const treffer = nameTreffer(t.title);
+      const li = el('li', 'igfu-item');
+      const top = el('div', 'igfu-item-top');
+      top.append(
+        button('igfu-name', t.title || 'Ohne Namen', () => reveal(tid), 'In der Liste anzeigen'),
+        el('span', 'igfu-meta', treffer ? 'Treffer: ' + rohTitel(treffer.titel) : 'kein Treffer'),
+      );
+      li.appendChild(top);
+      li.appendChild(el('div', 'igfu-meta', 'gelesen als „' + namensform(t.title) + '"'));
+      ul.appendChild(li);
+    }
+    bodyEl.appendChild(ul);
+  }
+
   function renderPanel() {
     bodyEl.textContent = '';
     const uEntries = sortedUnread();
@@ -2503,6 +2560,7 @@
       const d = el('p', 'igfu-empty', diagnoseZeile());
       d.id = 'igfu-diagnose';
       bodyEl.appendChild(d);
+      zeigeOhneTask();
     }
 
     if (!uEntries.length && !fEntries.length && !ohneHandle().length) {

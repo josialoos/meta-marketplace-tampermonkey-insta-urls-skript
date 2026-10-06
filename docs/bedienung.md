@@ -25,6 +25,12 @@ rechts. Ganz oben steht eine Zeile wie
 
 > 14 Unterhaltungen im Blick, 9 mit Task, 11 mit bekanntem Handle.
 
+Darunter steht die Liste **„Unterhaltungen ohne Task"**: jede erkannte
+Unterhaltung, die noch nicht mit ClickUp verbunden ist, mit dem Namen **so, wie
+das Skript ihn liest**, und dahinter entweder ein Treffer oder „kein Treffer".
+Damit siehst du auf einen Blick, ob die Namen bei Meta überhaupt zu euren
+ClickUp-Namen passen — und musst nicht raten, warum eine Verbindung ausbleibt.
+
 Die erste Zahl sagt, wie viele Instagram-Unterhaltungen das Skript gerade
 erkennt. Steht dort stattdessen „Keine Instagram-Unterhaltung in dieser Liste
 erkannt", bist du im falschen Postfach oder die Liste zeigt nur

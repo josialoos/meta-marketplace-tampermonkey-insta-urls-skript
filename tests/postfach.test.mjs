@@ -1474,6 +1474,80 @@ gruppe('Außerhalb der Unterhaltungsliste sagt sie Bescheid');
   pruefe('Im Marketplace steht keine Diagnosezeile', !doc.querySelector('#igfu-diagnose'));
 }
 
+gruppe('Das Panel zeigt die Unterhaltungen ohne Task');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'Corina Bösch', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'ohne Thread' }],
+  });
+  await warte(w, 900);
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const text = doc.querySelector('.igfu-body').textContent || '';
+  pruefe('Der Abschnitt ist da', /Unterhaltungen ohne Task/.test(text));
+  pruefe('Für Anna steht kein Treffer', /kein Treffer/.test(text));
+  pruefe('Die gelesene Form wird gezeigt', /gelesen als „anna bolko"/.test(text), text.slice(0, 400));
+  // Corina wurde über die Namensbrücke schon verbunden und gehört damit nicht
+  // mehr in diese Liste.
+  pruefe('Die verbundene Unterhaltung steht nicht mehr drin',
+    !/Corina/.test(text.split('Handles nachtragen')[0] || ''), text.slice(0, 400));
+}
+
+gruppe('Dasselbe Profilbild führt zwei Unterhaltungen zusammen');
+{
+  // T5 ist dieselbe Person wie T1: gleiche Bild-ID, aber der Vorschautext nennt
+  // keinen Handle — so sehen normale DMs aus.
+  const zweite = macheThread({ id: 'T5', titel: 'Anna B. 🏃', bild: '111111111',
+    zeit: new Date(2026, 9, 2, 8, 0, 0).getTime(), vorschau: 'Anna: Hey, schau mal' });
+  const { doc, w, serverTasks, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    zusatz: [zweite],
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1') + '\nigfu-bild: 111111111', tags: [TAG] }],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 3000);
+  pruefe('Es entsteht kein zweiter Task', angelegte(aufrufe).length === 0,
+    JSON.stringify(angelegte(aufrufe).map((a) => a.data && a.data.name)));
+  pruefe('Die zweite Unterhaltung hängt am selben Task',
+    /igfu-thread:\s*T5/.test(serverTasks[0].beschreibung || ''),
+    (serverTasks[0].beschreibung || '').slice(-160));
+  pruefe('Die erste bleibt stehen', /igfu-thread:\s*T1/.test(serverTasks[0].beschreibung || ''));
+}
+
+gruppe('Die Bild-ID wird nachgetragen, wenn sie noch fehlt');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    // Task ohne Unterhaltung und ohne Bild-ID, Name passt auf T2.
+    tasks: [{ id: 'a1', name: 'Corina Bösch', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'aus UpPromote' }],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 3000);
+  pruefe('Die Unterhaltung ist verbunden',
+    /igfu-thread:\s*T2/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+  pruefe('Die Bild-ID steht jetzt dabei',
+    /igfu-bild:\s*222222222/.test(serverTasks[0].beschreibung || ''),
+    (serverTasks[0].beschreibung || '').slice(-160));
+}
+
+gruppe('Eine Karteileiche fängt das Zusammenführen über das Bild nicht ab');
+{
+  const zweite = macheThread({ id: 'T5', titel: 'Anna B. 🏃', bild: '111111111',
+    zeit: new Date(2026, 9, 2, 8, 0, 0).getTime(), vorschau: 'Anna: Hey, schau mal' });
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    zusatz: [zweite],
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1') + '\nigfu-bild: 111111111', tags: [TAG, 'karteileiche'] }],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 3000);
+  pruefe('Die Karteileiche bleibt unangetastet',
+    !/igfu-thread:\s*T5/.test(serverTasks[0].beschreibung || ''),
+    (serverTasks[0].beschreibung || '').slice(-160));
+}
+
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));
