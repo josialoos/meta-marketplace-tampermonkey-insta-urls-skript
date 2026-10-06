@@ -49,7 +49,12 @@ export async function starte({
   affiliates = null,       // [{ first_name, last_name, email, instagram, custom_fields }] für UpPromote
   karte = null,            // { handle } fuer die Kontaktkarte der geoeffneten Unterhaltung
   markt = null,            // [{ handle, bild }] baut stattdessen Marketplace-Karten
+  zusatz = [],             // weitere Unterhaltungen hinter den vier festen
 } = {}) {
+  // Die vier festen Threads bleiben unangetastet, damit bestehende Pruefungen
+  // ihre Zeilenzahl behalten. Wer eine fuenfte Unterhaltung braucht — etwa um
+  // dieselbe Person in zwei Unterhaltungen zu haben — gibt sie hier mit.
+  const threads = THREADS.concat(zusatz);
   const seitenleiste = karte
     ? '<aside><div>Instagram-Profil</div><div><a href="https://l.facebook.com/l.php">' + karte.handle + '</a></div></aside>'
     : '';
@@ -58,7 +63,7 @@ export async function starte({
     + '<div class="h">' + c.handle + '</div><div class="meta">1234 Follower</div></div>').join('');
   const body = markt
     ? '<body><div id="markt">' + karten + '</div></body>'
-    : '<body><div id="liste">' + THREADS.map((t) => zeile(t.title, 'Hallo')).join('') + '</div>' + seitenleiste + '</body>';
+    : '<body><div id="liste">' + threads.map((t) => zeile(t.title, 'Hallo')).join('') + '</div>' + seitenleiste + '</body>';
   if (voriges) { try { voriges.close(); } catch { /* schon zu */ } }
   const dom = new JSDOM(body, {
     url: 'https://business.facebook.com' + pfad,
@@ -69,7 +74,7 @@ export async function starte({
   const doc = w.document;
 
   [...doc.querySelectorAll('.row')].forEach((r, i) => {
-    r['__reactFiber$test'] = { memoizedProps: { thread: THREADS[i] }, return: null, alternate: null };
+    r['__reactFiber$test'] = { memoizedProps: { thread: threads[i] }, return: null, alternate: null };
   });
 
   const store = new Map(Object.entries(speicher));
@@ -195,6 +200,15 @@ export async function starte({
   await warte(w, 400);
   return { dom, w, doc, store, aufrufe, serverTasks, spaceTags };
 }
+
+// Bausteine fuer eigene Unterhaltungen in einzelnen Pruefungen.
+export const macheThread = ({ id, titel, vorschau: v, bild = '999999999', zeit }) => ({
+  threadID: id,
+  title: titel,
+  snippet: { props: { children: v } },
+  participantProfileURIs: ['https://scontent-muc2-1.cdninstagram.com/v/t51.2885-19/' + bild + '_1234_n.jpg?stp=x'],
+  timestamp: zeit,
+});
 
 export const warte = (w, ms) => new Promise((r) => w.setTimeout(r, ms));
 export const chip = (doc, i, art) => doc.querySelectorAll('.row')[i].querySelector(`.igfu-tag[data-kind="${art}"]`);

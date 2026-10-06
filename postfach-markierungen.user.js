@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      4.5
+// @version      4.6
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -423,7 +423,19 @@
   // damit fuer jede Automatik unsichtbar gewesen.
   let cuOhneThread = (GM_getValue(CU_TASKS, {}) || {}).ohneThread || [];
   // Alles, was die Automatiken durchgehen muessen — mit und ohne Unterhaltung.
-  const alleTasks = () => Object.values(cuTasks).concat(cuOhneThread);
+  // Ein Task kann unter mehreren Thread-IDs eingetragen sein, wenn dieselbe
+  // Person zwei Unterhaltungen hat. Hier muss er trotzdem genau einmal
+  // vorkommen, sonst arbeitet jede Automatik ihn doppelt ab.
+  function alleTasks() {
+    const raus = [];
+    const gesehen = new Set();
+    for (const t of Object.values(cuTasks).concat(cuOhneThread)) {
+      if (!t || gesehen.has(t.taskId)) continue;
+      gesehen.add(t.taskId);
+      raus.push(t);
+    }
+    return raus;
+  }
   let cuLetzterAbruf = 0;
   let cuLaeuft = false;
 
@@ -605,6 +617,11 @@
   }
 
   const threadAusText = (text) => (String(text || '').match(/igfu-thread:\s*([A-Za-z0-9_-]+)/) || [])[1] || '';
+  // Dieselbe Person kann zwei Unterhaltungen haben — eine als Partner-Nachricht,
+  // eine als normale DM. Beide gehoeren in denselben Task, also stehen dort auch
+  // zwei Markerzeilen. Darum werden immer alle gelesen.
+  const threadsAusText = (text) => [...String(text || '')
+    .matchAll(/igfu-thread:\s*([A-Za-z0-9_-]+)/g)].map((m) => m[1]);
 
   // Mittag als Uhrzeit, damit ein Datum nicht durch Zeitzonen auf den Vortag rutscht
   function msVonIso(iso) {
@@ -1167,12 +1184,17 @@
 
   function taskAufbereiten(t) {
     const texte = [t.description, t.text_content, t.markdown_description];
-    let tid = '';
-    for (const x of texte) { tid = tid || threadAusText(x); }
+    const tids = [];
+    for (const x of texte) {
+      for (const einzel of threadsAusText(x)) if (!tids.includes(einzel)) tids.push(einzel);
+    }
+    let tid = tids[0] || '';
     if (!tid) {
-      // Rueckfall fuer Tasks, die noch aus der Zeit mit Custom Fields stammen
+      // Rueckfall fuer Tasks, die noch aus der Zeit mit Custom Fields stammen.
+      // Der Treffer muss auch in tids landen, sonst gilt der Task als einer
+      // ohne Unterhaltung — cuTasksLaden entscheidet danach.
       for (const f of t.custom_fields || []) {
-        if (f.name === FELD_THREAD && f.value) { tid = String(f.value); break; }
+        if (f.name === FELD_THREAD && f.value) { tid = String(f.value); tids.push(tid); break; }
       }
     }
     let bild = '';
@@ -1188,6 +1210,8 @@
     const tags = (t.tags || []).map((x) => String(x.name || '').toLowerCase());
     return {
       tid: tid ? String(tid) : '',
+      // Die erste Markerzeile bleibt die fuehrende, tids traegt alle.
+      tids: tids.map(String),
       bild,
       mail,
       ware,
@@ -1221,12 +1245,14 @@
       for (const t of d.tasks || []) {
         const neu = taskAufbereiten(t);
         if (neu.bild && !nachBild[neu.bild]) nachBild[neu.bild] = neu;
-        if (!neu.tid) { ohneThread.push(neu); continue; }
+        if (!neu.tids.length) { ohneThread.push(neu); continue; }
         // Zu einer Unterhaltung kann versehentlich ein zweiter Task existieren.
         // Dann gewinnt der getaggte, sonst loescht ein leerer Doppelgaenger die
         // Markierung. Bei Gleichstand der zuletzt gefundene.
-        const alt = gefunden[neu.tid];
-        if (!alt || neu.follow || !alt.follow) gefunden[neu.tid] = neu;
+        for (const einzel of neu.tids) {
+          const alt = gefunden[einzel];
+          if (!alt || neu.follow || !alt.follow) gefunden[einzel] = neu;
+        }
       }
       if (d.last_page || !(d.tasks || []).length) break;
     }
@@ -1243,18 +1269,49 @@
     });
   }
 
+  // Haengt eine Unterhaltung an einen Task, der schon existiert. Hat er noch
+  // keine, kommt der Link nach oben; hat er schon eine, kommt die zweite
+  // darunter. Die Beschreibung wird nur ergaenzt, nie ersetzt, damit eigene
+  // Notizen stehen bleiben.
+  async function threadAnhaengen(task, tid) {
+    if (!task || !tid) return task;
+    const voll = await cuRequest('GET', '/task/' + task.taskId + '?include_markdown_description=true');
+    const bisher = voll.markdown_description || voll.description || '';
+    const schonDrin = threadsAusText(bisher);
+    if (!schonDrin.includes(tid)) {
+      const link = '[' + (schonDrin.length ? 'Weitere Unterhaltung' : 'Unterhaltung')
+        + ' im Postfach öffnen](' + postfachLink(tid) + ')';
+      const text = schonDrin.length
+        ? bisher.replace(/\s*$/, '') + '\n\n' + link + '\nigfu-thread: ' + tid
+        : link + '\n\n' + bisher.replace(/^\s*/, '').replace(/\s*$/, '') + '\nigfu-thread: ' + tid;
+      await cuRequest('PUT', '/task/' + task.taskId, { markdown_description: text });
+    }
+    task.tids = task.tids || (task.tid ? [task.tid] : []);
+    if (!task.tids.includes(tid)) task.tids.push(tid);
+    if (!task.tid) task.tid = tid;
+    cuTasks[tid] = task;
+    const i = cuOhneThread.indexOf(task);
+    if (i >= 0) cuOhneThread.splice(i, 1);
+    cuSpeichern();
+    return task;
+  }
+
   async function cuTaskSichern(tid, titel, handle) {
     if (cuTasks[tid]) return cuTasks[tid];
     const w = handleVon(tid);
     const h = handle || (w && w.handle) || '';
-    // Dieselbe Person kann zwei Unterhaltungen haben: eine als
-    // Partner-Nachricht, eine als normale DM. Dann entsteht ein zweiter Task.
-    // Verbieten waere falsch, es gibt auch echte Faelle mit zwei getrennten
-    // Unterhaltungen — aber stillschweigend passieren soll es nicht.
+    // Dieselbe Person kann zwei Unterhaltungen haben: eine als Partner-Nachricht,
+    // eine als normale DM. Beide gehoeren in denselben Task — zwei Datensaetze
+    // fuer eine Person sind im CRM schlimmer als eine Beschreibung mit zwei
+    // Links. Es wird also kein zweiter angelegt, sondern angehaengt.
+    //
+    // Karteileichen zaehlen hier nicht mit, die sind absichtlich stillgelegt.
     if (h) {
-      const schon = alleTasks().find((x) => x.tid !== tid && !x.leiche && handleVonTask(x) === h);
+      const schon = alleTasks().find((x) => !x.leiche && !(x.tids || []).includes(tid)
+        && handleVonTask(x) === h);
       if (schon) {
-        toast('Achtung: für @' + h + ' gibt es schon einen Task. Es entsteht ein zweiter.');
+        toast('@' + h + ' hat schon einen Task. Die Unterhaltung wird dort angehängt.');
+        return threadAnhaengen(schon, tid);
       }
     }
     const rumpf = {
@@ -1382,19 +1439,7 @@
       const i = cuOhneThread.findIndex((x) => !x.tid && !x.leiche
         && (a.taskId ? x.taskId === a.taskId : handleVonTask(x) === a.handle));
       if (i < 0) return;
-      const ziel = cuOhneThread[i];
-      const voll = await cuRequest('GET', '/task/' + ziel.taskId + '?include_markdown_description=true');
-      const bisher = voll.markdown_description || voll.description || '';
-      if (!threadAusText(bisher)) {
-        await cuRequest('PUT', '/task/' + ziel.taskId, {
-          markdown_description: '[Unterhaltung im Postfach öffnen](' + postfachLink(a.tid) + ')\n\n'
-            + bisher.replace(/^\s*/, '').replace(/\s*$/, '') + '\nigfu-thread: ' + a.tid,
-        });
-      }
-      ziel.tid = a.tid;
-      cuOhneThread.splice(i, 1);
-      cuTasks[a.tid] = ziel;
-      cuSpeichern();
+      await threadAnhaengen(cuOhneThread[i], a.tid);
       return;
     }
 
@@ -1440,6 +1485,9 @@
         // Frist zusammen mit dem Startdatum schicken. Einzeln abgeschickt
         // lehnt ClickUp das Startdatum ab, sobald es hinter der alten Frist
         // liegt.
+        // Dieselbe Schranke wie beim Vormerken, weil ein Auftrag aus der
+        // gespeicherten Warteschlange auch aelter sein kann als der Stand.
+        if (task.letzte && a.wert <= task.letzte) return;
         const frist = fristFuer(task, a.wert);
         const nutzlast = { start_date: ms, start_date_time: false };
         const fms = msVonIso(frist);
@@ -1640,7 +1688,13 @@
         const w = handleVon(tid) || {};
         if (w.letzte !== letzte) handleMerken(tid, '', 'vorschau', null, letzte);
         const task = cuTasks[tid];
-        if (task && task.letzte !== letzte) vormerken({ art: 'letzte', tid, titel: t.title, wert: letzte });
+        // Nur nach vorn. Haengen zwei Unterhaltungen am selben Task, wuerde sonst
+        // jede die andere ueberschreiben: die aeltere setzt zurueck, die neuere
+        // wieder vor, und das in jedem Durchlauf. Fuer die Nachfass-Frist zaehlt
+        // ohnehin die letzte Aktivitaet, also die spaetere der beiden.
+        if (task && (!task.letzte || letzte > task.letzte)) {
+          vormerken({ art: 'letzte', tid, titel: t.title, wert: letzte });
+        }
       }
 
       // „urgent" heisst hier: die Antwort liegt bei uns. Sobald Josia

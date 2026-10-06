@@ -337,6 +337,45 @@ daraus die Nachfass-Frist ab.
 passt er nicht mehr. Und zwei verschiedene Leute mit demselben Anzeigenamen
 können nicht unterschieden werden — darum die zweite Schranke.
 
+### Eine Person, ein Task — auch bei zwei Unterhaltungen
+
+Dieselbe Person kann zweimal im Postfach stehen: einmal als Partner-Nachricht,
+einmal als normale DM. Das darf **nicht** in zwei Datensätzen landen. Zwei
+Einträge für eine Person sind im CRM schlimmer als eine Beschreibung mit zwei
+Links — der Status steht dann an zwei Stellen und widerspricht sich.
+
+Deshalb trägt ein Task **mehrere** `igfu-thread`-Zeilen:
+
+```
+[Unterhaltung im Postfach öffnen](…selected_item_id=A…)
+
+Instagram: @handle
+
+---
+Vom Postfach-Skript verwaltet. Die folgenden Zeilen bitte nicht ändern.
+igfu-thread: A
+igfu-handle: handle
+
+[Weitere Unterhaltung im Postfach öffnen](…selected_item_id=B…)
+igfu-thread: B
+```
+
+- `threadsAusText()` liest **alle** Markerzeilen, `taskAufbereiten()` legt sie in
+  `tids` ab, `tid` bleibt die erste.
+- `cuTasksLaden()` trägt den Task unter **jeder** Thread-ID in `cuTasks` ein.
+  Deshalb muss `alleTasks()` nach `taskId` entdoppeln, sonst arbeitet jede
+  Automatik ihn zweimal ab.
+- `cuTaskSichern()` legt keinen zweiten Task an, wenn zu dem Handle schon einer
+  existiert, sondern hängt die Unterhaltung über `threadAnhaengen()` dort an.
+  Karteileichen zählen dabei nicht mit, die sind absichtlich stillgelegt.
+
+**Das Startdatum wandert nur nach vorn.** Sonst setzt die ältere Unterhaltung
+zurück, was die neuere gerade gesetzt hat, und das in jedem Durchlauf — eine
+Endlosschleife. Für die Nachfass-Frist zählt ohnehin die letzte Aktivität, also
+die spätere der beiden. Die Schranke steht an zwei Stellen: beim Vormerken in
+`scanRows()` und beim Ausführen, weil ein Auftrag aus der gespeicherten
+Warteschlange älter sein kann als der Stand.
+
 ### Welche Tags es gibt
 
 | Tag | Farbe | Wer setzt ihn | Was das Skript damit macht |

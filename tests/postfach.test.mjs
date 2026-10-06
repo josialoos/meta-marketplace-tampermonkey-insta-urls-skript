@@ -1,4 +1,4 @@
-import { starte, warte, chip, klick, knopf, beschreibungMit, LISTE, SPACE, TAG } from './harness.mjs';
+import { starte, warte, chip, klick, knopf, beschreibungMit, macheThread, LISTE, SPACE, TAG } from './harness.mjs';
 
 let fehlgeschlagen = 0, gelaufen = 0;
 const pruefe = (name, bedingung, extra = '') => {
@@ -1375,6 +1375,68 @@ gruppe('Eine Karteileiche wird nicht über den Namen verbunden');
   await warte(w, 2500);
   pruefe('Kein Thread angehängt',
     !/igfu-thread/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+}
+
+gruppe('Dieselbe Person in zwei Unterhaltungen landet in einem Task');
+{
+  // T5 ist dieselbe Person wie T1: der Vorschautext nennt denselben Handle.
+  const spaeter = macheThread({ id: 'T5', titel: 'Anna Bolko', zeit: new Date(2026, 9, 1, 10, 0, 0).getTime(),
+    vorschau: 'annabolko.runs gefällt eine Nachricht' });
+  const { doc, w, serverTasks, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    zusatz: [spaeter],
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1'), tags: [TAG] }],
+  });
+  klick(w, chip(doc, 4, 'crm'));
+  await warte(w, 2500);
+  pruefe('Es entsteht kein zweiter Task', angelegte(aufrufe).length === 0,
+    JSON.stringify(angelegte(aufrufe).map((a) => a.data && a.data.name)));
+  pruefe('Immer noch genau ein Task', serverTasks.length === 1, String(serverTasks.length));
+  pruefe('Die zweite Unterhaltung steht als Markerzeile dabei',
+    /igfu-thread:\s*T5/.test(serverTasks[0].beschreibung || ''),
+    (serverTasks[0].beschreibung || '').slice(-140));
+  pruefe('Die erste Markerzeile bleibt stehen',
+    /igfu-thread:\s*T1/.test(serverTasks[0].beschreibung || ''));
+  pruefe('Der zweite Link ist als weitere Unterhaltung benannt',
+    /Weitere Unterhaltung im Postfach öffnen/.test(serverTasks[0].beschreibung || ''),
+    (serverTasks[0].beschreibung || '').slice(-140));
+}
+
+gruppe('Bei zwei Unterhaltungen zählt die spätere für das Startdatum');
+{
+  const spaeter = macheThread({ id: 'T5', titel: 'Anna Bolko', zeit: new Date(2026, 9, 1, 10, 0, 0).getTime(),
+    vorschau: 'annabolko.runs gefällt eine Nachricht' });
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    zusatz: [spaeter],
+    // Die Beschreibung traegt beide Unterhaltungen von Anfang an.
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1') + '\nigfu-thread: T5', tags: [TAG] }],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 3000);
+  const gesetzt = new Date(Number(serverTasks[0].start)).toISOString().slice(0, 10);
+  pruefe('Das Startdatum ist das der späteren Unterhaltung', gesetzt === '2026-10-01', gesetzt);
+}
+
+gruppe('Eine Karteileiche fängt die zweite Unterhaltung nicht ab');
+{
+  const spaeter = macheThread({ id: 'T5', titel: 'Anna Bolko', zeit: new Date(2026, 9, 1, 10, 0, 0).getTime(),
+    vorschau: 'annabolko.runs gefällt eine Nachricht' });
+  const { doc, w, serverTasks, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    zusatz: [spaeter],
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1'), tags: [TAG, 'karteileiche'] }],
+  });
+  klick(w, chip(doc, 4, 'crm'));
+  await warte(w, 2500);
+  pruefe('Ein neuer Task entsteht', angelegte(aufrufe).length === 1,
+    JSON.stringify(angelegte(aufrufe).length));
+  pruefe('Die Karteileiche bleibt unangetastet',
+    !/igfu-thread:\s*T5/.test(serverTasks[0].beschreibung || ''),
+    (serverTasks[0].beschreibung || '').slice(-120));
 }
 
 console.log('\n' + (fehlgeschlagen
