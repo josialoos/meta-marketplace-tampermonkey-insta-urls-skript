@@ -1548,6 +1548,96 @@ gruppe('Eine Karteileiche fängt das Zusammenführen über das Bild nicht ab');
     (serverTasks[0].beschreibung || '').slice(-160));
 }
 
+gruppe('Schmuckschrift im Anzeigenamen wird aufgelöst');
+{
+  // Meta zeigt den Namen in fetter Schmuckschrift, ClickUp schlicht. Das sind
+  // eigene Unicode-Zeichen, kein Formatierungs-Beiwerk.
+  const schmuck = macheThread({ id: 'T5', titel: '𝗖𝗵𝗶𝗮𝗿𝗮 𝗪𝗮𝗹𝗱𝗻𝗲𝗿',
+    bild: '777777777', zeit: new Date(2026, 9, 2, 9, 0, 0).getTime(), vorschau: 'Hey, schau mal' });
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    zusatz: [schmuck],
+    tasks: [{ id: 'a1', name: 'chiara_waldner — Chiara Waldner', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: 'aus UpPromote\nigfu-handle: chiara_waldner' }],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 3000);
+  pruefe('Der schlicht geschriebene Task wird gefunden',
+    /igfu-thread:\s*T5/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+}
+
+gruppe('Ein einzelner Vorname bleibt unverbunden, auch in Schmuckschrift');
+{
+  // „Daniela" ist ein Vorname und passt auf zu viele. Dass er hübsch gesetzt
+  // ist, macht ihn nicht eindeutiger.
+  const schmuck = macheThread({ id: 'T5', titel: '\u{1D49F}\u{1D4B6}\u{1D4C3}\u{1D4BE}ℯ\u{1D4C1}\u{1D4B6}',
+    bild: '777777777', zeit: new Date(2026, 9, 2, 9, 0, 0).getTime(), vorschau: 'Hey, schau mal' });
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    zusatz: [schmuck],
+    tasks: [{ id: 'a1', name: 'Daniela', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'aus UpPromote' }],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 3000);
+  pruefe('Kein Thread angehängt',
+    !/igfu-thread/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+}
+
+gruppe('Beiwerk im Instagram-Namen stört nicht');
+{
+  const mitBeiwerk = macheThread({ id: 'T5', titel: 'G o V e | Govind Mukubay', bild: '777777777',
+    zeit: new Date(2026, 9, 2, 9, 0, 0).getTime(), vorschau: 'Govind: Hallo' });
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    zusatz: [mitBeiwerk],
+    tasks: [{ id: 'a1', name: 'govefit_ — Govind Mukubay', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: 'aus UpPromote\nigfu-handle: govefit_' }],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 3000);
+  pruefe('Der Task wird trotz Beiwerk gefunden',
+    /igfu-thread:\s*T5/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+}
+
+gruppe('Ein einzelnes Wort zählt nur als Handle');
+{
+  const alsHandle = macheThread({ id: 'T5', titel: 'naturpedal', bild: '777777777',
+    zeit: new Date(2026, 9, 2, 9, 0, 0).getTime(), vorschau: 'Hallo' });
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    zusatz: [alsHandle],
+    tasks: [{ id: 'a1', name: 'naturpedal', status: 'hat sales', farbe: '#008844', beschreibung: 'alt' },
+            { id: 'a2', name: 'Willi', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'alt' }],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 3000);
+  pruefe('Der Handle-Task wird verbunden',
+    /igfu-thread:\s*T5/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+  pruefe('Der Vorname-Task bleibt unverbunden',
+    !/igfu-thread/.test(serverTasks[1].beschreibung || ''), serverTasks[1].beschreibung);
+}
+
+gruppe('Die zweite Unterhaltung findet den Task auch über den Namen');
+{
+  // Der Task hat schon eine Unterhaltung. Trotzdem gehört die zweite dorthin.
+  const zweite = macheThread({ id: 'T5', titel: 'Corina Bösch', bild: '777777777',
+    zeit: new Date(2026, 9, 3, 9, 0, 0).getTime(), vorschau: 'Corina: noch was' });
+  const { doc, w, serverTasks, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    zusatz: [zweite],
+    tasks: [{ id: 'a1', name: 'Corina Bösch', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: beschreibungMit('T2') }],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 3000);
+  pruefe('Es entsteht kein zweiter Task', angelegte(aufrufe).length === 0,
+    JSON.stringify(angelegte(aufrufe).map((a) => a.data && a.data.name)));
+  pruefe('Beide Unterhaltungen hängen am selben Task',
+    /igfu-thread:\s*T2/.test(serverTasks[0].beschreibung || '')
+    && /igfu-thread:\s*T5/.test(serverTasks[0].beschreibung || ''),
+    (serverTasks[0].beschreibung || '').slice(-180));
+}
+
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));

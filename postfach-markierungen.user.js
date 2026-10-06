@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      4.9
+// @version      5.0
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -517,9 +517,22 @@
   // „handle — Anzeigename" wieder auf den Anzeigenamen zurueckfuehren
   const rohTitel = (name) => String(name || '').replace(/^[a-z0-9._]{2,30}\s+—\s+/, '');
 
-  // Anzeigenamen vergleichbar machen: Grossschreibung, Satzzeichen, Emoji und
-  // mehrfache Leerzeichen fallen weg, der Rest muss uebereinstimmen.
+  // Anzeigenamen vergleichbar machen.
+  //
+  // normalize('NFKD') ist hier das Entscheidende: Instagram-Anzeigenamen stecken
+  // oft in Schmuckschrift, und die besteht aus eigenen Unicode-Zeichen. „𝒟𝒶𝓃𝒾ℯ𝓁𝒶"
+  // ist nicht „Daniela", und toLowerCase() aendert daran nichts. NFKD loest
+  // diese Zeichen in ihre schlichten Entsprechungen auf. Danach fallen die
+  // Kombinationszeichen weg, damit aus „Wäschle" und „Waschle" dasselbe wird —
+  // auf beiden Seiten gleich, also vergleichbar.
+  //
+  // Am 06.10.2026 an der echten Liste geprueft:
+  //   „𝒟𝒶𝓃𝒾ℯ𝓁𝒶"            → „daniela"
+  //   „𝗖𝗵𝗶𝗮𝗿𝗮 𝗪𝗮𝗹𝗱𝗻𝗲𝗿"      → „chiara waldner"
+  // Kapitaelchen wie „ᴀɴᴊᴀ" haben keine solche Entsprechung und bleiben stehen.
   const namensform = (s) => String(s || '')
+    .normalize('NFKD')
+    .replace(/\p{M}+/gu, '')
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
@@ -535,11 +548,48 @@
   //      wenig, davon gibt es in jeder Liste mehrere.
   //   2. Genau ein passender Task. Bei zwei Treffern waere jede Wahl geraten,
   //      dann bleibt die Unterhaltung lieber unverbunden.
-  function nameTreffer(titel) {
-    const soll = namensform(titel);
-    if (soll.split(' ').filter(Boolean).length < 2) return null;
-    const passend = cuOhneThread.filter((x) => !x.tid && !x.leiche
-      && namensform(rohTitel(x.titel)) === soll);
+  // Sucht den Task zu einer Unterhaltung ueber den Anzeigenamen. Drei Wege,
+  // alle an der echten Liste vom 06.10.2026 entwickelt:
+  //
+  //   1. Beide Namen sind gleich.
+  //      „Anna Bolko NRNS" ↔ „anna_bolko_cali — Anna Bolko NRNS"
+  //   2. Alle Wortteile des Task-Namens kommen im Titel vor. Instagram-Namen
+  //      tragen oft Beiwerk, das in ClickUp nicht steht.
+  //      „G o V e | Govind Mukubay" ↔ „govefit_ — Govind Mukubay"
+  //   3. Der Titel ist selbst ein Handle.
+  //      „naturpedal" ↔ Task „naturpedal"
+  //
+  // Zwei Schranken verhindern Raten:
+  //   - Ein einzelnes Wort zaehlt nur, wenn es als Handle geschrieben ist.
+  //     „Willi" ist ein Vorname und passt auf zu viele; „naturpedal" ist
+  //     eindeutig. Geprueft wird dafuer der unveraenderte Titel, nicht die
+  //     kleingeschriebene Form — sonst wird aus jedem Vornamen ein Handle.
+  //   - Genau ein passender Task. Bei zwei Treffern waere jede Wahl geraten,
+  //     dann bleibt die Unterhaltung unverbunden.
+  //
+  // auchVerbundene schliesst Tasks ein, die schon eine Unterhaltung haben. Das
+  // ist der Zusammenfuehrungs-Fall: dieselbe Person schreibt einmal ueber
+  // Partner-Nachrichten und einmal als normale DM, und beides gehoert in
+  // denselben Task.
+  function nameTreffer(titel, auchVerbundene) {
+    const roh = String(titel || '').trim();
+    const form = namensform(roh);
+    const worte = form.split(' ').filter(Boolean);
+    if (!worte.length) return null;
+    const einzelHandle = worte.length === 1 && HANDLE_MUSTER.test(roh) ? roh.toLowerCase() : '';
+    if (worte.length < 2 && !einzelHandle) return null;
+    const passend = alleTasks().filter((x) => {
+      if (x.leiche) return false;
+      if (!auchVerbundene && x.tid) return false;
+      if (einzelHandle) {
+        return handleVonTask(x) === einzelHandle || namensform(rohTitel(x.titel)) === form;
+      }
+      const tf = namensform(rohTitel(x.titel));
+      if (!tf) return false;
+      if (tf === form) return true;
+      const tw = tf.split(' ').filter(Boolean);
+      return tw.length >= 2 && tw.every((wort) => worte.includes(wort));
+    });
     return passend.length === 1 ? passend[0] : null;
   }
 
@@ -1763,9 +1813,13 @@
         if (hier && cuOhneThread.some((x) => !x.tid && !x.leiche && handleVonTask(x) === hier)) {
           vormerken({ art: 'verbinden-handle', tid, titel: t.title, handle: hier });
         } else if (!hier) {
-          // Kein Handle zu holen: dann ueber den Anzeigenamen versuchen.
-          const ziel = nameTreffer(t.title);
-          if (ziel) vormerken({ art: 'verbinden-handle', tid, titel: t.title, taskId: ziel.taskId });
+          // Kein Handle zu holen: dann ueber den Anzeigenamen versuchen, und
+          // zwar auch in Tasks, die schon eine Unterhaltung haben — genau dort
+          // sitzt der Zusammenfuehrungs-Fall.
+          const ziel = nameTreffer(t.title, true);
+          if (ziel) {
+            vormerken({ art: 'verbinden-handle', tid, titel: t.title, taskId: ziel.taskId, bild });
+          }
         }
       }
 
@@ -2537,7 +2591,7 @@
     const ul = el('ol', 'igfu-list');
     for (const [, t] of offen.slice(0, 20)) {
       const tid = t.threadID;
-      const treffer = nameTreffer(t.title);
+      const treffer = nameTreffer(t.title, true);
       const li = el('li', 'igfu-item');
       const top = el('div', 'igfu-item-top');
       top.append(

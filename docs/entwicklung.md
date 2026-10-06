@@ -313,6 +313,42 @@ Unterhaltung im Postfach
         └── nein ──► Anzeigename  ──► Task mit gleichem Namen        (Namensbrücke)
 ```
 
+#### Wie verglichen wird — an der echten Liste entwickelt
+
+`namensform()` faltet beide Seiten auf eine vergleichbare Form:
+
+```
+normalize('NFKD')  →  Schmuckschrift wird zu schlichten Buchstaben
+\p{M} entfernen    →  „Wäschle" und „Waschle" werden gleich
+toLowerCase        →  Großschreibung spielt keine Rolle
+[^\p{L}\p{N}] → ' ' →  Satzzeichen, Emoji, Striche fallen weg
+```
+
+**`NFKD` ist das Entscheidende.** Instagram-Anzeigenamen stecken oft in
+Schmuckschrift, und die besteht aus eigenen Unicode-Zeichen — `𝒟𝒶𝓃𝒾ℯ𝓁𝒶` ist
+nicht `Daniela`, und `toLowerCase()` ändert daran nichts. Am 06.10.2026 an der
+echten Liste geprüft:
+
+| Anzeigename bei Meta | gelesen als |
+|---|---|
+| `𝒟𝒶𝓃𝒾ℯ𝓁𝒶` | `daniela` |
+| `𝗖𝗵𝗶𝗮𝗿𝗮 𝗪𝗮𝗹𝗱𝗻𝗲𝗿` | `chiara waldner` |
+| `G o V e \| Govind Mukubay` | `g o v e govind mukubay` |
+| `ᴀɴᴊᴀ` | `ᴀɴᴊᴀ` — Kapitälchen haben keine Entsprechung |
+
+Verglichen wird dann auf drei Wegen:
+
+1. **Beide Namen sind gleich.** `Anna Bolko NRNS` ↔ `anna_bolko_cali — Anna Bolko NRNS`
+2. **Alle Wortteile des Task-Namens kommen im Titel vor.** Instagram-Namen
+   tragen Beiwerk, das in ClickUp nicht steht:
+   `G o V e | Govind Mukubay` ↔ `govefit_ — Govind Mukubay`
+3. **Der Titel ist selbst ein Handle.** `naturpedal` ↔ Task `naturpedal`
+
+Die beiden Schranken bleiben: ein **einzelnes Wort** zählt nur, wenn es als
+Handle geschrieben ist — geprüft am unveränderten Titel, nicht an der
+kleingeschriebenen Form, sonst wird aus jedem Vornamen ein Handle. Und es muss
+**genau ein** Task passen.
+
 **Die Namensbrücke ist der Normalfall, nicht die Ausnahme.** Bei normalen
 Instagram-DMs zeigt Meta in der Liste fast immer den Anzeigenamen und nirgends
 den Handle — der Handle steht nur im Vorschautext („handle gefällt …") oder in
