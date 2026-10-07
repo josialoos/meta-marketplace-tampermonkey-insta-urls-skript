@@ -1774,6 +1774,58 @@ gruppe('Ohne Durchlauf steht dort nichts davon');
   pruefe('Keine erfundene Bilanz', !/Durchlauf/.test(t), t);
 }
 
+gruppe('Tasks ohne Unterhaltung stehen im Panel');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [
+      { id: 'a1', name: 'lauf_bulti_lauf — Thorsten Bulthaup', status: 'hat sales', farbe: '#e16b16',
+        beschreibung: 'aus UpPromote\nigfu-handle: lauf_bulti_lauf' },
+      { id: 'a2', name: 'abgesagt.person — Weg Damit', status: 'abgesagt', farbe: '#87909e',
+        beschreibung: 'aus UpPromote\nigfu-handle: abgesagt.person' },
+      { id: 'a3', name: 'leiche.person — Alt Konto', status: 'ongeboardet', farbe: '#b660e0',
+        beschreibung: 'aus UpPromote\nigfu-handle: leiche.person', tags: ['karteileiche'] },
+    ],
+  });
+  await warte(w, 900);
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const t = doc.querySelector('.igfu-body').textContent || '';
+  pruefe('Der Abschnitt nennt die Zahl', /Tasks ohne Unterhaltung \(1\)/.test(t), t.slice(0, 500));
+  pruefe('Der offene Task steht drin', /Thorsten Bulthaup/.test(t));
+  pruefe('Ein Endstatus steht nicht drin', !/Weg Damit/.test(t));
+  pruefe('Eine Karteileiche steht nicht drin', !/Alt Konto/.test(t));
+  // Auf den Knopf pruefen, nicht auf den Text: der Hinweissatz nennt das Wort
+  // „Verbinden" ebenfalls.
+  pruefe('Ohne offene Unterhaltung kein Verbinden-Knopf',
+    ![...doc.querySelectorAll('.igfu-link')].some((b) => b.textContent === 'Verbinden'));
+}
+
+gruppe('Die offene Unterhaltung lässt sich von Hand verbinden');
+{
+  const { doc, w, serverTasks } = await starte({
+    pfad: '/latest/inbox/all/?selected_item_id=T3',
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'lauf_bulti_lauf — Thorsten Bulthaup', status: 'hat sales', farbe: '#e16b16',
+              beschreibung: 'aus UpPromote\nigfu-handle: lauf_bulti_lauf' }],
+  });
+  await warte(w, 900);
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const verbinden = [...doc.querySelectorAll('.igfu-link')].find((b) => b.textContent === 'Verbinden');
+  pruefe('Der Knopf ist da', !!verbinden);
+  if (verbinden) {
+    klick(w, verbinden);
+    await warte(w, 1200);
+  }
+  pruefe('Die Unterhaltung hängt am Task',
+    /igfu-thread:\s*T3/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+  pruefe('Der Link ins Postfach steht dabei',
+    /selected_item_id=T3/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+  pruefe('Die Bild-ID wurde gelernt',
+    /igfu-bild:\s*333333333/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+}
+
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      5.3
+// @version      5.4
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -253,7 +253,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '5.3';
+  const VERSION = '5.4';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   const isInbox = () => INBOX_PATH.test(location.pathname);
   // Der Marketplace ist die Stelle, an der das Handle sicher bekannt ist. Wer hier
@@ -2633,6 +2633,8 @@
     if (offen) launcher.append(el('span', 'igfu-due-badge', offen + ' offen'));
     const fehlen = ohneHandle().length;
     if (fehlen) launcher.append(el('span', 'igfu-due-badge', fehlen + ' ohne Handle'));
+    const ohneGespraech = ohneUnterhaltung().length;
+    if (ohneGespraech) launcher.append(el('span', '', ohneGespraech + ' ohne Unterhaltung'));
     launcher.classList.toggle('has', nUnread + all.length > 0);
     launcher.setAttribute('aria-expanded', panelOpen ? 'true' : 'false');
     positionUI();
@@ -2650,6 +2652,35 @@
       .filter((t) => !t.leiche)
       .filter((t) => !handleVonTask(t))
       .sort((a, b) => String(a.titel || '').localeCompare(String(b.titel || '')));
+  }
+
+  // Tasks, zu denen es noch keine Unterhaltung gibt. Das ist der Normalfall bei
+  // allem, was aus UpPromote kam: diese Affiliates wurden nie ueber Instagram
+  // angeschrieben, und wo nie geschrieben wurde, gibt es nichts zu verbinden.
+  //
+  // Zu verbinden ist es trotzdem oft — naemlich sobald geschrieben wurde. Nur
+  // findet das Skript die Zuordnung dann haeufig nicht von selbst: im normalen
+  // Postfach nennt der Vorschautext nie den Handle, und der Anzeigename traegt
+  // meist nur den Vornamen plus Beiwerk. „Thorsten | Laufen & Trailrunning"
+  // gegen „lauf_bulti_lauf — Thorsten Bulthaup" ist nicht zu raten, zumal es
+  // zwei Thorstens gibt. Deshalb hier die Liste und ein Knopf zum Verbinden
+  // von Hand. Ein Klick, und ab dann laeuft alles Weitere automatisch — die
+  // Bild-ID wird dabei gelernt und traegt kuenftige Zuordnungen.
+  function ohneUnterhaltung() {
+    if (!cuEingerichtet()) return [];
+    return cuOhneThread
+      .filter((t) => !t.leiche)
+      .filter((t) => !STATUS_ENDE.includes(String(t.status || '').toLowerCase().trim()))
+      .sort((a, b) => (statusRang(b.status) - statusRang(a.status))
+        || String(a.titel || '').localeCompare(String(b.titel || '')));
+  }
+
+  // Die gerade geoeffnete Unterhaltung, sofern sie noch keinen Task hat.
+  function offeneOhneTask() {
+    const tid = offenerThread();
+    if (!tid || cuTasks[tid]) return null;
+    const zeile = threadRows().find(([, t]) => t.threadID === tid);
+    return { tid, titel: zeile ? zeile[1].title : '', bild: zeile ? bildIDVon(zeile[1]) : '' };
   }
 
   // Fuer Tasks ohne Unterhaltung: Name und Markerzeile direkt schreiben.
@@ -2731,6 +2762,48 @@
       + b.mitHandle + ' mit bekanntem Handle.';
   }
 
+  // Der Gegenstueck-Abschnitt zu „Unterhaltungen ohne Task": hier stehen die
+  // Tasks, denen die Unterhaltung fehlt.
+  function zeigeOhneUnterhaltung() {
+    const offen = ohneUnterhaltung();
+    if (!offen.length) return;
+    const jetzt = offeneOhneTask();
+    bodyEl.appendChild(el('h3', 'igfu-section-title',
+      'Tasks ohne Unterhaltung (' + offen.length + ')'));
+    bodyEl.appendChild(el('p', 'igfu-empty', jetzt
+      ? 'Offen ist gerade „' + (jetzt.titel || 'eine Unterhaltung')
+        + '". Ein Klick auf „Verbinden" hängt sie an den Task.'
+      : 'Mit diesen Affiliates wurde nie über Instagram geschrieben — oder das Skript '
+        + 'findet die Unterhaltung nicht, weil der Anzeigename ein anderer ist. Öffne die '
+        + 'Unterhaltung im Postfach, dann erscheint hier ein Knopf zum Verbinden.'));
+    const ul = el('ol', 'igfu-list');
+    for (const t of offen.slice(0, 40)) {
+      const li = el('li', 'igfu-item');
+      const top = el('div', 'igfu-item-top');
+      top.append(
+        button('igfu-name', t.titel || 'Ohne Namen',
+          () => window.open(t.url, '_blank', 'noopener'), 'Task in ClickUp öffnen'),
+        el('span', 'igfu-meta', t.status || ''),
+      );
+      if (jetzt) {
+        top.appendChild(button('igfu-link', 'Verbinden', async () => {
+          try {
+            await threadAnhaengen(t, jetzt.tid, jetzt.bild);
+            toast('Verbunden: ' + (t.titel || 'Task') + ' ↔ ' + (jetzt.titel || 'Unterhaltung'));
+            scanRows();
+            renderPanel();
+            updateLauncher();
+          } catch (e) {
+            toast('Verbinden: ' + e.message);
+          }
+        }, 'Hängt die gerade geöffnete Unterhaltung an diesen Task'));
+      }
+      li.appendChild(top);
+      ul.appendChild(li);
+    }
+    bodyEl.appendChild(ul);
+  }
+
   function renderPanel() {
     bodyEl.textContent = '';
     const uEntries = sortedUnread();
@@ -2741,6 +2814,7 @@
       d.id = 'igfu-diagnose';
       bodyEl.appendChild(d);
       zeigeOhneTask();
+      zeigeOhneUnterhaltung();
     }
 
     if (!uEntries.length && !fEntries.length && !ohneHandle().length) {

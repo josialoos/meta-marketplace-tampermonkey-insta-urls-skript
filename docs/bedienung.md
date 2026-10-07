@@ -244,6 +244,33 @@ Endstatus `abgesagt`, `keine antwort`, `beendet`.
 
 ---
 
+## Tasks ohne Unterhaltung verbinden
+
+Im Panel steht unter den erkannten Unterhaltungen der Abschnitt **„Tasks ohne
+Unterhaltung"** mit einer Zahl. Das sind Datensätze, zu denen es in ClickUp
+alles gibt — Handle, Status, Frist — nur keine verknüpfte Unterhaltung.
+
+Zwei Gründe gibt es dafür:
+
+1. **Mit dem Affiliate wurde nie über Instagram geschrieben.** Der Normalfall bei
+   allem, was aus UpPromote kam. Da ist nichts zu verbinden, solange du nicht
+   schreibst.
+2. **Das Skript findet die Zuordnung nicht.** Im normalen Postfach nennt der
+   Vorschautext nie den Handle, und der Anzeigename trägt meist nur den Vornamen
+   plus Beiwerk. „Thorsten | Laufen & Trailrunning" gegen
+   „lauf\_bulti\_lauf — Thorsten Bulthaup" ist nicht zu erraten — zumal es zwei
+   Thorstens im CRM gibt. Raten wäre hier schlimmer als nichts zu tun.
+
+**So verbindest du von Hand:** Unterhaltung im Postfach öffnen, Panel öffnen, beim
+richtigen Task auf **„Verbinden"** klicken. Fertig.
+
+Danach läuft alles Weitere von selbst: Status, Frist und Markierungen hängen an
+dem Task, und **die Bild-ID des Profilfotos wird dabei gelernt**. Taucht dieselbe
+Person später in einer zweiten Unterhaltung auf, findet das Skript sie daran
+wieder — ohne Handle, ohne Namensvergleich, ohne dich.
+
+---
+
 ## Die Nachfass-Frist
 
 Jeder Task bekommt automatisch ein **Fälligkeitsdatum** — deine Deadline, bis zu
