@@ -1,4 +1,4 @@
-import { starte, warte, chip, klick, knopf, beschreibungMit, macheThread, LISTE, SPACE, TAG } from './harness.mjs';
+import { starte, warte, chip, klick, knopf, beschreibungMit, macheThread, LISTE, SPACE, TAG, PAGE } from './harness.mjs';
 import { readFileSync } from 'node:fs';
 
 let fehlgeschlagen = 0, gelaufen = 0;
@@ -1868,6 +1868,80 @@ gruppe('Die Auswahl zum Verbinden steht an der Unterhaltung');
     /igfu-thread:\s*T/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
   pruefe('Der Link ins Postfach steht dabei',
     /selected_item_id=T/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+}
+
+const MIT_META = { ...MIT_CLICKUP, 'meta:token:v1': 'EAAG_geheim_meta' };
+// Die Seiten-ID steht als asset_id in der Postfach-Adresse.
+const META_PFAD = '/latest/inbox/all/?asset_id=' + PAGE;
+// T2 ist „Corina Bösch", Zeitstempel 20.09.2026 09:30.
+const T2_ZEIT = new Date(2026, 8, 20, 9, 30, 0).getTime();
+
+gruppe('Die Meta-API liefert den Handle, den das Postfach nicht nennt');
+{
+  const { doc, w, store, aufrufe } = await starte({
+    pfad: META_PFAD,
+    speicher: MIT_META,
+    metaUnterhaltungen: [{ id: 't_111', username: 'corina_boesch', zeit: T2_ZEIT }],
+  });
+  klick(w, knopf(doc, 'Handles über die Meta-API holen'));
+  await warte(w, 1500);
+  pruefe('Die Conversations-Abfrage ging raus',
+    aufrufe.some((a) => a.pfad.startsWith('META/') && a.pfad.includes('platform=instagram')),
+    JSON.stringify(aufrufe.filter((a) => a.pfad.startsWith('META')).map((a) => a.pfad)));
+  pruefe('Die Seiten-ID stammt aus der Adresse',
+    aufrufe.some((a) => a.pfad.includes(PAGE)),
+    JSON.stringify(aufrufe.filter((a) => a.pfad.startsWith('META')).map((a) => a.pfad)));
+  const funde = store.get('meta:funde:v1');
+  pruefe('Ein Handle wurde abgelegt', !!funde && funde.liste.length === 1, JSON.stringify(funde));
+  pruefe('Die eigene Seite zählt nicht als Gegenüber',
+    !!funde && funde.liste[0].handle === 'corina_boesch', JSON.stringify(funde));
+  // Der Scan ordnet ueber den Zeitpunkt zu.
+  await warte(w, 700);
+  const handles = store.get('clickup:handles:v1') || {};
+  pruefe('Die Unterhaltung kennt jetzt ihren Handle',
+    (handles.T2 || {}).handle === 'corina_boesch', JSON.stringify(handles.T2));
+  pruefe('Die Quelle ist die API', (handles.T2 || {}).quelle === 'api', JSON.stringify(handles.T2));
+}
+
+gruppe('Der Meta-Token steht in keiner Adresse');
+{
+  const { doc, w, aufrufe } = await starte({
+    pfad: META_PFAD,
+    speicher: MIT_META,
+    metaUnterhaltungen: [{ id: 't_111', username: 'corina_boesch', zeit: T2_ZEIT }],
+  });
+  klick(w, knopf(doc, 'Handles über die Meta-API holen'));
+  await warte(w, 1500);
+  pruefe('Kein Token im Pfad',
+    !aufrufe.some((a) => String(a.pfad).includes('EAAG_geheim_meta')),
+    JSON.stringify(aufrufe.map((a) => a.pfad)));
+  pruefe('Kein Token in einer Nutzlast',
+    !aufrufe.some((a) => JSON.stringify(a.data || '').includes('EAAG_geheim_meta')));
+}
+
+gruppe('Zwei Unterhaltungen zur selben Zeit bleiben unzugeordnet');
+{
+  const { doc, w, store } = await starte({
+    pfad: META_PFAD,
+    speicher: MIT_META,
+    metaUnterhaltungen: [
+      { id: 't_111', username: 'corina_boesch', zeit: T2_ZEIT },
+      { id: 't_222', username: 'jemand_anders', zeit: T2_ZEIT + 1000 },
+    ],
+  });
+  klick(w, knopf(doc, 'Handles über die Meta-API holen'));
+  await warte(w, 2000);
+  const handles = store.get('clickup:handles:v1') || {};
+  pruefe('Kein geratener Handle', !(handles.T2 || {}).handle, JSON.stringify(handles.T2));
+}
+
+gruppe('Ohne Meta-Token passiert nichts');
+{
+  const { doc, w, aufrufe } = await starte({ pfad: META_PFAD, speicher: MIT_CLICKUP });
+  klick(w, knopf(doc, 'Handles über die Meta-API holen'));
+  await warte(w, 800);
+  pruefe('Keine Anfrage an Meta', !aufrufe.some((a) => String(a.pfad).startsWith('META')),
+    JSON.stringify(aufrufe.map((a) => a.pfad)));
 }
 
 console.log('\n' + (fehlgeschlagen

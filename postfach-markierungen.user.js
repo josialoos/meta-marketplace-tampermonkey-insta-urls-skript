@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      5.5
+// @version      5.6
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -13,6 +13,7 @@
 // @grant        GM_xmlhttpRequest
 // @connect      api.clickup.com
 // @connect      aff-api.uppromote.com
+// @connect      graph.facebook.com
 // @sandbox      JavaScript
 // ==/UserScript==
 
@@ -255,7 +256,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '5.5';
+  const VERSION = '5.6';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   const isInbox = () => INBOX_PATH.test(location.pathname);
   // Der Marketplace ist die Stelle, an der das Handle sicher bekannt ist. Wer hier
@@ -406,6 +407,117 @@
   // UpPromote kennt den Freigabestatus der Affiliates. Shopify kennt ihn nicht,
   // dort steht nur ein Tag ohne Aussage. Die Zuordnung laeuft ueber das
   // Instagram-Profil, das UpPromote bei jedem Affiliate mitliefert.
+  // ---------- Meta Conversations API ----------
+  // Der Handle steht im Postfach nirgends in der Liste: bei normalen DMs lautet
+  // der Vorschautext „Name: Text", und der Anzeigename traegt meist nur den
+  // Vornamen plus Beiwerk. Die Conversations-API nennt ihn dagegen direkt, als
+  // `participants.username`. Das ist der einzige verlaessliche Weg, der ohne
+  // Oeffnen der Unterhaltung auskommt — und Oeffnen wuerde sie als gelesen
+  // markieren, was nicht in Frage kommt.
+  const META_TOKEN = 'meta:token:v1';
+  const META_PAGE = 'meta:page:v1';
+  const META_FUNDE = 'meta:funde:v1';
+  const META_VERSION = 'v21.0';
+  const metaToken = () => String(GM_getValue(META_TOKEN, '') || '').trim();
+  // Die Seiten-ID steht als asset_id in jeder Postfach-Adresse. Einmal gesehen,
+  // wird sie behalten, damit sie auch ausserhalb des Postfachs zur Verfuegung
+  // steht.
+  function metaSeite() {
+    const ausAdresse = new URLSearchParams(location.search).get('asset_id');
+    if (ausAdresse) {
+      if (String(GM_getValue(META_PAGE, '')) !== ausAdresse) GM_setValue(META_PAGE, ausAdresse);
+      return ausAdresse;
+    }
+    return String(GM_getValue(META_PAGE, '') || '').trim();
+  }
+
+  function metaRequest(pfad) {
+    return new Promise((erfuellen, ablehnen) => {
+      const token = metaToken();
+      if (!token) return ablehnen(Object.assign(new Error('Kein Meta-Token hinterlegt.'), { blockierend: true }));
+      let grund = '';
+      const fehler = (text, art) => ablehnen(Object.assign(new Error(text + grund), {
+        wiederholbar: art === 'wiederholbar', blockierend: art === 'blockierend',
+      }));
+      GM_xmlhttpRequest({
+        method: 'GET',
+        // Der Token geht als Kopfzeile mit, nicht als Parameter in der Adresse.
+        // In der Adresse stuende er in jedem Protokoll und jeder Fehlermeldung.
+        url: /^https:/.test(pfad) ? pfad : 'https://graph.facebook.com/' + META_VERSION + pfad,
+        headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' },
+        timeout: 25000,
+        onload: (a) => {
+          let k = null;
+          try { k = a.responseText ? JSON.parse(a.responseText) : {}; } catch (e) { k = null; }
+          if (k && k.error && k.error.message) grund = ' (' + k.error.message + ')';
+          if (a.status === 401 || a.status === 403) return fehler('Meta lehnt den Token ab.', 'blockierend');
+          if (a.status === 429) return fehler('Meta-Limit erreicht.', 'wiederholbar');
+          if (a.status >= 500) return fehler('Meta antwortet gerade nicht.', 'wiederholbar');
+          if (a.status < 200 || a.status >= 300) return fehler('Meta meldet Fehler ' + a.status + '.');
+          if (!k) return fehler('Antwort von Meta war nicht lesbar.');
+          erfuellen(k);
+        },
+        onerror: () => fehler('Keine Verbindung zu Meta.', 'wiederholbar'),
+        ontimeout: () => fehler('Meta hat zu lange gebraucht.', 'wiederholbar'),
+      });
+    });
+  }
+
+  // Holt die Unterhaltungen samt Teilnehmern. Geblaettert wird ueber
+  // paging.next; die Adresse kommt vollstaendig zurueck, deshalb darf
+  // metaRequest sie auch vollstaendig entgegennehmen.
+  async function metaUnterhaltungen(melden) {
+    const seite = metaSeite();
+    if (!seite) throw Object.assign(new Error('Die Seiten-ID ist unbekannt. Einmal das Postfach öffnen, '
+      + 'dort steht sie als asset_id in der Adresse.'), { blockierend: true });
+    const raus = [];
+    let pfad = '/' + encodeURIComponent(seite) + '/conversations'
+      + '?platform=instagram&fields=participants,updated_time&limit=50';
+    for (let runde = 0; runde < 20; runde++) {
+      if (melden) melden('Frage Meta ab, Seite ' + (runde + 1) + ' \u2026');
+      const d = await metaRequest(pfad);
+      for (const u of d.data || []) raus.push(u);
+      const weiter = d.paging && d.paging.next;
+      if (!weiter || !(d.data || []).length) break;
+      pfad = weiter;
+    }
+    return raus;
+  }
+
+  // Aus der Antwort das herausziehen, was wir brauchen: Handle und Zeitpunkt.
+  // Die eigene Seite steht bei den Teilnehmern mit drin und faellt raus — sie
+  // ist daran zu erkennen, dass ihre ID die Seiten-ID ist.
+  function metaFunde(unterhaltungen) {
+    const seite = metaSeite();
+    const raus = [];
+    for (const u of unterhaltungen || []) {
+      const teilnehmer = (u.participants && u.participants.data) || [];
+      for (const t of teilnehmer) {
+        const name = String((t && t.username) || '').trim().toLowerCase();
+        if (!name || String(t.id || '') === seite) continue;
+        const zeit = Date.parse(u.updated_time || '');
+        raus.push({ handle: name, zeit: isNaN(zeit) ? 0 : zeit, id: String(u.id || '') });
+      }
+    }
+    return raus;
+  }
+
+  // Verbindet Handle und Unterhaltung ueber den Zeitpunkt. Die API nennt den
+  // Handle, aber ihre Unterhaltungs-ID ist nicht das selected_item_id, mit dem
+  // das Postfach arbeitet. Gemeinsam haben beide den Zeitpunkt der letzten
+  // Nachricht — auf die Sekunde derselbe Vorgang.
+  //
+  // Zugeordnet wird nur, wenn genau ein Fund in das Zeitfenster faellt. Bei
+  // zwei Treffern waere es geraten, und ein falscher Handle verknuepft den
+  // falschen Creator.
+  const META_FENSTER = 120000;
+  function handleAusApi(thread) {
+    const funde = GM_getValue(META_FUNDE, null);
+    if (!funde || !funde.liste || !funde.liste.length || !thread || !thread.timestamp) return '';
+    const passend = funde.liste.filter((f) => f.zeit && Math.abs(f.zeit - thread.timestamp) <= META_FENSTER);
+    return passend.length === 1 ? passend[0].handle : '';
+  }
+
   const UP_TOKEN = 'uppromote:token:v1';
   // Mehr als das braucht keine realistische Affiliate-Liste. Schuetzt davor,
   // minutenlang gegen eine Schnittstelle zu laufen, die nicht blaettert.
@@ -494,7 +606,10 @@
   // landen Vornamen wie „Laura" als vermeintliches Handle im CRM.
   const HANDLE_MUSTER = /^(?=.*[a-z])[a-z0-9_][a-z0-9._]{1,28}[a-z0-9_]$/;
   // Von Hand eingetragen schlaegt ausgelesen schlaegt geraten.
-  const GUETE = { vorschau: 1, karte: 2, hand: 3 };
+  // Von Hand eingetragen schlaegt die API schlaegt ausgelesen schlaegt geraten.
+  // Die Conversations-API nennt den Handle als Tatsache und nicht als Fundstueck
+  // aus einem Vorschautext — nur Josias eigene Eingabe steht darueber.
+  const GUETE = { vorschau: 1, karte: 2, api: 3, hand: 4 };
 
   const handles = () => GM_getValue(CU_HANDLES, {}) || {};
   const handleVon = (tid) => handles()[tid] || null;
@@ -1152,6 +1267,39 @@
   //      bei einem Gespraech von Oktober sonst eine Frist in der Vergangenheit
   //      und einen Fehler 400. Deshalb gilt wie ueberall die spaetere der
   //      beiden Regeln.
+  // Holt die Handles und legt sie ab. Die Zuordnung zu den Unterhaltungen
+  // passiert danach im Scan ueber den Zeitpunkt, siehe handleAusApi.
+  //
+  // Die Meldung nennt bewusst auch, was *nicht* geklappt hat: wie viele
+  // Unterhaltungen ohne Handle zurueckkamen und ob die Unterhaltungs-ID der API
+  // zufaellig doch dem selected_item_id des Postfachs entspricht. Beides laesst
+  // sich ohne einen echten Aufruf nicht wissen, und ohne diese Zahlen waere der
+  // naechste Schritt wieder Raterei.
+  async function metaHandlesHolen() {
+    if (cuLaeuft) { toast('Es läuft gerade eine Übertragung, bitte kurz warten.'); return; }
+    if (!metaToken()) { toast('Bitte erst den Meta-Token eintragen.'); return; }
+    cuLaeuft = true;
+    try {
+      const roh = await metaUnterhaltungen(toast);
+      const liste = metaFunde(roh);
+      GM_setValue(META_FUNDE, { stand: Date.now(), liste });
+      // Gegenprobe: trifft eine API-Kennung eine Thread-ID aus dem Postfach?
+      const imPostfach = new Set(threadRows().map(([, t]) => String(t.threadID)));
+      const idTreffer = liste.filter((f) => imPostfach.has(f.id)).length;
+      const ohneHandleDa = roh.length - new Set(liste.map((f) => f.id)).size;
+      toast(roh.length + ' Unterhaltungen von Meta, ' + liste.length + ' mit Handle'
+        + (ohneHandleDa > 0 ? ', ' + ohneHandleDa + ' ohne' : '')
+        + '. ' + (idTreffer ? idTreffer + ' Kennungen passen direkt auf das Postfach.'
+          : 'Zuordnung läuft über den Zeitpunkt.'));
+      scanRows();
+      updateLauncher();
+    } catch (e) {
+      toast('Meta: ' + e.message);
+    } finally {
+      cuLaeuft = false;
+    }
+  }
+
   async function fristenNachtragen() {
     if (!cuEingerichtet()) { toast('Bitte erst ClickUp einrichten.'); return; }
     if (cuLaeuft) { toast('Es läuft gerade eine Übertragung, bitte kurz warten.'); return; }
@@ -1854,6 +2002,12 @@
       const vorschau = handleAusVorschau(t);
       const bild = bildIDVon(t);
       if (vorschau || bild) handleMerken(tid, vorschau, 'vorschau', bild);
+      // Die Meta-API kennt den Handle auch dann, wenn im Vorschautext keiner
+      // steht — und das ist bei normalen DMs die Regel.
+      if (!(handleVon(tid) || {}).handle) {
+        const ausApi = handleAusApi(t);
+        if (ausApi) handleMerken(tid, ausApi, 'api', bild);
+      }
 
       // Datum der letzten Nachricht ins Startdatum des Tasks, damit in ClickUp
       // sichtbar und sortierbar ist, wie lange nichts mehr passiert ist.
@@ -2496,6 +2650,13 @@
     const upLabel = el('label', '', 'UpPromote-Token');
     upLabel.appendChild(upFeld);
 
+    const metaFeld = el('input');
+    metaFeld.type = 'password';
+    metaFeld.autocomplete = 'off';
+    metaFeld.placeholder = 'Page-Access-Token mit instagram_manage_messages';
+    const metaLabel = el('label', '', 'Meta-Token');
+    metaLabel.appendChild(metaFeld);
+
     const knoepfe = el('div', 'igfu-form-knoepfe');
 
     const standAnzeigen = () => {
@@ -2503,6 +2664,11 @@
       teile.push(String(GM_getValue(CU_TOKEN, '') || '').trim() ? 'Token hinterlegt.' : 'Kein Token hinterlegt.');
       teile.push(cuListe() ? 'Liste ' + cuListe() + '.' : 'Keine Liste gesetzt.');
       teile.push(upToken() ? 'UpPromote verbunden.' : 'UpPromote nicht verbunden.');
+      teile.push(metaToken()
+        ? 'Meta-API verbunden' + (metaSeite() ? ', Seite ' + metaSeite() + '.' : ', Seiten-ID fehlt noch.')
+        : 'Meta-API nicht verbunden.');
+      const funde = GM_getValue(META_FUNDE, null);
+      if (funde && funde.liste) teile.push(funde.liste.length + ' Handles von Meta.');
       const offen = warteschlange().length;
       if (offen) teile.push(offen + ' Änderung(en) warten auf Übertragung.');
       hinweis.textContent = teile.join(' ');
@@ -2513,8 +2679,10 @@
         GM_setValue(CU_LIST, listenFeld.value.trim());
         if (tokenFeld.value.trim()) GM_setValue(CU_TOKEN, tokenFeld.value.trim());
         if (upFeld.value.trim()) GM_setValue(UP_TOKEN, upFeld.value.trim());
+        if (metaFeld.value.trim()) GM_setValue(META_TOKEN, metaFeld.value.trim());
         tokenFeld.value = '';
         upFeld.value = '';
+        metaFeld.value = '';
         cuEinstellungenGeaendert();
         standAnzeigen();
         toast('Gespeichert. Ich prüfe die Verbindung …');
@@ -2538,6 +2706,11 @@
       },
         'Öffnet die Inhalte des Creator-Marketing-Hubs, nach Datum sortiert. Was dort sichtbar wird, '
         + 'sammelt das Skript ein. Beim nächsten Aktualisieren landet es in ClickUp.'),
+      button('igfu-link', 'Handles über die Meta-API holen',
+        async () => { await metaHandlesHolen(); standAnzeigen(); },
+        'Fragt die Instagram-Unterhaltungen bei Meta ab. Die API nennt den Handle jedes '
+        + 'Gegenübers — im Postfach steht er nirgends. Es wird nur gelesen, keine Unterhaltung '
+        + 'geöffnet, nichts als gelesen markiert.'),
       button('igfu-link', 'Fehlende Fristen nachtragen',
         async () => { await fristenNachtragen(); standAnzeigen(); },
         'Setzt eine Nachfass-Frist bei jedem Task, der noch keine hat: ab „erste ware versendet" '
@@ -2556,7 +2729,7 @@
       }),
     );
 
-    f.append(hinweis, listenLabel, tokenLabel, upLabel, knoepfe);
+    f.append(hinweis, listenLabel, tokenLabel, upLabel, metaLabel, knoepfe);
     f.standAnzeigen = standAnzeigen;
     standAnzeigen();
     return f;

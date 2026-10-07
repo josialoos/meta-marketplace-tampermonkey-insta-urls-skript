@@ -448,6 +448,52 @@ die spätere der beiden. Die Schranke steht an zwei Stellen: beim Vormerken in
 `scanRows()` und beim Ausführen, weil ein Auftrag aus der gespeicherten
 Warteschlange älter sein kann als der Stand.
 
+### Die Meta Conversations API
+
+Der Instagram-Handle steht im Postfach **nirgends in der Liste**. Bei normalen DMs
+lautet der Vorschautext „Name: Text", und der Anzeigename trägt meist nur den
+Vornamen plus Beiwerk. Am 06.10.2026 gemessen: **null von neun** Unterhaltungen
+mit bekanntem Handle.
+
+Die Conversations-API nennt ihn direkt:
+
+```
+GET https://graph.facebook.com/v21.0/<PAGE-ID>/conversations
+    ?platform=instagram&fields=participants,updated_time&limit=50
+Authorization: Bearer <PAGE-TOKEN>
+```
+
+- **Seiten-ID**: steht als `asset_id` in jeder Postfach-Adresse — für Tzampas Food
+  `1605958876394212`. Einmal gesehen, wird sie behalten.
+- **Token**: als Kopfzeile, nicht als Parameter. In der Adresse stünde er in jedem
+  Protokoll und jeder Fehlermeldung.
+- Geblättert wird über `paging.next`; die Adresse kommt vollständig zurück.
+- Die eigene Seite steht bei den Teilnehmern mit drin und fällt über ihre ID raus.
+
+**Kein Öffnen, kein Lesestatus.** Das ist der Grund, warum dieser Weg gegenüber
+dem Auslesen der Kontaktkarte gewonnen hat: eine Unterhaltung zu öffnen markiert
+sie bei Meta als gelesen, und das kommt nicht in Frage.
+
+#### Die Brücke über den Zeitpunkt
+
+Die Unterhaltungs-ID der API (`t_…`) ist **nicht** das `selected_item_id`, mit dem
+das Postfach arbeitet. Gemeinsam haben beide den Zeitpunkt der letzten Nachricht —
+derselbe Vorgang, auf die Sekunde.
+
+```
+API:      username ──┐
+                     ├── gleicher Zeitpunkt (±2 min) ──► Handle ↔ threadID
+Postfach: threadID ──┘
+```
+
+Zugeordnet wird nur, wenn **genau ein** Fund in das Zeitfenster fällt. Bei zwei
+Treffern wäre es geraten, und ein falscher Handle verknüpft den falschen Creator.
+Der Handle landet dann über `handleMerken(tid, h, 'api')` im üblichen Speicher,
+und von da an greift die vorhandene Handle-Brücke — am Rest ändert sich nichts.
+
+In `GUETE` steht `api` zwischen `karte` und `hand`: verlässlicher als alles
+Ausgelesene, aber Josias eigene Eingabe steht darüber.
+
 ### Welche Tags es gibt
 
 | Tag | Farbe | Wer setzt ihn | Was das Skript damit macht |
@@ -668,6 +714,26 @@ Beide tragen `@updateURL` und `@downloadURL`, aktualisieren sich also selbst.
 
 > **Nie löschen und neu installieren.** Der GM-Speicher hängt an Name und
 > Namespace; beim Löschen gehen Token und Markierungen mit.
+
+### Meta Conversations API
+
+1. Eine App unter dem Business anlegen (oder eine vorhandene nehmen).
+2. Berechtigungen anfordern: `instagram_basic`, `instagram_manage_messages`,
+   `pages_manage_metadata`. Die App muss einem **verifizierten Unternehmen**
+   gehören.
+3. Im Graph API Explorer die Seite **Tzampas Food** wählen und einen
+   **Page-Access-Token** erzeugen.
+4. Den Token im Panel unter **Meta-Token** eintragen. Die Seiten-ID zieht sich das
+   Skript selbst aus der Postfach-Adresse.
+5. Menü → **„Handles über die Meta-API holen"**.
+
+Der Token liegt wie alle anderen ausschließlich im GM-Speicher und geht als
+Kopfzeile mit. `@connect graph.facebook.com` ist im Kopf eingetragen — Tampermonkey
+fragt beim Update einmal nach, weil eine neue Domain dazukommt.
+
+**Grenzen:** nur die 20 jüngsten Nachrichten je Unterhaltung; Anfragen im
+„Requests"-Ordner fallen nach 30 Tagen Inaktivität heraus. Für Handle und
+Zeitpunkt reicht das.
 
 ### ClickUp
 

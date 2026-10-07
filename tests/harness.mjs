@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 
 export const SKRIPT = new URL('../postfach-markierungen.user.js', import.meta.url);
 export const LISTE = '900000000001';
+export const PAGE = '1605958876394212';
 export const SPACE = '90151611845';
 export const TAG = 'follow-up';
 
@@ -50,6 +51,7 @@ export async function starte({
   karte = null,            // { handle } fuer die Kontaktkarte der geoeffneten Unterhaltung
   markt = null,            // [{ handle, bild }] baut stattdessen Marketplace-Karten
   zusatz = [],             // weitere Unterhaltungen hinter den vier festen
+  metaUnterhaltungen = null, // [{ id, username, zeit }] fuer die Conversations-API
 } = {}) {
   // Die vier festen Threads bleiben unangetastet, damit bestehende Pruefungen
   // ihre Zeilenzahl behalten. Wer eine fuenfte Unterhaltung braucht — etwa um
@@ -102,6 +104,25 @@ export async function starte({
   });
 
   const antwort = (methode, url, data) => {
+    if (url.startsWith('https://graph.facebook.com')) {
+      aufrufe.push({ methode, pfad: 'META' + url.replace(/^https:\/\/graph\.facebook\.com\/v[0-9.]+/, ''), data: null });
+      const f = fehler && fehler(methode, 'META');
+      if (f === 'token') return { status: 401, responseText: JSON.stringify({ error: { message: 'Invalid OAuth token' } }) };
+      if (f === 'netz') return { netz: true };
+      return {
+        status: 200,
+        responseText: JSON.stringify({
+          data: (metaUnterhaltungen || []).map((u) => ({
+            id: u.id,
+            updated_time: new Date(u.zeit).toISOString(),
+            participants: { data: [
+              { id: PAGE, username: 'tzampas.food', name: 'Tzampas Food' },
+              { id: u.id + '_p', username: u.username, name: u.name || u.username },
+            ] },
+          })),
+        }),
+      };
+    }
     if (url.startsWith('https://aff-api.uppromote.com/api/v2')) {
       const pf = url.replace('https://aff-api.uppromote.com/api/v2', '');
       aufrufe.push({ methode, pfad: 'UP' + pf, data: null });
