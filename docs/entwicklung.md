@@ -743,6 +743,15 @@ der Lauf wird immer langsamer, und Prüfungen mit Zeitfenster fallen um, **obwoh
 am Skript nichts falsch ist**. Am 06.10.2026 sah das nach drei Regressionen aus
 und war keine.
 
+**Der Handle wird vor dem Anlegen abgewartet.** `crmKlick()` ruft
+`handleBeschaffen()` mit `await` und reicht das Ergebnis an `cuTaskSichern()`
+weiter. Vorher lief das absichtlich nebenher, damit das Anlegen nicht wartet —
+nur kann `cuTaskSichern()` ohne Handle nicht erkennen, dass es zu dieser Person
+längst einen Task gibt, und legt einen zweiten an. Bei Thorsten wäre das
+passiert: die Zeile heißt im Postfach „Thorsten | Laufen & Trailrunning", der
+Task „lauf\_bulti\_lauf — Thorsten Bulthaup". Der gesparte Augenblick ist eine
+Dublette im CRM nicht wert.
+
 **Zwei Zahlen, die leicht verwechselt werden.** `threadRows()` liefert die
 Zeilen, die Meta gerade im Dokument hält — bei einer virtualisierten Liste immer
 nur gut ein Dutzend. Der volle Durchlauf schreibt seine Bilanz dagegen nach

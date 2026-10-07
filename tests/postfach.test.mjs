@@ -1826,6 +1826,50 @@ gruppe('Die offene Unterhaltung lässt sich von Hand verbinden');
     /igfu-bild:\s*333333333/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
 }
 
+gruppe('CRM-Pille legt keine Dublette an, wenn der Handle passt');
+{
+  // Die Kontaktkarte nennt den Handle. In ClickUp gibt es dazu schon einen
+  // Task ohne Unterhaltung — es darf kein zweiter entstehen.
+  const { doc, w, serverTasks, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    karte: { handle: 'lauf_bulti_lauf' },
+    pfad: '/latest/inbox/all/?selected_item_id=T3',
+    tasks: [{ id: 'a1', name: 'lauf_bulti_lauf — Thorsten Bulthaup', status: 'hat sales', farbe: '#e16b16',
+              beschreibung: 'aus UpPromote\nigfu-handle: lauf_bulti_lauf' }],
+  });
+  klick(w, chip(doc, 2, 'crm'));
+  await warte(w, 3000);
+  pruefe('Kein zweiter Task', angelegte(aufrufe).length === 0,
+    JSON.stringify(angelegte(aufrufe).map((a) => a.data && a.data.name)));
+  pruefe('Die Unterhaltung hängt am vorhandenen Task',
+    /igfu-thread:\s*T3/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+}
+
+gruppe('Die Auswahl zum Verbinden steht an der Unterhaltung');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'lauf_bulti_lauf — Thorsten Bulthaup', status: 'hat sales', farbe: '#e16b16',
+              beschreibung: 'aus UpPromote\nigfu-handle: lauf_bulti_lauf' }],
+  });
+  await warte(w, 900);
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const auswahl = doc.querySelector('.igfu-auswahl');
+  pruefe('Es gibt eine Auswahl', !!auswahl);
+  pruefe('Der Task steht zur Wahl',
+    !!auswahl && /Thorsten Bulthaup/.test(auswahl.textContent || ''), auswahl && auswahl.textContent);
+  if (auswahl) {
+    auswahl.value = 'a1';
+    auswahl.dispatchEvent(new w.Event('change', { bubbles: true }));
+    await warte(w, 1500);
+  }
+  pruefe('Die gewählte Unterhaltung hängt am Task',
+    /igfu-thread:\s*T/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+  pruefe('Der Link ins Postfach steht dabei',
+    /selected_item_id=T/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+}
+
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));

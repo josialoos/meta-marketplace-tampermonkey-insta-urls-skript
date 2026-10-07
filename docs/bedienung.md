@@ -261,8 +261,18 @@ Zwei Gründe gibt es dafür:
    „lauf\_bulti\_lauf — Thorsten Bulthaup" ist nicht zu erraten — zumal es zwei
    Thorstens im CRM gibt. Raten wäre hier schlimmer als nichts zu tun.
 
-**So verbindest du von Hand:** Unterhaltung im Postfach öffnen, Panel öffnen, beim
-richtigen Task auf **„Verbinden"** klicken. Fertig.
+**So verbindest du von Hand:** Panel öffnen, im Abschnitt **„Unterhaltungen ohne
+Task"** steht unter jeder Unterhaltung eine Auswahlliste **„Mit Task
+verbinden …"**. Den richtigen Task auswählen — fertig.
+
+Die Auswahl hängt bewusst an der Unterhaltung und nicht an „der gerade
+geöffneten". Deren Kennung schreibt Meta nämlich nur dann in die Adresse, wenn
+man über einen Deep-Link gekommen ist; beim bloßen Anklicken einer Zeile nicht.
+
+**Die CRM-Pille ist hier der falsche Knopf**, wenn der Kontakt schon in ClickUp
+steht: sie legt einen Task an. Sie fragt zwar vorher nach dem Handle und hängt
+die Unterhaltung an den vorhandenen Task, wenn der Handle passt — findet sie
+keinen, entsteht ein zweiter Datensatz.
 
 Danach läuft alles Weitere von selbst: Status, Frist und Markierungen hängen an
 dem Task, und **die Bild-ID des Profilfotos wird dabei gelernt**. Taucht dieselbe

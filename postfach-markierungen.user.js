@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      5.4
+// @version      5.5
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -206,6 +206,8 @@
     }
     .igfu-note:focus, .igfu-date input:focus { outline: 2px solid ${PINK}; outline-offset: 0; border-color: transparent; }
     .igfu-meta { margin-top: 6px; font-size: 11px; color: #8a8d91; }
+    .igfu-auswahl { margin-top: 6px; max-width: 100%; font-size: 12px; padding: 4px 6px;
+      border: 1px solid #dadde1; border-radius: 6px; background: #fff; color: #1c1e21; }
     .igfu-link, .igfu-done, .igfu-close {
       font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
       border-radius: 6px; padding: 4px 8px; border: 0; background: transparent; color: #1c2b33;
@@ -253,7 +255,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '5.4';
+  const VERSION = '5.5';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   const isInbox = () => INBOX_PATH.test(location.pathname);
   // Der Marketplace ist die Stelle, an der das Handle sicher bekannt ist. Wer hier
@@ -2044,8 +2046,8 @@
   // Beschafft den Handle und traegt ihn nach. Laeuft neben dem Anlegen her und
   // haelt es nie auf.
   async function handleBeschaffen(tid, titel) {
-    // Wird bewusst nicht abgewartet, damit das Anlegen nicht wartet. Deshalb
-    // darf hier nichts unbehandelt nach oben fliegen.
+    // Darf nichts unbehandelt nach oben fliegen: der Aufrufer wartet zwar, soll
+    // aber am Anlegen nicht scheitern, nur weil der Handle nicht zu holen war.
     try {
       if (!isInbox() || !cuEingerichtet()) return '';
       const bekannt = handleVon(tid);
@@ -2066,10 +2068,24 @@
     if (!tid) return;
     const task = cuTasks[tid];
     if (task && task.url) { window.open(task.url, '_blank', 'noopener'); return; }
-    toast('Lege Task in ClickUp an …');
-    handleBeschaffen(tid, titel);
+    // Erst den Handle, dann anlegen — und zwar abgewartet. Ohne Handle kann
+    // cuTaskSichern nicht erkennen, dass es zu dieser Person schon einen Task
+    // gibt, und legt einen zweiten an. Genau so waere aus Thorsten im normalen
+    // Postfach eine Dublette geworden: die Zeile heisst dort
+    // „Thorsten | Laufen & Trailrunning", der Task „lauf_bulti_lauf — Thorsten
+    // Bulthaup", und ohne Handle verbindet die beiden nichts.
+    //
+    // Vorher lief das absichtlich nebenher, damit das Anlegen nicht wartet. Der
+    // gesparte Augenblick ist eine Dublette im CRM nicht wert.
+    toast('Suche den Instagram-Handle …');
+    const handle = await handleBeschaffen(tid, titel);
     try {
-      const neu = await cuTaskSichern(tid, titel);
+      const neu = await cuTaskSichern(tid, titel, handle);
+      if (neu && neu.tids && neu.tids.length > 1) {
+        toast('An den vorhandenen Task gehängt: ' + rohTitel(neu.titel));
+        scanRows();
+        return;
+      }
       scanRows();
       toast('Task angelegt: ' + (neu.titel || titel));
     } catch (e) {
@@ -2732,7 +2748,9 @@
     bodyEl.appendChild(el('h3', 'igfu-section-title', 'Unterhaltungen ohne Task'));
     bodyEl.appendChild(el('p', 'igfu-empty',
       'So liest das Skript den Namen. Steht rechts „kein Treffer", gibt es in '
-      + 'ClickUp keinen passenden Task — oder es passen zwei, dann wird keiner genommen.'));
+      + 'ClickUp keinen passenden Task — oder es passen zwei, dann wird keiner genommen. '
+      + 'Über die Auswahl darunter verbindest du von Hand.'));
+    const waehlbar = ohneUnterhaltung();
     const ul = el('ol', 'igfu-list');
     for (const [, t] of offen.slice(0, 20)) {
       const tid = t.threadID;
@@ -2745,6 +2763,44 @@
       );
       li.appendChild(top);
       li.appendChild(el('div', 'igfu-meta', 'gelesen als „' + namensform(t.title) + '"'));
+
+      // Von Hand zuordnen, direkt an der Unterhaltung. Bewusst nicht ueber „die
+      // gerade geoeffnete Unterhaltung": deren Kennung steht nur dann in der
+      // Adresse, wenn man ueber einen Deep-Link gekommen ist. Beim blossen
+      // Anklicken einer Zeile schreibt Meta sie nicht hinein — dieselbe
+      // Ursache, aus der auch das Auslesen der Kontaktkarte oft leer ausgeht.
+      if (waehlbar.length) {
+        const zeile = el('div', 'igfu-item-top');
+        const auswahl = document.createElement('select');
+        auswahl.className = 'igfu-auswahl';
+        const leer = document.createElement('option');
+        leer.value = '';
+        leer.textContent = 'Mit Task verbinden \u2026';
+        auswahl.appendChild(leer);
+        for (const task of waehlbar) {
+          const o = document.createElement('option');
+          o.value = task.taskId;
+          o.textContent = (task.titel || 'Ohne Namen') + (task.status ? ' \u00b7 ' + task.status : '');
+          auswahl.appendChild(o);
+        }
+        auswahl.addEventListener('change', async () => {
+          const ziel = waehlbar.find((x) => x.taskId === auswahl.value);
+          if (!ziel) return;
+          auswahl.disabled = true;
+          try {
+            await threadAnhaengen(ziel, tid, bildIDVon(t));
+            toast('Verbunden: ' + rohTitel(ziel.titel) + ' \u2194 ' + (t.title || 'Unterhaltung'));
+            scanRows();
+            renderPanel();
+            updateLauncher();
+          } catch (e) {
+            auswahl.disabled = false;
+            toast('Verbinden: ' + e.message);
+          }
+        });
+        zeile.appendChild(auswahl);
+        li.appendChild(zeile);
+      }
       ul.appendChild(li);
     }
     bodyEl.appendChild(ul);
