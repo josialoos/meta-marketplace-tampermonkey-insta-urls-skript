@@ -1448,7 +1448,7 @@ gruppe('Das Panel sagt, was das Skript gerade sieht');
   const d = doc.querySelector('#igfu-diagnose');
   pruefe('Die Diagnosezeile ist da', !!d);
   pruefe('Sie nennt die drei erkannten Instagram-Unterhaltungen',
-    !!d && /3 Unterhaltungen im Blick/.test(d.textContent || ''), d && d.textContent);
+    !!d && /3 Unterhaltungen gerade im Dokument/.test(d.textContent || ''), d && d.textContent);
   pruefe('Sie nennt, wie viele einen Task haben',
     !!d && /0 mit Task/.test(d.textContent || ''), d && d.textContent);
 }
@@ -1746,6 +1746,32 @@ gruppe('Die Versionsnummer steht im Panel und stimmt mit dem Kopf überein');
   const d = doc.querySelector('#igfu-diagnose');
   pruefe('Die Version steht in der Diagnosezeile',
     !!d && d.textContent.includes('Version ' + imKopf), d && d.textContent);
+}
+
+gruppe('Die Bilanz des letzten Durchlaufs steht im Panel');
+{
+  const { doc, w, store } = await starte({
+    speicher: {
+      ...MIT_CLICKUP,
+      'igfu:durchlauf:v1': { stand: Date.now(), voll: true, gesehen: 128, mitTask: 41, mitHandle: 12 },
+    },
+  });
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const t = (doc.querySelector('#igfu-diagnose') || {}).textContent || '';
+  pruefe('Sie nennt die Zahl der gesehenen Unterhaltungen', /128 Unterhaltungen gesehen/.test(t), t);
+  pruefe('Sie nennt, wie viele einen Task haben', /41 mit Task/.test(t), t);
+  pruefe('Sie unterscheidet vom Dokument-Stand', /gerade im Dokument/.test(t), t);
+  pruefe('Der Speicher bleibt unangetastet', !!store.get('igfu:durchlauf:v1'));
+}
+
+gruppe('Ohne Durchlauf steht dort nichts davon');
+{
+  const { doc, w } = await starte({ speicher: MIT_CLICKUP });
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const t = (doc.querySelector('#igfu-diagnose') || {}).textContent || '';
+  pruefe('Keine erfundene Bilanz', !/Durchlauf/.test(t), t);
 }
 
 console.log('\n' + (fehlgeschlagen

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      5.2
+// @version      5.3
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
 // @run-at       document-idle
@@ -253,7 +253,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '5.2';
+  const VERSION = '5.3';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   const isInbox = () => INBOX_PATH.test(location.pathname);
   // Der Marketplace ist die Stelle, an der das Handle sicher bekannt ist. Wer hier
@@ -364,6 +364,12 @@
   const ROT = '#e5484d';
   const FELD_THREAD = 'Thread-ID';   // wird nur noch gelesen, falls vorhanden
   const CU_HANDLES = 'clickup:handles:v1';
+  // Was der letzte volle Durchlauf gesehen hat. Die Diagnosezeile im Panel
+  // zaehlt nur die Zeilen, die Meta gerade im Dokument haelt — nach einem
+  // Durchlauf sind das wieder ein Dutzend, und damit sagt sie nichts darueber,
+  // wie viele Unterhaltungen es insgesamt gibt. Genau diese Verwechslung hat
+  // am 07.10.2026 zwei Runden gekostet.
+  const LETZTER_DURCHLAUF = 'igfu:durchlauf:v1';
   // { handle: { bereit: bool, anfragen: bool, stand: ms } }
   const CU_CONTENT = 'clickup:content:v1';
 
@@ -2680,8 +2686,8 @@
         : 'Die Liste ist noch nicht geladen.');
     }
     return 'Version ' + VERSION + ' · '
-      + zeilen.length + ' Unterhaltung' + (zeilen.length === 1 ? '' : 'en') + ' im Blick, '
-      + mitTask + ' mit Task, ' + mitHandle + ' mit bekanntem Handle.';
+      + zeilen.length + ' Unterhaltung' + (zeilen.length === 1 ? '' : 'en') + ' gerade im Dokument, '
+      + mitTask + ' mit Task, ' + mitHandle + ' mit bekanntem Handle.' + durchlaufZeile();
   }
 
   // Zeigt die Unterhaltungen, zu denen kein Task gefunden wurde — und zwar mit
@@ -2711,6 +2717,18 @@
       ul.appendChild(li);
     }
     bodyEl.appendChild(ul);
+  }
+
+  // Metas Liste haelt immer nur gut ein Dutzend Zeilen im Dokument. „Im Blick"
+  // ist deshalb kein Mass fuer den Bestand — der steht hier.
+  function durchlaufZeile() {
+    const b = GM_getValue(LETZTER_DURCHLAUF, null);
+    if (!b || !b.gesehen) return '';
+    const tage = Math.floor((Date.now() - (b.stand || 0)) / 86400000);
+    const wann = tage <= 0 ? 'heute' : (tage === 1 ? 'gestern' : 'vor ' + tage + ' Tagen');
+    return ' — Letzter ' + (b.voll ? 'voller Durchlauf' : 'Durchlauf') + ' ' + wann + ': '
+      + b.gesehen + ' Unterhaltungen gesehen, ' + b.mitTask + ' mit Task, '
+      + b.mitHandle + ' mit bekanntem Handle.';
   }
 
   function renderPanel() {
@@ -3078,8 +3096,21 @@
       await abarbeiten();
       const offen = warteschlange().length;
       if (sc) {
+        // Festhalten, was der Lauf gesehen hat. Erst diese Zahlen sagen, ob die
+        // Liste durchgescrollt wurde und wie viele Unterhaltungen einen Task
+        // haben — die Zeilen im Dokument sagen das nicht.
+        const ids = [...gesehen];
+        const bilanz = {
+          stand: Date.now(),
+          voll: !!voll,
+          gesehen: ids.length,
+          mitTask: ids.filter((id) => cuTasks[id]).length,
+          mitHandle: ids.filter((id) => (handleVon(id) || {}).handle).length,
+        };
+        GM_setValue(LETZTER_DURCHLAUF, bilanz);
         toast(gesehen.size + (voll ? ' Unterhaltungen durchgesehen' : ' Unterhaltungen seit dem letzten Lauf')
-          + (offen ? ', ' + offen + ' Änderung(en) gehen noch raus.' : ', alles auf Stand.'));
+          + ', davon ' + bilanz.mitTask + ' mit Task und ' + bilanz.mitHandle + ' mit bekanntem Handle'
+          + (offen ? '. ' + offen + ' Änderung(en) gehen noch raus.' : '. Alles auf Stand.'));
         // Der Stand gilt erst als aktuell, wenn die Liste auch wirklich
         // durchgegangen wurde. Sonst ueberspringt der naechste Lauf alles,
         // was in der Zwischenzeit passiert ist.

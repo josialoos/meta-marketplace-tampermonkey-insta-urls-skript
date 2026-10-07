@@ -743,6 +743,14 @@ der Lauf wird immer langsamer, und Prüfungen mit Zeitfenster fallen um, **obwoh
 am Skript nichts falsch ist**. Am 06.10.2026 sah das nach drei Regressionen aus
 und war keine.
 
+**Zwei Zahlen, die leicht verwechselt werden.** `threadRows()` liefert die
+Zeilen, die Meta gerade im Dokument hält — bei einer virtualisierten Liste immer
+nur gut ein Dutzend. Der volle Durchlauf schreibt seine Bilanz dagegen nach
+`igfu:durchlauf:v1` (gesehen, mit Task, mit Handle). Am 07.10.2026 hat die
+Verwechslung zwei Runden gekostet: „7 Unterhaltungen im Blick" nach einem
+Durchlauf über die ganze Liste sah nach einem Fehler aus und war nur der Zustand
+danach.
+
 **Die Versionsnummer steht an zwei Stellen** — im `@version`-Kopf und als
 `const VERSION`, damit sie im Panel angezeigt werden kann. Eine Prüfung
 vergleicht beide; auseinanderlaufen können sie also nicht unbemerkt.

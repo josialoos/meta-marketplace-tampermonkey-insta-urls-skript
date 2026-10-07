@@ -23,7 +23,15 @@ angezeigt wird. Daraus folgt alles andere:
 **Woran du erkennst, dass es greift:** Öffne das Panel über die Pille unten
 rechts. Ganz oben steht eine Zeile wie
 
-> Version 5.2 · 14 Unterhaltungen im Blick, 9 mit Task, 11 mit bekanntem Handle.
+> Version 5.3 · 14 Unterhaltungen gerade im Dokument, 9 mit Task, 11 mit bekanntem
+> Handle. — Letzter voller Durchlauf heute: 128 Unterhaltungen gesehen, 41 mit
+> Task, 12 mit bekanntem Handle.
+
+**Die beiden Hälften messen Verschiedenes, und das ist wichtig.** „Gerade im
+Dokument" sind die gut ein Dutzend Zeilen, die Meta in diesem Moment geladen
+hält — nach einem Durchlauf ist die Liste wieder oben, und die Zahl ist klein.
+Was der Durchlauf **insgesamt** gesehen hat, steht in der zweiten Hälfte. Nur die
+sagt etwas über den Bestand.
 
 **Ganz vorn steht die installierte Version.** Stimmt sie nicht mit der im
 Install-Link überein, hat Tampermonkey das Update nicht gezogen — dann ist jede
