@@ -25,6 +25,22 @@ https://www.instagram.com/direct/t/<id>/
 | Creator Marketing Hub | Nur Recherche |
 | Altes Postfach der Business Suite | Läuft weiter, wird nicht mehr gebraucht |
 
+### Der Umzug der Altbestände
+
+Die Tasks aus der Zeit vor dem Umzug verlinken noch in die Business Suite. Im
+Panel steht dafür der Abschnitt **„Noch am alten Postfach (N)"** mit der Liste.
+
+**Das meiste erledigt sich von selbst.** Taucht die Unterhaltung bei einem
+Durchlauf auf instagram.com auf und lässt sie sich zuordnen — über den Handle,
+den Instagram oft als Zeilentitel zeigt, sonst über den Namen —, kommt der
+Instagram-Link dazu und der Task verschwindet aus der Liste. Die alte Kennung
+bleibt stehen; der alte Link funktioniert also weiter, solange es das Postfach
+gibt.
+
+Am schnellsten geht es mit **„Ganze Liste durchgehen"** auf instagram.com. Was
+danach übrig bleibt, verbindest du unten über **„Tasks ohne Unterhaltung"** von
+Hand.
+
 **Die alten Links funktionieren weiter.** Das Skript erkennt am Format, wohin ein
 Link gehört: 39-stellige Kennungen stammen aus dem Postfach, kürzere von
 Instagram. Beide Sorten können nebeneinander bestehen, bis die Altbestände

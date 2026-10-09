@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      6.1
+// @version      6.2
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -243,7 +243,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '6.1';
+  const VERSION = '6.2';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -629,7 +629,13 @@
   // Von Hand eingetragen schlaegt die API schlaegt ausgelesen schlaegt geraten.
   // Die Conversations-API nennt den Handle als Tatsache und nicht als Fundstueck
   // aus einem Vorschautext — nur Josias eigene Eingabe steht darueber.
-  const GUETE = { vorschau: 1, karte: 2, api: 3, hand: 4 };
+  // Von Hand eingetragen schlaegt die API schlaegt die Kontaktkarte schlaegt
+  // den Zeilentitel schlaegt den Vorschautext.
+  //
+  // Der Zeilentitel auf instagram.com ist oft der Handle selbst, aber eben
+  // nicht immer — ein Anzeigename kann zufaellig wie einer aussehen. Deshalb
+  // steht er ueber dem geratenen Vorschautext und unter allem Ausgelesenen.
+  const GUETE = { vorschau: 1, titel: 2, karte: 3, api: 4, hand: 5 };
 
   const handles = () => GM_getValue(CU_HANDLES, {}) || {};
   const handleVon = (tid) => handles()[tid] || null;
@@ -1617,8 +1623,9 @@
     const bisher = voll.markdown_description || voll.description || '';
     const schonDrin = threadsAusText(bisher);
     if (!schonDrin.includes(tid)) {
+      const wohin = istHubKennung(tid) ? ' auf Instagram öffnen]' : ' im Postfach öffnen]';
       const link = '[' + (schonDrin.length ? 'Weitere Unterhaltung' : 'Unterhaltung')
-        + ' im Postfach öffnen](' + postfachLink(tid) + ')';
+        + wohin + '(' + postfachLink(tid) + ')';
       const text = schonDrin.length
         ? bisher.replace(/\s*$/, '') + '\n\n' + link + '\nigfu-thread: ' + tid
         : link + '\n\n' + bisher.replace(/^\s*/, '').replace(/\s*$/, '') + '\nigfu-thread: ' + tid;
@@ -2119,6 +2126,13 @@
       const vorschau = handleAusVorschau(t);
       const bild = bildIDVon(t);
       if (vorschau || bild) handleMerken(tid, vorschau, 'vorschau', bild);
+      // Auf instagram.com steht in der Zeile haeufig der Handle selbst. Das
+      // kostet nichts und ist der verlaesslichste Schluessel, den wir ohne
+      // Zutun bekommen. Geprueft wird der unveraenderte Titel — sonst wird aus
+      // jedem Vornamen ein Handle.
+      if (isIG() && t.title && HANDLE_MUSTER.test(String(t.title).trim())) {
+        handleMerken(tid, String(t.title).trim().toLowerCase(), 'titel', bild);
+      }
       // Die Meta-API kennt den Handle auch dann, wenn im Vorschautext keiner
       // steht — und das ist bei normalen DMs die Regel.
       if (!(handleVon(tid) || {}).handle) {
@@ -2191,8 +2205,14 @@
       // Handle mit dem vorhandenen Task verbunden — ohne Zutun.
       if (!cuTasks[tid]) {
         const hier = (handleVon(tid) || {}).handle || vorschau;
-        if (hier && cuOhneThread.some((x) => !x.tid && !x.leiche && handleVonTask(x) === hier)) {
-          vormerken({ art: 'verbinden-handle', tid, titel: t.title, handle: hier });
+        // Gesucht wird im ganzen Bestand, nicht nur unter den Tasks ohne
+        // Unterhaltung. Beim Umzug von der Business Suite auf instagram.com
+        // tragen die Altbestaende naemlich bereits eine — nur eben die alte,
+        // 39-stellige. Genau die sollen ihre Instagram-Unterhaltung bekommen.
+        const perHandle = hier && alleTasks().find((x) => !x.leiche
+          && !(x.tids || []).includes(tid) && handleVonTask(x) === hier);
+        if (perHandle) {
+          vormerken({ art: 'verbinden-handle', tid, titel: t.title, taskId: perHandle.taskId, bild });
         } else if (!hier) {
           // Kein Handle zu holen: dann ueber den Anzeigenamen versuchen, und
           // zwar auch in Tasks, die schon eine Unterhaltung haben — genau dort
@@ -2978,6 +2998,21 @@
   // zwei Thorstens gibt. Deshalb hier die Liste und ein Knopf zum Verbinden
   // von Hand. Ein Klick, und ab dann laeuft alles Weitere automatisch — die
   // Bild-ID wird dabei gelernt und traegt kuenftige Zuordnungen.
+  // Tasks, die nur noch am alten Postfach haengen: sie tragen ausschliesslich
+  // 39-stellige Kennungen und keine von instagram.com. Ihre Links funktionieren
+  // heute noch, haengen aber an einer Oberflaeche, die Meta gerade abraeumt.
+  //
+  // Sie verschwinden von selbst aus dieser Liste, sobald ihre Unterhaltung im
+  // Durchlauf auftaucht und ueber Handle oder Namen zugeordnet wird.
+  function nurAltlink() {
+    if (!cuEingerichtet()) return [];
+    return alleTasks()
+      .filter((t) => !t.leiche)
+      .filter((t) => !STATUS_ENDE.includes(String(t.status || '').toLowerCase().trim()))
+      .filter((t) => (t.tids || []).length && !(t.tids || []).some(istHubKennung))
+      .sort((a, b) => String(a.titel || '').localeCompare(String(b.titel || '')));
+  }
+
   function ohneUnterhaltung() {
     if (!cuEingerichtet()) return [];
     return cuOhneThread
@@ -3156,6 +3191,30 @@
     bodyEl.appendChild(ul);
   }
 
+  // Der Stand des Umzugs von der Business Suite auf instagram.com.
+  function zeigeUmzug() {
+    const offen = nurAltlink();
+    if (!offen.length) return;
+    bodyEl.appendChild(el('h3', 'igfu-section-title', 'Noch am alten Postfach (' + offen.length + ')'));
+    bodyEl.appendChild(el('p', 'igfu-empty',
+      'Diese Tasks verlinken noch in die Meta Business Suite. Sobald ihre Unterhaltung '
+      + 'bei einem Durchlauf auf instagram.com auftaucht und sich zuordnen lässt, kommt '
+      + 'der Instagram-Link von selbst dazu. Was übrig bleibt, verbindest du unten von Hand.'));
+    const ul = el('ol', 'igfu-list');
+    for (const t of offen.slice(0, 30)) {
+      const li = el('li', 'igfu-item');
+      const top = el('div', 'igfu-item-top');
+      top.append(
+        button('igfu-name', t.titel || 'Ohne Namen',
+          () => window.open(t.url, '_blank', 'noopener'), 'Task in ClickUp öffnen'),
+        el('span', 'igfu-meta', t.status || ''),
+      );
+      li.appendChild(top);
+      ul.appendChild(li);
+    }
+    bodyEl.appendChild(ul);
+  }
+
   function renderPanel() {
     bodyEl.textContent = '';
     const fEntries = sortedFollow();
@@ -3164,6 +3223,7 @@
       const d = el('p', 'igfu-empty', diagnoseZeile());
       d.id = 'igfu-diagnose';
       bodyEl.appendChild(d);
+      zeigeUmzug();
       zeigeOhneTask();
       zeigeOhneUnterhaltung();
     }

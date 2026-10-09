@@ -286,5 +286,11 @@ export const warte = (w, ms) => new Promise((r) => w.setTimeout(r, ms));
 // Zeilen heissen im alten Postfach .row und auf instagram.com .igrow.
 export const chip = (doc, i, art) =>
   doc.querySelectorAll('.row, .igrow')[i].querySelector(`.igfu-tag[data-kind="${art}"]`);
-export const klick = (w, el) => el.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true }));
+// Fehlt das Element, soll die Meldung sagen was, statt nur „undefined".
+// Bei Mutationstests ist das der Unterschied zwischen einer Minute und einer
+// halben Stunde Suche.
+export const klick = (w, el) => {
+  if (!el) throw new Error('klick: Element nicht gefunden — vermutlich hat sich die Oberfläche geändert');
+  return el.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true }));
+};
 export const knopf = (doc, text) => [...doc.querySelectorAll('.igfu-form button')].find((b) => b.textContent === text);

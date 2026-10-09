@@ -1489,9 +1489,12 @@ gruppe('Das Panel zeigt die Unterhaltungen ohne Task');
   pruefe('Für Anna steht kein Treffer', /kein Treffer/.test(text));
   pruefe('Die gelesene Form wird gezeigt', /gelesen als „anna bolko"/.test(text), text.slice(0, 400));
   // Corina wurde über die Namensbrücke schon verbunden und gehört damit nicht
-  // mehr in diese Liste.
+  // mehr in diese Liste. Geprüft wird genau dieser Abschnitt, nicht das ganze
+  // Panel — andere Abschnitte dürfen sie sehr wohl nennen.
+  const abschnitt = (text.split('Unterhaltungen ohne Task')[1] || '')
+    .split(/Tasks ohne Unterhaltung|Handles nachtragen|Follow-ups/)[0];
   pruefe('Die verbundene Unterhaltung steht nicht mehr drin',
-    !/Corina/.test(text.split('Handles nachtragen')[0] || ''), text.slice(0, 400));
+    !/Corina/.test(abschnitt), abschnitt.slice(0, 300));
 }
 
 gruppe('Dasselbe Profilbild führt zwei Unterhaltungen zusammen');
@@ -2024,6 +2027,51 @@ gruppe('Eine Reaktion ist keine offene Nachricht');
   klick(w, doc.querySelector('#igfu-refresh'));
   await warte(w, 2500);
   pruefe('Keine Priorität gesetzt', !serverTasks[0].prio, String(serverTasks[0].prio));
+}
+
+gruppe('Der Umzug: ein Altbestand bekommt seine Instagram-Unterhaltung');
+{
+  // Der Task haengt an der alten 39-stelligen Kennung. Auf instagram.com steht
+  // seine Unterhaltung unter einer ganz anderen — zugeordnet wird ueber den
+  // Handle, den Instagram als Zeilentitel zeigt.
+  const { doc, w, serverTasks, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '17843301684077278', titel: 'naturpedal', vorschau: 'Hallo', zeit: '2h' }],
+    tasks: [{ id: 'a1', name: 'naturpedal', status: 'hat sales', farbe: '#e16b16',
+              beschreibung: 'x\nigfu-thread: 340282366841710301244259840012452280991\nigfu-handle: naturpedal' }],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 3000);
+  const text = serverTasks[0].beschreibung || '';
+  pruefe('Es entsteht kein zweiter Task', angelegte(aufrufe).length === 0,
+    JSON.stringify(angelegte(aufrufe).map((a) => a.data && a.data.name)));
+  pruefe('Die Instagram-Kennung kam dazu', /igfu-thread:\s*17843301684077278/.test(text), text.slice(-200));
+  pruefe('Die alte Kennung bleibt stehen',
+    /igfu-thread:\s*340282366841710301244259840012452280991/.test(text), text.slice(-200));
+  pruefe('Der neue Link geht nach instagram.com',
+    text.includes('https://www.instagram.com/direct/t/17843301684077278/'), text.slice(-200));
+  pruefe('Er ist als Instagram-Link benannt', /auf Instagram öffnen/.test(text), text.slice(-200));
+}
+
+gruppe('Das Panel zeigt, was noch am alten Postfach hängt');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [
+      { id: 'a1', name: 'alt.person — Alte Person', status: 'ongeboardet', farbe: '#b660e0',
+        beschreibung: 'x\nigfu-thread: 340282366841710301244259840012452280991\nigfu-handle: alt.person' },
+      { id: 'a2', name: 'neu.person — Neue Person', status: 'ongeboardet', farbe: '#b660e0',
+        beschreibung: 'x\nigfu-thread: 17843301684077278\nigfu-handle: neu.person' },
+    ],
+  });
+  await warte(w, 900);
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const t = doc.querySelector('.igfu-body').textContent || '';
+  pruefe('Die Zahl stimmt', /Noch am alten Postfach \(1\)/.test(t), t.slice(0, 400));
+  pruefe('Der Altbestand steht drin', /Alte Person/.test(t));
+  pruefe('Der umgezogene nicht',
+    !/Neue Person/.test(t.split('Noch am alten Postfach')[1] || ''), t.slice(0, 400));
 }
 
 console.log('\n' + (fehlgeschlagen
