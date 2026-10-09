@@ -1944,6 +1944,88 @@ gruppe('Ohne Meta-Token passiert nichts');
     JSON.stringify(aufrufe.map((a) => a.pfad)));
 }
 
+gruppe('Auf instagram.com wird die Liste gelesen');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [
+      { id: '17843301684077278', titel: 'naturpedal', vorschau: '3 new messages', zeit: '10m', ungelesen: true, bild: '840052174' },
+      { id: '113874680003704', titel: 'Stefanie | Vegan Food Inspo', vorschau: 'You: habe dir geantwortet ;)', zeit: '59m' },
+      { id: '17847685227038439', titel: 'Thorsten | Laufen & Trailrunning', vorschau: 'Liked a message', zeit: '19h' },
+    ],
+  });
+  pruefe('Knöpfe erscheinen an jeder Zeile',
+    doc.querySelectorAll('.igfu-tag[data-kind="unread"]').length === 3,
+    String(doc.querySelectorAll('.igfu-tag[data-kind="unread"]').length));
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const d = doc.querySelector('#igfu-diagnose');
+  pruefe('Die Diagnose zählt drei Unterhaltungen',
+    !!d && /3 Unterhaltungen gerade im Dokument/.test(d.textContent || ''), d && d.textContent);
+}
+
+gruppe('Der Link zeigt auf instagram.com');
+{
+  const { doc, w, serverTasks, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '17847685227038439', titel: 'naturpedal', vorschau: 'Hallo', zeit: '2h' }],
+  });
+  klick(w, chip(doc, 0, 'crm'));
+  await warte(w, 2500);
+  const angelegt = angelegte(aufrufe)[0];
+  pruefe('Ein Task entsteht', !!angelegt, JSON.stringify(aufrufe.map((a) => a.pfad)));
+  const text = (angelegt && angelegt.data && angelegt.data.markdown_description) || '';
+  pruefe('Der Link geht nach instagram.com',
+    text.includes('https://www.instagram.com/direct/t/17847685227038439/'), text.slice(0, 180));
+  pruefe('Kein Link in die Business Suite', !/business\.facebook\.com/.test(text), text.slice(0, 180));
+  pruefe('Die Markerzeile trägt den thread_key',
+    /igfu-thread:\s*17847685227038439/.test(text), text.slice(-120));
+}
+
+gruppe('Alte Kennungen behalten ihren alten Link');
+{
+  // Die 39-stelligen Kennungen aus dem Postfach gibt es auf instagram.com
+  // nicht. Ihre Links muessen weiter in die Business Suite zeigen, sonst
+  // laufen die Altbestaende ins Leere.
+  const alt = macheThread({ id: '340282366841710301244259840012452280991', titel: 'Alte Person',
+    zeit: new Date(2026, 9, 1, 9, 0, 0).getTime(), vorschau: 'Hallo' });
+  const { doc, w, aufrufe } = await starte({
+    speicher: MIT_CLICKUP, zusatz: [alt], karte: { handle: 'alte.person' },
+  });
+  klick(w, chip(doc, 4, 'crm'));
+  await warte(w, 2500);
+  const text = ((angelegte(aufrufe)[0] || {}).data || {}).markdown_description || '';
+  pruefe('Der Link geht in die Business Suite',
+    text.includes('business.facebook.com/latest/inbox/all/'), text.slice(0, 160));
+  pruefe('Nicht nach instagram.com', !/instagram\.com\/direct\/t\//.test(text), text.slice(0, 160));
+}
+
+gruppe('Ungelesen heißt: das Gegenüber hat geschrieben');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '17843301684077278', titel: 'naturpedal', vorschau: '3 new messages', zeit: '10m', ungelesen: true }],
+    tasks: [{ id: 'a1', name: 'naturpedal', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: 'x\nigfu-thread: 17843301684077278\nigfu-handle: naturpedal' }],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 2500);
+  pruefe('Die Priorität steht auf urgent', serverTasks[0].prio === 'urgent', String(serverTasks[0].prio));
+}
+
+gruppe('Eine Reaktion ist keine offene Nachricht');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '17847685227038439', titel: 'Thorsten', vorschau: 'Liked a message', zeit: '19h' }],
+    tasks: [{ id: 'a1', name: 'thorsten.b — Thorsten', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: 'x\nigfu-thread: 17847685227038439\nigfu-handle: thorsten.b' }],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 2500);
+  pruefe('Keine Priorität gesetzt', !serverTasks[0].prio, String(serverTasks[0].prio));
+}
+
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));

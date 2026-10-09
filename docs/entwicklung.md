@@ -268,6 +268,44 @@ nachgetragen, der Task wandert von `cuOhneThread` nach `cuTasks`. Ohne Zutun.
 Das Anschreiben selbst ist **bewusst nicht automatisiert** — Nachrichten im
 Namen des Nutzers verschickt das Skript nicht.
 
+## 3b. Die Unterhaltungsliste auf instagram.com
+
+Die Kennung steht an `props.threadRef.thread_key` — genau die aus der Adresse
+`/direct/t/<id>/`. **Sie ist aus der Liste lesbar, ohne eine Unterhaltung zu
+öffnen.** Das ist die entscheidende Eigenschaft: Öffnen würde sie als gelesen
+markieren.
+
+Name, Vorschau, Zeit und Lesestatus stehen dagegen nicht in den Props, sondern
+nur im Relay-Speicher. Gerendert liegen sie als Zeilen im Text der Zeile:
+
+```
+[0] Name          „naturpedal"
+[1] Vorschau      „You: …" | „Liked a message" | „3 new messages"
+[2] Relativzeit   „10m" | „6h" | „3d" | „2w"
+[3] „Unread"      nur wenn ungelesen
+```
+
+**Zwei Fallen, beide real aufgetreten:**
+
+1. **Der eigene Knopfstreifen hängt als Kind in der Zeile.** Liest man den Text
+   naiv aus, liest sich das Skript seine eigene Beschriftung ein — und
+   „Ungelesen" auf einem Chip wird zu Metas Lesestatus. Aus einer bloßen
+   Reaktion wurde so eine offene Nachricht. `zeilenText()` überspringt
+   `.igfu-tags` deshalb ausdrücklich.
+2. **Instagram nennt nur den Abstand, nie den Zeitpunkt.** `igZeitpunkt()`
+   rechnet „10m" und „3d" in einen Zeitpunkt zurück. Für eine Frist von 14 Tagen
+   reicht Tagesgenauigkeit.
+
+Bei ungelesenen Unterhaltungen ersetzt Instagram die Vorschau durch
+„N new messages" und verschluckt damit den Text. Macht nichts: ungelesen heißt
+ohnehin, dass das Gegenüber zuletzt geschrieben hat, und genau so wertet
+`werZuletzt()` es aus.
+
+Der Zeilentitel ist auf instagram.com häufig schon der Handle. Sieht er wie einer
+aus — geprüft am **unveränderten** Titel —, wird er ohne Nachfrage übernommen.
+
+---
+
 ## 4. Die Brücke zwischen den Welten
 
 Jedes System kennt den Affiliate unter einem anderen Schlüssel:

@@ -1,9 +1,10 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      5.6
+// @version      6.0
 // @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
 // @match        https://business.facebook.com/*
+// @match        https://www.instagram.com/*
 // @run-at       document-idle
 // @updateURL    https://raw.githubusercontent.com/josialoos/meta-marketplace-tampermonkey-insta-urls-skript/main/postfach-markierungen.user.js
 // @downloadURL  https://raw.githubusercontent.com/josialoos/meta-marketplace-tampermonkey-insta-urls-skript/main/postfach-markierungen.user.js
@@ -256,9 +257,24 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '5.6';
+  const VERSION = '6.0';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
-  const isInbox = () => INBOX_PATH.test(location.pathname);
+  // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
+  // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
+  // keinen Deep-Link — weder auf eine Unterhaltung noch auf eine Suche. Ohne
+  // Verlinkung aus ClickUp heraus ist das Arbeiten zu aufwendig.
+  //
+  // instagram.com hat einen, und zwar seit Jahren unveraendert:
+  //     https://www.instagram.com/direct/t/<thread_key>/
+  // Dort wird gelesen, geschrieben und erstangeschrieben. Der Hub bleibt fuer
+  // die Recherche, das alte Postfach laeuft weiter, bis die Altlinks umgestellt
+  // sind.
+  const IG_HOST = 'www.instagram.com';
+  const IG_PATH = /^\/direct(\/|$)/;
+  const isIG = () => location.hostname === IG_HOST && IG_PATH.test(location.pathname);
+  // „Postfach" meint ab hier beide Listen. Alles darauf — Chips, Pillen, Panel,
+  // Uebertragung — ist in beiden gleich.
+  const isInbox = () => (location.hostname !== IG_HOST && INBOX_PATH.test(location.pathname)) || isIG();
   // Der Marketplace ist die Stelle, an der das Handle sicher bekannt ist. Wer hier
   // erfasst wird, hat es von Anfang an im Task stehen.
   const MARKT_PATH = /^\/(latest\/creator_marketplace|creator_marketing_hub)(\/|$)/;
@@ -573,7 +589,27 @@
   //
   // Business und Asset kommen aus der aktuellen Adresse, sonst oeffnet Meta
   // unter Umstaenden das zuletzt benutzte Konto.
+  // Zwei Kennungen, zwei Welten — und sie sind am Format zu unterscheiden.
+  //
+  // Das alte Postfach vergibt 39-stellige Nummern
+  // (340282366841710301244259840012452280991), der Creator Hub kurze
+  // (1629424262158448). Und der kurze Schluessel des Hubs funktioniert
+  // unveraendert auf instagram.com:
+  //
+  //     https://www.instagram.com/direct/t/1629424262158448/
+  //
+  // Am 09.10.2026 geprueft. Das ist die Loesung fuer die Verlinkung: der Hub
+  // selbst kennt keine Adresse, weder fuer eine Unterhaltung noch fuer eine
+  // Suche — aber seinen Schluessel nimmt Instagram an. Und das Format
+  // /direct/t/ gibt es dort seit Jahren unveraendert, waehrend die Business
+  // Suite gerade zum zweiten Mal umgebaut wurde.
+  //
+  // Beide Formen muessen nebeneinander bestehen: die Altbestaende tragen noch
+  // die langen Kennungen, und deren Links funktionieren weiter.
+  const istHubKennung = (tid) => /^[0-9]{1,24}$/.test(String(tid || ''));
+
   function postfachLink(tid) {
+    if (istHubKennung(tid)) return 'https://www.instagram.com/direct/t/' + encodeURIComponent(tid) + '/';
     const p = new URLSearchParams();
     const jetzt = new URLSearchParams(location.search);
     for (const k of ['asset_id', 'business_id']) {
@@ -745,9 +781,19 @@
   function werZuletzt(thread) {
     let text = '';
     try { text = textAusSnippet(thread.snippet, 0, []).join(' ').trim(); } catch (e) { return ''; }
+    // Ungelesen heisst immer: das Gegenueber hat zuletzt geschrieben. Das gilt
+    // auch dann, wenn kein Text da ist — Instagram ersetzt die Vorschau bei
+    // ungelesenen durch „3 new messages" und verschluckt sie damit.
+    if (thread.isRead === false) return 'gegenueber';
     if (!text) return '';
-    if (/^Du:/.test(text)) return 'ich';
+    // Eigene Nachricht: je nach Spracheinstellung „Du: " oder „You: ".
+    if (/^(Du|You):/.test(text)) return 'ich';
+    // Eine blosse Reaktion ist keine offene Nachricht. Drei Schreibweisen:
+    // das alte Postfach sagt „gefällt eine Nachricht", Instagram „Liked a
+    // message" oder „Reacted … to your message".
     if (/gefällt\s+(eine|deine)\s+Nachricht/i.test(text)) return 'reaktion';
+    if (/^Liked a message/i.test(text)) return 'reaktion';
+    if (/to your message$/i.test(text)) return 'reaktion';
     return 'gegenueber';
   }
 
@@ -1926,7 +1972,97 @@
   // beide sind INSTAGRAM_DIRECT und nutzen denselben Link.
   const istInstagram = (t) => !t.commPlatform || t.commPlatform === 'INSTAGRAM_DIRECT';
 
+  // ---------- Die Unterhaltungsliste auf instagram.com ----------
+  // Die Kennung steht an `props.threadRef.thread_key` — genau die, die in der
+  // Adresse /direct/t/<id>/ steht. Entscheidend: sie ist aus der Liste lesbar,
+  // ohne eine Unterhaltung zu oeffnen. Oeffnen wuerde sie als gelesen
+  // markieren, und das kommt nicht in Frage.
+  //
+  // Name, Vorschau, Zeit und Lesestatus liegen dagegen nicht in den Props,
+  // sondern nur im Relay-Speicher — gerendert stehen sie als Zeilen im Text der
+  // Zeile:
+  //     [0] Name            „naturpedal"
+  //     [1] Vorschau        „You: …" | „Liked a message" | „3 new messages"
+  //     [2] Relativzeit     „10m" | „6h" | „3d" | „2w"
+  //     [3] „Unread"        nur wenn ungelesen
+  const IG_ZEIT = /^(\d+)\s*([smhdw])$/i;
+  const IG_SPANNE = { s: 1000, m: 60000, h: 3600000, d: 86400000, w: 604800000 };
+
+  // Instagram nennt nur den Abstand, nie den Zeitpunkt. Fuer die Nachfass-Frist
+  // reicht Tagesgenauigkeit, und genau die liefert die Umrechnung.
+  function igZeitpunkt(text) {
+    const m = IG_ZEIT.exec(String(text || '').trim());
+    if (!m) return 0;
+    return Date.now() - Number(m[1]) * (IG_SPANNE[m[2].toLowerCase()] || 0);
+  }
+
+  // Die sichtbaren Zeilen eines Elements. innerText bildet die Umbrueche ab,
+  // die hier die Struktur tragen — textContent zoege alles zu einem Klumpen
+  // zusammen. jsdom kennt innerText nicht, deshalb der Rueckfall ueber die
+  // Blattelemente; der liefert dieselbe Reihenfolge.
+  function zeilenText(el) {
+    const teile = [];
+    for (const kind of el.children) {
+      // Der eigene Knopfstreifen haengt als Kind in der Zeile. Er muss hier
+      // raus, sonst liest sich das Skript seine eigene Beschriftung ein — und
+      // „Ungelesen" auf einem Chip waere dann Metas Lesestatus. Genau so
+      // wurde aus einer blossen Reaktion eine offene Nachricht.
+      if (kind.classList && kind.classList.contains('igfu-tags')) continue;
+      const roh = typeof kind.innerText === 'string' ? kind.innerText : kind.textContent;
+      for (const z of String(roh || '').split('\n')) teile.push(z);
+    }
+    return teile.map((x) => String(x || '').trim()).filter((x) => x && x !== '·');
+  }
+
+  function igHostUnter(fiber, tiefe) {
+    if (!fiber || (tiefe || 0) > 14) return null;
+    if (fiber.stateNode && fiber.stateNode.nodeType === 1) return fiber.stateNode;
+    return igHostUnter(fiber.child, (tiefe || 0) + 1);
+  }
+
+  function igRows() {
+    const traeger = new Map();
+    for (const el of document.querySelectorAll('div')) {
+      const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$'));
+      if (!key) continue;
+      let f = el[key];
+      for (let i = 0; i < 6 && f; i++) {
+        const p = f.memoizedProps;
+        const r = p && p.threadRef;
+        if (r && r.thread_key && !traeger.has(String(r.thread_key))) traeger.set(String(r.thread_key), f);
+        f = f.return;
+      }
+    }
+    const out = [];
+    for (const [tid, f] of traeger) {
+      // Vom Traeger nach oben, bis die Zeile Text hat. Darunter liegt nur das
+      // Profilbild, und das traegt keinen Namen.
+      let el = igHostUnter(f, 0);
+      let hoch = 0;
+      while (el && zeilenText(el).join('').length < 3 && hoch < 6) { el = el.parentElement; hoch += 1; }
+      if (!el) continue;
+      const teile = zeilenText(el);
+      if (!teile.length) continue;
+      const ungelesen = teile.includes('Unread') || teile.includes('Ungelesen');
+      const zeit = teile.map(igZeitpunkt).find((z) => z) || 0;
+      out.push([el, {
+        threadID: tid,
+        title: teile[0] || '',
+        timestamp: zeit,
+        // Bei ungelesenen ersetzt Instagram die Vorschau durch „N new messages".
+        // Der Text geht dadurch verloren — der Lesestatus sagt aber ohnehin,
+        // dass das Gegenueber zuletzt geschrieben hat.
+        snippet: teile[1] || '',
+        participantProfileURIs: (() => { const b = el.querySelector('img'); return b ? [b.src] : []; })(),
+        commPlatform: 'INSTAGRAM_DIRECT',
+        isRead: !ungelesen,
+      }]);
+    }
+    return out;
+  }
+
   function threadRows() {
+    if (isIG()) return igRows();
     const out = [];
     for (const row of document.querySelectorAll('div[role="presentation"]')) {
       const t = threadOf(row);
@@ -2206,6 +2342,16 @@
       if (!isInbox() || !cuEingerichtet()) return '';
       const bekannt = handleVon(tid);
       if (bekannt && bekannt.handle) return bekannt.handle;
+      // Auf instagram.com steht in der Zeile haeufig der Handle selbst
+      // („naturpedal"), nicht der Anzeigename. Dann ist nichts zu holen und
+      // nichts zu fragen. Geprueft wird der unveraenderte Titel — so wie
+      // ueberall, sonst wird aus jedem Vornamen ein Handle.
+      const ausTitel = String(titel || '').trim();
+      if (isIG() && HANDLE_MUSTER.test(ausTitel)) {
+        handleMerken(tid, ausTitel.toLowerCase(), 'karte');
+        vormerken({ art: 'handle', tid, titel, wert: ausTitel.toLowerCase() });
+        return ausTitel.toLowerCase();
+      }
       const ausKarte = await handleAusUnterhaltung(tid);
       const h = ausKarte || await handleAbfragen(titel);
       if (!h) return '';

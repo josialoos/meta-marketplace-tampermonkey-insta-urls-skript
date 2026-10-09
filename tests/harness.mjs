@@ -52,6 +52,7 @@ export async function starte({
   markt = null,            // [{ handle, bild }] baut stattdessen Marketplace-Karten
   zusatz = [],             // weitere Unterhaltungen hinter den vier festen
   metaUnterhaltungen = null, // [{ id, username, zeit }] fuer die Conversations-API
+  ig = null,               // [{ id, titel, vorschau, zeit, ungelesen, bild }] baut die Instagram-Liste
 } = {}) {
   // Die vier festen Threads bleiben unangetastet, damit bestehende Pruefungen
   // ihre Zeilenzahl behalten. Wer eine fuenfte Unterhaltung braucht — etwa um
@@ -67,8 +68,20 @@ export async function starte({
     ? '<body><div id="markt">' + karten + '</div></body>'
     : '<body><div id="liste">' + threads.map((t) => zeile(t.title, 'Hallo')).join('') + '</div>' + seitenleiste + '</body>';
   if (voriges) { try { voriges.close(); } catch { /* schon zu */ } }
-  const dom = new JSDOM(body, {
-    url: 'https://business.facebook.com' + pfad,
+  // Instagram bringt eine eigene Liste mit: andere Struktur, andere Domain.
+  // Die Zeile traegt ihren Text in getrennten Elementen, genau wie dort.
+  const igZeile = (c) =>
+    '<div class="igrow">'
+    + '<img src="https://scontent-fra3-1.cdninstagram.com/v/t51.82787-19/' + (c.bild || '900000001') + '_17967_n.jpg">'
+    + '<span>' + c.titel + '</span>'
+    + '<span>' + (c.vorschau || '') + '</span>'
+    + '<span>' + (c.zeit || '5m') + '</span>'
+    + (c.ungelesen ? '<span>Unread</span>' : '')
+    + '</div>';
+  const igBody = '<body><div id="igliste">' + (ig || []).map(igZeile).join('') + '</div></body>';
+
+  const dom = new JSDOM(ig ? igBody : body, {
+    url: ig ? 'https://www.instagram.com/direct/inbox/' : ('https://business.facebook.com' + pfad),
     runScripts: 'outside-only',
     pretendToBeVisual: true,
   });
@@ -77,6 +90,33 @@ export async function starte({
 
   [...doc.querySelectorAll('.row')].forEach((r, i) => {
     r['__reactFiber$test'] = { memoizedProps: { thread: threads[i] }, return: null, alternate: null };
+  });
+  // Auf instagram.com haengt die Kennung an props.threadRef.thread_key, und das
+  // Element findet das Skript ueber fiber.stateNode.
+  [...doc.querySelectorAll('.igrow')].forEach((r, i) => {
+    r['__reactFiber$test'] = {
+      memoizedProps: { threadRef: { thread_key: String((ig[i] || {}).id || ''), thread_fbid: 'fb' + i } },
+      stateNode: r, child: null, return: null, alternate: null,
+    };
+  });
+
+  // jsdom kennt kein innerText. Ohne Ersatz zieht textContent alle Texte zu
+  // einem Klumpen zusammen — und genau an den Umbruechen haengt auf
+  // instagram.com die Struktur der Zeile. Ein Mutationstest lief deshalb
+  // gruen durch, obwohl der Fehler im Browser aufgetreten waere.
+  // Je Textknoten eine Zeile, so wie es der Browser hier auch tut.
+  Object.defineProperty(w.HTMLElement.prototype, 'innerText', {
+    configurable: true,
+    get() {
+      const teile = [];
+      (function lauf(knoten) {
+        for (const k of knoten.childNodes) {
+          if (k.nodeType === 3) { const t = String(k.textContent || '').trim(); if (t) teile.push(t); }
+          else if (k.nodeType === 1) lauf(k);
+        }
+      })(this);
+      return teile.join('\n');
+    },
   });
 
   const store = new Map(Object.entries(speicher));
@@ -218,7 +258,18 @@ export async function starte({
 
   w.eval(readFileSync(SKRIPT, 'utf8'));
   voriges = w;
-  await warte(w, 400);
+  // Nicht blind warten, sondern bis die Zeilen versorgt sind. Eine feste
+  // Wartezeit haelt nur so lange, wie der Lauf schnell ist — wird die Suite
+  // laenger, fallen Pruefungen um, obwohl am Skript nichts falsch ist. Genau
+  // das ist am 06.10. und am 09.10.2026 passiert.
+  const erwartet = ig
+    ? ig.length
+    : (markt ? 0 : THREADS.concat(zusatz).filter((t) => !t.commPlatform || t.commPlatform === 'INSTAGRAM_DIRECT').length);
+  for (let i = 0; i < 40 && erwartet; i++) {
+    if (doc.querySelectorAll('.igfu-tags').length >= erwartet) break;
+    await warte(w, 50);
+  }
+  await warte(w, 120);
   return { dom, w, doc, store, aufrufe, serverTasks, spaceTags };
 }
 
@@ -232,6 +283,8 @@ export const macheThread = ({ id, titel, vorschau: v, bild = '999999999', zeit }
 });
 
 export const warte = (w, ms) => new Promise((r) => w.setTimeout(r, ms));
-export const chip = (doc, i, art) => doc.querySelectorAll('.row')[i].querySelector(`.igfu-tag[data-kind="${art}"]`);
+// Zeilen heissen im alten Postfach .row und auf instagram.com .igrow.
+export const chip = (doc, i, art) =>
+  doc.querySelectorAll('.row, .igrow')[i].querySelector(`.igfu-tag[data-kind="${art}"]`);
 export const klick = (w, el) => el.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true }));
 export const knopf = (doc, text) => [...doc.querySelectorAll('.igfu-form button')].find((b) => b.textContent === text);

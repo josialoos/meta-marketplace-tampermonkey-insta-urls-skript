@@ -5,6 +5,36 @@ stehen in [entwicklung.md](entwicklung.md).
 
 ---
 
+## Wo gearbeitet wird
+
+Seit Oktober 2026 auf **instagram.com/direct**. Dort wird gelesen, geschrieben und
+erstangeschrieben, und dorthin zeigen die Links aus ClickUp.
+
+Der Grund: Meta hat die Partner-Nachrichten in den Creator Marketing Hub
+ausgelagert, und **der Hub kennt keinen Deep-Link** — weder auf eine Unterhaltung
+noch auf eine Suche. Aus ClickUp heraus käme man dort nirgends gezielt hin.
+instagram.com hat einen, seit Jahren unverändert:
+
+```
+https://www.instagram.com/direct/t/<id>/
+```
+
+| Oberfläche | Wofür noch |
+|---|---|
+| **instagram.com/direct** | Alles an Nachrichten |
+| Creator Marketing Hub | Nur Recherche |
+| Altes Postfach der Business Suite | Läuft weiter, wird nicht mehr gebraucht |
+
+**Die alten Links funktionieren weiter.** Das Skript erkennt am Format, wohin ein
+Link gehört: 39-stellige Kennungen stammen aus dem Postfach, kürzere von
+Instagram. Beide Sorten können nebeneinander bestehen, bis die Altbestände
+umgezogen sind.
+
+Beim Update fragt Tampermonkey einmal nach, weil `instagram.com` als neue Domain
+dazukommt.
+
+---
+
 ## Das Wichtigste zuerst: das Skript liest nur, was auf dem Bildschirm steht
 
 Es fragt bei Meta **nichts** ab. Es liest die Unterhaltungsliste, die gerade
