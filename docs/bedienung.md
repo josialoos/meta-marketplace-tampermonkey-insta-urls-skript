@@ -41,6 +41,16 @@ Am schnellsten geht es mit **„Ganze Liste durchgehen"** auf instagram.com. Was
 danach übrig bleibt, verbindest du unten über **„Tasks ohne Unterhaltung"** von
 Hand.
 
+**Der Durchlauf hört von selbst auf.** In deinen Instagram-Nachrichten liegen
+tausende private Unterhaltungen, die mit dem CRM nichts zu tun haben. Kommen
+150 am Stück, zu denen es keinen Task gibt, ist die Liste erschöpft und der Lauf
+endet — die Meldung sagt dann „Schluss: 150 Unterhaltungen am Stück ohne Task".
+Eine harte Obergrenze von 2000 gibt es zusätzlich.
+
+**Abbrechen geht jederzeit:** Während des Laufs heißt der Knopf
+„… — abbrechen". Ein Klick stoppt ihn, und was bis dahin gefunden wurde, bleibt
+erhalten.
+
 **Die alten Links funktionieren weiter.** Das Skript erkennt am Format, wohin ein
 Link gehört: 39-stellige Kennungen stammen aus dem Postfach, kürzere von
 Instagram. Beide Sorten können nebeneinander bestehen, bis die Altbestände

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      6.2
+// @version      6.3
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -243,7 +243,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '6.2';
+  const VERSION = '6.3';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -3495,8 +3495,24 @@
   // vollstaendig = true geht die komplette Liste durch. Das braucht es beim
   // ersten Mal, nach laengerer Abwesenheit und zum Reparieren.
   let laeuftDurchlauf = false;
+  let abbruchGewuenscht = false;
+  // Der volle Durchlauf hatte kein Ende: auf instagram.com liegen tausende
+  // private Unterhaltungen, die mit dem CRM nichts zu tun haben, und er ging
+  // sie alle durch. Zwei Schranken beenden ihn jetzt.
+  //
+  // Die wichtigere ist der Leerlauf: Kommen am Stueck so viele Unterhaltungen,
+  // die zu keinem Task gehoeren, ist die Liste erschoepft — alles Weitere ist
+  // Privates. Die Zahl ist bewusst grosszuegig, damit eine laengere Strecke
+  // Fremder zwischen zwei Affiliates den Lauf nicht abwuergt.
+  const DURCHLAUF_LEERLAUF = 150;
+  const DURCHLAUF_MAX = 2000;
+
   async function allesAktualisieren(vollstaendig) {
-    if (laeuftDurchlauf) return;
+    // Ein zweiter Klick waehrend des Laufs bricht ab, statt nichts zu tun.
+    // Bei tausenden Unterhaltungen ist das der Unterschied zwischen „warten"
+    // und „ausgeliefert sein".
+    if (laeuftDurchlauf) { abbruchGewuenscht = true; toast('Durchlauf wird abgebrochen …'); return; }
+    abbruchGewuenscht = false;
     // Fehlt die Liste, wird nur das Durchgehen uebersprungen. Die Uebertragung
     // nach ClickUp, UpPromote und die Inhalte haengen nicht daran und liefen
     // sonst bei jedem Umbau durch Meta stillschweigend gar nicht mehr.
@@ -3511,14 +3527,16 @@
 
     laeuftDurchlauf = true;
     const merke = refreshBtn ? refreshBtn.textContent : '';
-    const zeigen = (text) => { if (refreshBtn) refreshBtn.textContent = text; };
-    if (refreshBtn) refreshBtn.disabled = true;
+    // Nicht sperren: der Knopf ist waehrend des Laufs der Abbrechen-Knopf.
+    const zeigen = (text) => { if (refreshBtn) refreshBtn.textContent = text + ' — abbrechen'; };
     const gesehen = new Set();
     // Erst nach drei Runden in Folge, die ausschliesslich Aelteres gebracht
     // haben, ist Schluss. Eine einzelne Zeile, die beim Nachrendern aus der
     // Reihe taenzelt, beendet den Lauf damit nicht. Gezaehlt werden nur Runden
     // mit neuen Funden, sonst wuerde blosses Warten den Lauf abwuergen.
     let hinterGrenze = 0;
+    let leerlauf = 0;
+    let grund = '';
     const erfassen = () => {
       let neu = 0, aktuelle = 0;
       for (const [, t] of threadRows()) {
@@ -3526,6 +3544,15 @@
         gesehen.add(t.threadID);
         neu++;
         if (!t.timestamp || t.timestamp >= grenze) aktuelle++;
+        // Gehoert die Unterhaltung zu einem Task, faengt der Leerlauf von vorn
+        // an. Sonst zaehlt er hoch.
+        if (cuTasks[t.threadID]) leerlauf = 0; else leerlauf += 1;
+      }
+      if (abbruchGewuenscht) { grund = 'abgebrochen'; return true; }
+      if (voll && gesehen.size >= DURCHLAUF_MAX) { grund = 'Obergrenze erreicht'; return true; }
+      if (voll && leerlauf >= DURCHLAUF_LEERLAUF) {
+        grund = leerlauf + ' Unterhaltungen am Stück ohne Task';
+        return true;
       }
       if (voll || !neu) return false;
       if (aktuelle) { hinterGrenze = 0; return false; }
@@ -3580,6 +3607,7 @@
         GM_setValue(LETZTER_DURCHLAUF, bilanz);
         toast(gesehen.size + (voll ? ' Unterhaltungen durchgesehen' : ' Unterhaltungen seit dem letzten Lauf')
           + ', davon ' + bilanz.mitTask + ' mit Task und ' + bilanz.mitHandle + ' mit bekanntem Handle'
+          + (grund ? ' (Schluss: ' + grund + ')' : '')
           + (offen ? '. ' + offen + ' Änderung(en) gehen noch raus.' : '. Alles auf Stand.'));
         // Der Stand gilt erst als aktuell, wenn die Liste auch wirklich
         // durchgegangen wurde. Sonst ueberspringt der naechste Lauf alles,

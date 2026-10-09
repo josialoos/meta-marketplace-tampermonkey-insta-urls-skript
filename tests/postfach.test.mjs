@@ -2074,6 +2074,42 @@ gruppe('Das Panel zeigt, was noch am alten Postfach hängt');
     !/Neue Person/.test(t.split('Noch am alten Postfach')[1] || ''), t.slice(0, 400));
 }
 
+gruppe('Der volle Durchlauf hört auf, wenn nur noch Fremdes kommt');
+{
+  // Vier Unterhaltungen, keine davon gehört zu einem Task. Der Lauf darf nicht
+  // endlos weiterscrollen — auf instagram.com liegen tausende private Chats.
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: Array.from({ length: 4 }, (_, i) => ({
+      id: '1784330168407727' + i, titel: 'Fremde Person ' + i, vorschau: 'Hallo', zeit: (i + 1) + 'h',
+    })),
+  });
+  klick(w, knopf(doc, 'Ganze Liste durchgehen'));
+  await warte(w, 4000);
+  const knopfText = (doc.querySelector('#igfu-refresh') || {}).textContent || '';
+  pruefe('Der Lauf ist beendet', !/abbrechen/.test(knopfText), knopfText);
+}
+
+gruppe('Ein zweiter Klick bricht den Durchlauf ab');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: Array.from({ length: 3 }, (_, i) => ({
+      id: '1784330168407728' + i, titel: 'Person ' + i, vorschau: 'Hallo', zeit: (i + 1) + 'h',
+    })),
+  });
+  const refresh = doc.querySelector('#igfu-refresh');
+  pruefe('Der Knopf ist da', !!refresh);
+  klick(w, refresh);
+  await warte(w, 200);
+  // Waehrend des Laufs ist der Knopf nicht gesperrt, sondern der Abbrecher.
+  pruefe('Der Knopf bleibt klickbar', refresh.disabled !== true, String(refresh.disabled));
+  klick(w, refresh);
+  await warte(w, 4000);
+  pruefe('Danach steht er wieder normal da',
+    !/abbrechen/.test(refresh.textContent || ''), refresh.textContent);
+}
+
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));

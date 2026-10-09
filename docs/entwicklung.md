@@ -875,4 +875,50 @@ Zeilen, die Meta gerade im Dokument hält — bei einer virtualisierten Liste im
 nur gut ein Dutzend. Der volle Durchlauf schreibt seine Bilanz dagegen nach
 `igfu:durchlauf:v1` (gesehen, mit Task, mit Handle). Am 07.10.2026 hat die
 Verwechslung zwei Runden gekostet: „7 Unterhaltungen im Blick" nach einem
-Durchlauf über die ganze Liste 
+Durchlauf über die ganze Liste sah nach einem Fehler aus und war nur der Zustand
+danach.
+
+**Die Versionsnummer steht an zwei Stellen** — im `@version`-Kopf und als
+`const VERSION`, damit sie im Panel angezeigt werden kann. Eine Prüfung
+vergleicht beide; auseinanderlaufen können sie also nicht unbemerkt.
+
+**Gewohnheit: Mutationstest.** Nach jedem neuen Test die Zeile, die er absichern
+soll, kurz kaputt machen und prüfen, dass der Test wirklich umfällt. Mehrere
+Prüfungen liefen anfangs leer durch und hätten nichts gemerkt.
+
+### Der Commit-Wächter
+
+`.git/hooks/pre-commit` führt `node --check` auf dem **gestagten** Inhalt jeder
+`*.user.js` aus und bricht den Commit ab, wenn die Datei sich nicht parsen lässt.
+
+Der Hook liegt in `.git/hooks/` und wird von Git **nicht** mitgeklont. Auf einem
+frischen Klon muss er neu angelegt werden.
+
+**Warum er existiert:** Am 05.10.2026 landete Version 4.3 abgeschnitten auf
+GitHub — die letzten 40 Zeilen fehlten, mitten in einem `setTimeout`. Die Datei
+im Arbeitsverzeichnis war vollständig und alle 211 Tests liefen grün, denn die
+Tests lesen das Arbeitsverzeichnis, nicht den Commit. Tampermonkey lud über
+`@downloadURL` den kaputten Stand, und damit war das ganze Skript tot: keine
+Pillen, keine Knöpfe, kein Panel. Ein Skript, das sich nicht parsen lässt, läuft
+nicht teilweise, sondern gar nicht.
+
+**Merksatz:** Nach jedem Push die Rohdatei gegenprüfen, nicht nur die lokale:
+
+```bash
+curl -sS https://raw.githubusercontent.com/josialoos/meta-marketplace-tampermonkey-insta-urls-skript/main/postfach-markierungen.user.js \
+  | tee /tmp/pruef.js | tail -1 && node --check /tmp/pruef.js && echo "GitHub-Stand ist in Ordnung"
+```
+
+---
+
+## 11. Regeln für Zugangsdaten
+
+- Token liegen **ausschließlich** im GM-Speicher und werden bei jeder Anfrage
+  frisch von dort gelesen.
+- Niemals am `window`-Objekt, niemals im DOM, niemals in einer Fehlermeldung
+  oder einem Log.
+- Alle Anfragen über `GM_xmlhttpRequest` mit passendem `@connect`, nie über
+  `fetch` — sonst greift Metas CSP, und der Token stünde im Seitenkontext.
+- **Dieses Repo ist öffentlich.** Keine echten IDs, keine Namen, keine
+  E-Mail-Adressen, keine Thread- oder Task-IDs in Code, Tests oder
+  Commit-Nachrichten. Platzhalter in Beispielen sind frei erfunden.
