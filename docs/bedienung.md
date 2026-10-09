@@ -107,13 +107,12 @@ An jeder Unterhaltung hängt unten ein schmaler Streifen mit drei Knöpfen:
 ┌────────────────────────────────────────────────┐
 │  🖼  Anna Musterfrau                    Mo     │
 │      Du: Hey, schön dass du dabei bist …       │
-│      [ Ungelesen ] [ Follow-up ] [ ongeboardet]│
+│      [ Follow-up ] [ ongeboardet ]             │
 └────────────────────────────────────────────────┘
                                          └ Status aus ClickUp,
                                            in der Farbe des Status
 ```
 
-- **Ungelesen** — deine eigene Markierung, unabhängig von Metas Lesestatus
 - **Follow-up** — hier willst du nachhaken. Legt beim ersten Mal einen Task in
   ClickUp an.
 - **CRM-Pille** — zeigt den Status aus ClickUp. Ein Klick öffnet den Task.
@@ -122,7 +121,7 @@ An jeder Unterhaltung hängt unten ein schmaler Streifen mit drei Knöpfen:
 Unten am Rand der Liste liegen zwei Schaltflächen:
 
 ```
-[ ⟳ Aktualisieren ]        [ Ungelesen 1   Follow-ups 39 ]
+[ ⟳ Aktualisieren ]        [ Follow-ups 39   24 fällig ]
                                         └ das ist der Knopf
                                           fürs Panel
 ```

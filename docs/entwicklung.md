@@ -306,6 +306,20 @@ aus — geprüft am **unveränderten** Titel —, wird er ohne Nachfrage überno
 
 ---
 
+### Keine eigene Ungelesen-Markierung mehr
+
+Bis 6.0 trug jede Zeile einen eigenen „Ungelesen"-Knopf, dessen Zustand im
+GM-Speicher unter `igfu:unread:v1` lag. **In 6.1 ist er entfallen**: Instagram
+kann das selbst, und zwei Ungelesen-Zustände nebeneinander stiften nur
+Verwirrung darüber, welcher gilt.
+
+Der alte Schlüssel wird nicht mehr gelesen und auch **nicht gelöscht** — wer die
+alten Markierungen noch braucht, findet sie in Tampermonkeys Speicher. Sicherungen
+tragen jetzt `version: 3` und nur noch die Follow-ups; ältere Dateien mit
+`unread` bleiben lesbar, das Feld wird übergangen.
+
+---
+
 ## 4. Die Brücke zwischen den Welten
 
 Jedes System kennt den Affiliate unter einem anderen Schlüssel:

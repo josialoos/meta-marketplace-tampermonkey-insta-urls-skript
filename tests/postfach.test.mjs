@@ -14,7 +14,7 @@ const angelegte = (a) => a.filter((x) => x.methode === 'POST' && /^\/list\/[^/]+
 gruppe('Ohne ClickUp bleibt alles wie vorher');
 {
   const { doc, w, store, aufrufe } = await starte();
-  pruefe('Knöpfe erscheinen an jeder Zeile', doc.querySelectorAll('.igfu-tag[data-kind="unread"]').length === 3);
+  pruefe('Knöpfe erscheinen an jeder Zeile', doc.querySelectorAll('.igfu-tag[data-kind="followup"]').length === 3);
   pruefe('CRM-Pille ist ausgeblendet', chip(doc, 0, 'crm').hidden === true);
   pruefe('Keine einzige Anfrage an ClickUp', aufrufe.length === 0, JSON.stringify(aufrufe));
   let zeileSahKlick = false;
@@ -1955,8 +1955,8 @@ gruppe('Auf instagram.com wird die Liste gelesen');
     ],
   });
   pruefe('Knöpfe erscheinen an jeder Zeile',
-    doc.querySelectorAll('.igfu-tag[data-kind="unread"]').length === 3,
-    String(doc.querySelectorAll('.igfu-tag[data-kind="unread"]').length));
+    doc.querySelectorAll('.igfu-tag[data-kind="followup"]').length === 3,
+    String(doc.querySelectorAll('.igfu-tag[data-kind="followup"]').length));
   klick(w, doc.querySelector('#igfu-launch'));
   await warte(w, 300);
   const d = doc.querySelector('#igfu-diagnose');

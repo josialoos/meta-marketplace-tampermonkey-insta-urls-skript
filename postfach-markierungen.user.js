@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      6.0
-// @description  Eigene Markierungen „Ungelesen" und „Follow-up" im Postfach der Meta Business Suite, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Marketplace.
+// @version      6.1
+// @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
 // @run-at       document-idle
@@ -77,15 +77,9 @@
       pointer-events: none;
     }
     .igfu-tag[data-kind="followup"]::before { content: "⚑"; font-size: 11px; }
-    .igfu-tag[data-kind="unread"]::before {
-      content: ""; width: 7px; height: 7px; border-radius: 50%;
-      border: 1.5px solid currentColor; box-sizing: border-box;
-    }
     [data-igfu-row]:hover .igfu-tag, .igfu-tag:focus-visible { opacity: 1; pointer-events: auto; }
     .igfu-tag:focus-visible { outline: 2px solid ${PINK}; outline-offset: 1px; }
     .igfu-tag.on { opacity: 1; pointer-events: auto; }
-    .igfu-tag.on[data-kind="unread"] { background: ${BLACK}; border-color: ${BLACK}; color: #fff; }
-    .igfu-tag.on[data-kind="unread"]::before { background: #fff; border-color: #fff; }
     .igfu-tag.on[data-kind="followup"] { background: ${YELLOW}; border-color: #e0b400; color: ${BLACK}; }
     .igfu-tag[data-kind="crm"]::before {
       content: ""; width: 7px; height: 7px; border-radius: 2px;
@@ -98,12 +92,6 @@
     /* Follow-up: gelber Balken links */
     [data-igfu-follow] { box-shadow: inset 3px 0 0 ${YELLOW}; }
 
-    /* Ungelesen: Name und Vorschau fett und dunkel, wie Metas eigene Darstellung.
-       Die Uhrzeit (SPAN/ABBR mit eigener Farbe) bleibt grau. */
-    [data-igfu-unread] div:not(.igfu-tags) {
-      font-weight: 700 !important;
-      color: rgb(28, 43, 51) !important;
-    }
 
     [data-igfu-flash] { animation: igfu-flash 1.8s ease-out; }
     @keyframes igfu-flash { 0%, 30% { background-color: #fde7ef; } 100% { background-color: transparent; } }
@@ -197,8 +185,6 @@
     .igfu-due.today { color: #1c2b33; font-weight: 700; }
     .igfu-due.late { color: #b4103a; font-weight: 700; }
     .igfu-item-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-    .igfu-unread-item { display: flex; align-items: center; gap: 8px; }
-    .igfu-unread-item .igfu-name { margin-right: auto; }
     .igfu-date { display: flex; align-items: center; gap: 6px; margin-right: auto; font-size: 12px; color: #65676b; }
     .igfu-date input { font: inherit; font-size: 12px; color: #1c2b33; border: 1px solid #ccd0d5; border-radius: 6px; padding: 2px 4px; }
     .igfu-note {
@@ -257,7 +243,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '6.0';
+  const VERSION = '6.1';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -305,12 +291,15 @@
 
   // ---------- Speicher ----------
   // Follow-ups: { [threadID]: { title, flaggedAt, due: 'YYYY-MM-DD' | '', note } }
-  // Ungelesen:  { [threadID]: { title, markedAt } }
-  // Der Schlüssel für Follow-ups ist derselbe wie in Version 1.0, damit
-  // bestehende Markierungen erhalten bleiben.
+  // Der Schlüssel ist derselbe wie in Version 1.0, damit bestehende
+  // Markierungen erhalten bleiben.
+  //
+  // Die eigene „Ungelesen"-Markierung ist in 6.1 entfallen: Instagram kann das
+  // selbst, und zwei Ungelesen-Zustaende nebeneinander stiften nur Verwirrung.
+  // Der alte Schluessel `igfu:unread:v1` wird nicht mehr gelesen und auch nicht
+  // geloescht — wer ihn braucht, findet ihn in Tampermonkeys Speicher.
 
   const KEY_FOLLOW = 'igfu:v1';
-  const KEY_UNREAD = 'igfu:unread:v1';
   const hasGM = typeof GM_getValue === 'function' && typeof GM_setValue === 'function';
 
   function load(key) {
@@ -325,24 +314,19 @@
   }
 
   let follow = load(KEY_FOLLOW);
-  let unread = load(KEY_UNREAD);
   const saveFollow = () => store(KEY_FOLLOW, follow);
-  const saveUnread = () => store(KEY_UNREAD, unread);
 
   // Änderungen aus anderen Tabs übernehmen
   function onExternalChange() {
     follow = load(KEY_FOLLOW);
-    unread = load(KEY_UNREAD);
     scanRows();
     if (panelOpen) renderPanel();
     updateLauncher();
   }
   if (hasGM && typeof GM_addValueChangeListener === 'function') {
-    for (const k of [KEY_FOLLOW, KEY_UNREAD]) {
-      GM_addValueChangeListener(k, (name, oldVal, newVal, remote) => { if (remote) onExternalChange(); });
-    }
+    GM_addValueChangeListener(KEY_FOLLOW, (name, oldVal, newVal, remote) => { if (remote) onExternalChange(); });
   } else {
-    window.addEventListener('storage', (e) => { if (e.key === KEY_FOLLOW || e.key === KEY_UNREAD) onExternalChange(); });
+    window.addEventListener('storage', (e) => { if (e.key === KEY_FOLLOW) onExternalChange(); });
   }
 
   // ---------- ClickUp ----------
@@ -2109,14 +2093,14 @@
 
   function scanRows() {
     if (!isInbox()) return;
-    let followTitles = false, unreadTitles = false;
+    let followTitles = false;
     for (const [row, t] of threadRows()) {
       const tid = t.threadID;
       let wrap = row.querySelector(':scope > .igfu-tags');
       if (!wrap) {
         wrap = document.createElement('div');
         wrap.className = 'igfu-tags';
-        wrap.append(makeChip('unread', 'Ungelesen'), makeChip('followup', 'Follow-up'), makeChip('crm', 'CRM'));
+        wrap.append(makeChip('followup', 'Follow-up'), makeChip('crm', 'CRM'));
         if (getComputedStyle(row).position === 'static') row.style.position = 'relative';
         row.setAttribute('data-igfu-row', '');
         row.appendChild(wrap);
@@ -2128,12 +2112,9 @@
       wrap.dataset.title = t.title;
 
       const fOn = !!follow[tid];
-      const uOn = !!unread[tid];
-      setChip(wrap.querySelector('[data-kind="unread"]'), uOn, 'Als gelesen markieren', 'Als ungelesen markieren');
       setChip(wrap.querySelector('[data-kind="followup"]'), fOn, 'Follow-up entfernen', 'Als Follow-up markieren');
       setzeCrmChip(wrap.querySelector('[data-kind="crm"]'), tid);
       setAttr(row, 'data-igfu-follow', fOn);
-      setAttr(row, 'data-igfu-unread', uOn);
 
       const vorschau = handleAusVorschau(t);
       const bild = bildIDVon(t);
@@ -2224,10 +2205,10 @@
       }
 
       if (fOn && follow[tid].title !== t.title) { follow[tid].title = t.title; followTitles = true; }
-      if (uOn && unread[tid].title !== t.title) { unread[tid].title = t.title; unreadTitles = true; }
+
     }
     if (followTitles) saveFollow();
-    if (unreadTitles) saveUnread();
+
   }
 
   // Zeigt den Pipeline-Status aus ClickUp in der Farbe des Status. Ohne Task ein
@@ -2395,11 +2376,7 @@
 
   function toggle(kind, tid, title) {
     if (!tid) return;
-    if (kind === 'unread') {
-      if (unread[tid]) delete unread[tid];
-      else unread[tid] = { title: title || 'Unbekannt', markedAt: Date.now() };
-      saveUnread();
-    } else {
+    {
       if (follow[tid]) delete follow[tid];
       else follow[tid] = { title: title || 'Unbekannt', flaggedAt: Date.now(), due: '', note: '' };
       saveFollow();
@@ -2658,7 +2635,7 @@
       return a.flaggedAt - b.flaggedAt;
     });
   }
-  const sortedUnread = () => Object.entries(unread).sort(([, a], [, b]) => b.markedAt - a.markedAt);
+
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
@@ -2958,11 +2935,11 @@
 
   function updateLauncher() {
     if (!launcher) return;
-    const nUnread = Object.keys(unread).length;
+
     const all = Object.values(follow);
     const due = all.filter((f) => f.due && f.due <= todayStr()).length;
     launcher.textContent = '';
-    launcher.append(el('span', '', 'Ungelesen ' + nUnread), el('span', '', 'Follow-ups ' + all.length));
+    launcher.append(el('span', '', 'Follow-ups ' + all.length));
     if (due) launcher.append(el('span', 'igfu-due-badge', due + ' fällig'));
     const offen = cuEingerichtet() ? warteschlange().length : 0;
     if (offen) launcher.append(el('span', 'igfu-due-badge', offen + ' offen'));
@@ -2970,7 +2947,7 @@
     if (fehlen) launcher.append(el('span', 'igfu-due-badge', fehlen + ' ohne Handle'));
     const ohneGespraech = ohneUnterhaltung().length;
     if (ohneGespraech) launcher.append(el('span', '', ohneGespraech + ' ohne Unterhaltung'));
-    launcher.classList.toggle('has', nUnread + all.length > 0);
+    launcher.classList.toggle('has', all.length > 0);
     launcher.setAttribute('aria-expanded', panelOpen ? 'true' : 'false');
     positionUI();
   }
@@ -3181,7 +3158,6 @@
 
   function renderPanel() {
     bodyEl.textContent = '';
-    const uEntries = sortedUnread();
     const fEntries = sortedFollow();
 
     if (isInbox()) {
@@ -3192,8 +3168,8 @@
       zeigeOhneUnterhaltung();
     }
 
-    if (!uEntries.length && !fEntries.length && !ohneHandle().length) {
-      bodyEl.appendChild(el('p', 'igfu-empty', 'Noch nichts markiert. Fahr mit der Maus über eine Unterhaltung und klick auf „Ungelesen" oder „Follow-up".'));
+    if (!fEntries.length && !ohneHandle().length) {
+      bodyEl.appendChild(el('p', 'igfu-empty', 'Noch nichts markiert. Fahr mit der Maus über eine Unterhaltung und klick auf „Follow-up".'));
       return;
     }
 
@@ -3242,21 +3218,6 @@
         const unten = el('div', 'igfu-item-top');
         unten.append(feld, button('igfu-done', 'Übernehmen', uebernehmen));
         li.append(top, unten);
-        ul.appendChild(li);
-      }
-      bodyEl.appendChild(ul);
-    }
-
-    if (uEntries.length) {
-      bodyEl.appendChild(el('h3', 'igfu-section-title', 'Ungelesen'));
-      const ul = el('ol', 'igfu-list');
-      for (const [tid, u] of uEntries) {
-        const li = el('li', 'igfu-item igfu-unread-item');
-        li.append(
-          button('igfu-name', u.title, () => reveal(tid), 'In der Liste anzeigen'),
-          button('igfu-link', 'Anzeigen', () => reveal(tid)),
-          button('igfu-done', 'Gelesen', () => toggle('unread', tid)),
-        );
         ul.appendChild(li);
       }
       bodyEl.appendChild(ul);
@@ -3614,7 +3575,9 @@
   // ---------- Sichern und Laden ----------
 
   function exportData() {
-    const data = { version: 2, followups: follow, unread };
+    // Version 3 kennt nur noch Follow-ups. Aeltere Dateien tragen zusaetzlich
+    // „unread"; das Feld wird beim Laden stillschweigend uebergangen.
+    const data = { version: 3, followups: follow };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const a = el('a');
     a.href = URL.createObjectURL(blob);
@@ -3632,9 +3595,10 @@
       try {
         const data = JSON.parse(reader.result);
         if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Format');
-        // Version 2: { followups, unread }; ältere Dateien enthalten nur Follow-ups
-        const f = data.version === 2 ? (data.followups || {}) : data;
-        const u = data.version === 2 ? (data.unread || {}) : {};
+        // Version 2 und 3 tragen die Follow-ups unter „followups", ganz alte
+        // Dateien sind selbst die Liste. „unread" aus Version 2 wird
+        // uebergangen — die Markierung gibt es seit 6.1 nicht mehr.
+        const f = data.version >= 2 ? (data.followups || {}) : data;
         let n = 0;
         for (const [tid, v] of Object.entries(f)) {
           if (!v || typeof v !== 'object') continue;
@@ -3647,12 +3611,7 @@
           };
           n++;
         }
-        for (const [tid, v] of Object.entries(u)) {
-          if (!v || typeof v !== 'object') continue;
-          unread[tid] = { title: String(v.title || 'Unbekannt'), markedAt: Number(v.markedAt) || Date.now() };
-          n++;
-        }
-        saveFollow(); saveUnread(); scanRows(); renderPanel(); updateLauncher();
+        saveFollow(); scanRows(); renderPanel(); updateLauncher();
         toast(n + ' Markierungen geladen.');
       } catch (e) {
         toast('Die Datei konnte nicht gelesen werden. Wähle eine mit „Sichern" erstellte Datei.');
