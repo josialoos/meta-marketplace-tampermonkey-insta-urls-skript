@@ -405,6 +405,10 @@ Verglichen wird dann auf drei Wegen:
    tragen Beiwerk, das in ClickUp nicht steht:
    `G o V e | Govind Mukubay` ↔ `govefit_ — Govind Mukubay`
 3. **Der Titel ist selbst ein Handle.** `naturpedal` ↔ Task `naturpedal`
+4. **Ein einzelnes Wort, das lang genug ist, um dafür geradezustehen.**
+   `GerdaLarissa` ↔ `gerdafichtel — GerdaLarissa`. Die Grenze liegt bei acht
+   Zeichen: ein zwölfstelliger Fantasiename gibt es einmal, ein fünfstelliger
+   Vorname wie `Willi` passt auf jeden Zweiten.
 
 Die beiden Schranken bleiben: ein **einzelnes Wort** zählt nur, wenn es als
 Handle geschrieben ist — geprüft am unveränderten Titel, nicht an der

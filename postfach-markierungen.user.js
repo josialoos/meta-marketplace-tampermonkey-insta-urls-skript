@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      6.5
+// @version      6.6
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -251,7 +251,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '6.5';
+  const VERSION = '6.6';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -741,8 +741,16 @@
     const form = namensform(roh);
     const worte = form.split(' ').filter(Boolean);
     if (!worte.length) return null;
-    const einzelHandle = worte.length === 1 && HANDLE_MUSTER.test(roh) ? roh.toLowerCase() : '';
-    if (worte.length < 2 && !einzelHandle) return null;
+    const einWort = worte.length === 1;
+    const einzelHandle = einWort && HANDLE_MUSTER.test(roh) ? roh.toLowerCase() : '';
+    // Ein einzelnes Wort zaehlt in drei Faellen: als Handle („naturpedal"),
+    // oder wenn es lang genug ist, um fuer sich zu stehen. „GerdaLarissa" mit
+    // zwoelf Zeichen ist ein Name, den es nur einmal gibt; „Willi" mit fuenf
+    // passt auf jeden Zweiten. Die Grenze liegt bei acht Zeichen, und die
+    // Eindeutigkeit wird ohnehin weiter unten verlangt — es muss genau ein
+    // Task passen.
+    const langGenug = einWort && form.length >= 8;
+    if (einWort && !einzelHandle && !langGenug) return null;
     const passend = alleTasks().filter((x) => {
       if (x.leiche) return false;
       if (!auchVerbundene && x.tid) return false;
