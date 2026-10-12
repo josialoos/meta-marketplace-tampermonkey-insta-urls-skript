@@ -2285,6 +2285,24 @@ gruppe('Zwei gleich lange Einzelnamen bleiben unzugeordnet');
     JSON.stringify([serverTasks[0].beschreibung, serverTasks[1].beschreibung]));
 }
 
+gruppe('Alle Endstatus bleiben stehen');
+{
+  // Nicht nur ignore: abgesagt, keine antwort und beendet gehoeren genauso
+  // dazu. Josia hat dort von Hand einsortiert.
+  for (const status of ['abgesagt', 'ignore', 'keine antwort', 'beendet']) {
+    const { doc, w, serverTasks } = await starte({
+      speicher: MIT_UP,
+      tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status, farbe: '#e5484d',
+                beschreibung: beschreibungMit('T1') + '\nigfu-handle: annabolko.runs' }],
+      affiliates: [{ first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de',
+                     instagram: 'annabolko.runs', approved_amount: '120.00' }],
+    });
+    klick(w, knopf(doc, 'UpPromote abgleichen'));
+    await warte(w, 1200);
+    pruefe('„' + status + '" bleibt stehen', serverTasks[0].status === status, serverTasks[0].status);
+  }
+}
+
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));

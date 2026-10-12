@@ -316,6 +316,12 @@ solche Tasks beim nächsten Lauf wieder auf `hat sales` gezogen.
 Nicht zu verwechseln mit dem **Tag** `ignore`, den das Skript bewusst nicht
 auswertet. Der Status wirkt, das Tag nicht.
 
+**Die Endstatus gelten an zwei Stellen, und beide müssen sie kennen:** im Skript
+über `STATUS_ENDE`, und im geplanten Shopify-Lauf
+(`~/.claude/scheduled-tasks/tzampas-warensendungen/SKILL.md`), der seine eigene
+Statusleiter in Prosa mitbringt. Am 12.10.2026 kannte der Lauf `ignore` noch
+nicht — eine Änderung an der Leiter muss immer dort mitgezogen werden.
+
 ### Keine eigene Ungelesen-Markierung mehr
 
 Bis 6.0 trug jede Zeile einen eigenen „Ungelesen"-Knopf, dessen Zustand im
