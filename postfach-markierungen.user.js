@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      6.3
+// @version      6.5
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -117,6 +117,14 @@
       box-shadow: 0 2px 8px rgba(0,0,0,.12);
     }
     #igfu-refresh:hover { background: #fff0f5; }
+    #igfu-filter {
+      position: fixed; z-index: 2147483000; cursor: pointer;
+      border: 1px solid #dadde1; border-radius: 999px; background: #fff;
+      color: #1c1e21; font: 500 12px/1 system-ui, sans-serif; padding: 7px 12px;
+    }
+    #igfu-filter:hover { background: #f2f3f5; }
+    #igfu-filter.on { background: ${BLACK}; border-color: ${BLACK}; color: #fff; }
+    #igfu-filter[hidden] { display: none; }
     #igfu-refresh[disabled] { cursor: default; opacity: .75; }
     #igfu-refresh:focus-visible { outline: 2px solid ${PINK}; outline-offset: 2px; }
     #igfu-refresh::before { content: "⟳"; font-size: 15px; line-height: 1; }
@@ -243,7 +251,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '6.3';
+  const VERSION = '6.5';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -395,7 +403,11 @@
     CU_STATUS_ONBOARD, CU_STATUS_WARE, CU_STATUS_CONTENT, CU_STATUS_SALES];
   // Wer hier liegt, wurde von Hand einsortiert. Daran fasst das Skript nichts an,
   // dieselbe Regel wie bei der Prioritaet.
-  const STATUS_ENDE = ['abgesagt', 'keine antwort', 'beendet'];
+  // „ignore" ist seit 12.10.2026 ein eigener Status in der Liste (Typ „done").
+  // Josia schiebt Profile dorthin, mit denen er abgeschlossen hat, und sie
+  // sollen dort bleiben: ohne diesen Eintrag haette der UpPromote-Abgleich sie
+  // beim naechsten Lauf wieder auf „hat sales" gezogen.
+  const STATUS_ENDE = ['abgesagt', 'ignore', 'keine antwort', 'beendet'];
   const statusRang = (s) => STATUS_LEITER.indexOf(String(s || '').toLowerCase().trim());
   function darfSetzen(alt, neu) {
     const a = String(alt || '').toLowerCase().trim();
@@ -1336,6 +1348,84 @@
     }
   }
 
+  // Raeumt die Altlinks aus den Beschreibungen — aber nur dort, wo der
+  // Instagram-Link schon drinsteht. Ein Task, der noch keinen hat, behaelt
+  // seinen alten, sonst bliebe er ohne jede Verlinkung zurueck.
+  //
+  // Entfernt werden drei Sorten Zeilen:
+  //   - der Link ins alte Postfach (business.facebook.com/latest/inbox)
+  //   - die von Hand eingefuegte Zeile „Link zu Nachrichten: …"
+  //   - die Markerzeile mit der 39-stelligen Kennung
+  // Die Profilzeile „Instagram: @handle" bleibt — die ist kein
+  // Unterhaltungslink.
+  //
+  // Der Instagram-Link wandert dabei nach oben. Er haengt sonst unter dem
+  // Markerblock, weil er beim Umzug angehaengt wurde, und genau den klickt
+  // Josia staendig.
+  function altlinkAufraeumen(text) {
+    const zeilen = String(text || '').split('\n');
+    const alteKennungen = threadsAusText(text).filter((t) => !istHubKennung(t));
+    const neueKennungen = threadsAusText(text).filter(istHubKennung);
+    if (!alteKennungen.length || !neueKennungen.length) return null;
+
+    const raus = [];
+    let igLink = '';
+    for (const z of zeilen) {
+      const t = z.trim();
+      if (/business\.facebook\.com\/latest\/inbox/.test(t)) continue;
+      if (/^Link zu Nachrichten:/i.test(t)) continue;
+      const marker = /^igfu-thread:\s*([A-Za-z0-9_-]+)/.exec(t);
+      if (marker && alteKennungen.includes(marker[1])) continue;
+      // Den ersten Instagram-Link herausnehmen und spaeter nach oben setzen.
+      if (!igLink && /\]\(https:\/\/www\.instagram\.com\/direct\/t\//.test(t)) {
+        igLink = '[Unterhaltung auf Instagram öffnen](' + t.slice(t.indexOf('](') + 2, t.lastIndexOf(')')) + ')';
+        continue;
+      }
+      raus.push(z);
+    }
+    let neu = raus.join('\n').replace(/\n{3,}/g, '\n\n').replace(/^\s+/, '');
+    if (igLink) neu = igLink + '\n\n' + neu;
+    return neu.replace(/\s+$/, '');
+  }
+
+  async function altlinksEntfernen() {
+    if (!cuEingerichtet()) { toast('Bitte erst ClickUp einrichten.'); return; }
+    if (cuLaeuft) { toast('Es läuft gerade eine Übertragung, bitte kurz warten.'); return; }
+    cuLaeuft = true;
+    let geaendert = 0;
+    let uebersprungen = 0;
+    let fehler = 0;
+    try {
+      await cuTasksLaden();
+      const kandidaten = alleTasks().filter((t) => (t.tids || []).some(istHubKennung)
+        && (t.tids || []).some((x) => !istHubKennung(x)));
+      if (!kandidaten.length) { toast('Keine Beschreibung trägt noch einen alten Link.'); return; }
+      toast(kandidaten.length + ' Beschreibungen werden aufgeräumt …');
+      for (const t of kandidaten) {
+        try {
+          const voll = await cuRequest('GET', '/task/' + t.taskId + '?include_markdown_description=true');
+          const bisher = voll.markdown_description || voll.description || '';
+          const neu = altlinkAufraeumen(bisher);
+          if (!neu || neu === bisher.replace(/\s+$/, '')) { uebersprungen += 1; continue; }
+          await cuRequest('PUT', '/task/' + t.taskId, { markdown_description: neu });
+          geaendert += 1;
+        } catch (e) {
+          fehler += 1;
+        }
+      }
+      await cuTasksLaden();
+      toast(geaendert + ' Beschreibungen aufgeräumt'
+        + (uebersprungen ? ', ' + uebersprungen + ' unverändert' : '')
+        + (fehler ? ', ' + fehler + ' fehlgeschlagen' : '') + '.');
+      scanRows();
+      updateLauncher();
+    } catch (e) {
+      toast('Aufräumen: ' + e.message);
+    } finally {
+      cuLaeuft = false;
+    }
+  }
+
   async function fristenNachtragen() {
     if (!cuEingerichtet()) { toast('Bitte erst ClickUp einrichten.'); return; }
     if (cuLaeuft) { toast('Es läuft gerade eine Übertragung, bitte kurz warten.'); return; }
@@ -2118,6 +2208,14 @@
       }
       wrap.dataset.title = t.title;
 
+      // Gelesene ausblenden, wenn der Filter an ist. Nur auf instagram.com —
+      // nur dort kennen wir den Lesestatus je Zeile.
+      if (isIG() && nurUngelesen() && t.isRead !== false) {
+        row.style.display = 'none';
+        continue;
+      }
+      if (row.style.display === 'none') row.style.display = '';
+
       const fOn = !!follow[tid];
       setChip(wrap.querySelector('[data-kind="followup"]'), fOn, 'Follow-up entfernen', 'Als Follow-up markieren');
       setzeCrmChip(wrap.querySelector('[data-kind="crm"]'), tid);
@@ -2629,7 +2727,12 @@
   // ---------- Übersicht ----------
 
   let panelOpen = false;
-  let launcher, panel, bodyEl, toastEl, formEl, refreshBtn, tippEl;
+  let launcher, panel, bodyEl, toastEl, formEl, refreshBtn, tippEl, filterBtn;
+  // Instagram hat keinen Filter fuer Ungelesene. Der Lesestatus steht aber an
+  // jeder Zeile, also laesst er sich nachruesten: gelesene Zeilen werden
+  // ausgeblendet. Die Einstellung haelt ueber das Neuladen hinweg.
+  const KEY_NUR_UNGELESEN = 'igfu:nur-ungelesen:v1';
+  const nurUngelesen = () => GM_getValue(KEY_NUR_UNGELESEN, false) === true;
 
   const todayStr = () => {
     const d = new Date();
@@ -2672,6 +2775,14 @@
     return b;
   }
 
+  function filterStand() {
+    if (!filterBtn) return;
+    const an = nurUngelesen();
+    filterBtn.classList.toggle('on', an);
+    filterBtn.textContent = an ? 'Nur ungelesene ✓' : 'Nur ungelesene';
+    filterBtn.hidden = !isIG();
+  }
+
   function stilEinspielen() {
     if (document.getElementById('igfu-style')) return;
     const style = document.createElement('style');
@@ -2691,6 +2802,15 @@
     refreshBtn = button('', 'Aktualisieren', () => allesAktualisieren());
     refreshBtn.id = 'igfu-refresh';
     document.body.appendChild(refreshBtn);
+
+    filterBtn = button('', 'Nur ungelesene', () => {
+      GM_setValue(KEY_NUR_UNGELESEN, !nurUngelesen());
+      filterStand();
+      scanRows();
+    }, 'Blendet gelesene Unterhaltungen aus. Instagram selbst kann das nicht.');
+    filterBtn.id = 'igfu-filter';
+    document.body.appendChild(filterBtn);
+    filterStand();
 
     // Erklaerung als eigener Tooltip. Die eingebaute Sprechblase des Browsers
     // kommt zu spaet und laesst sich nicht lesbar gliedern.
@@ -2854,6 +2974,11 @@
         'Fragt die Instagram-Unterhaltungen bei Meta ab. Die API nennt den Handle jedes '
         + 'Gegenübers — im Postfach steht er nirgends. Es wird nur gelesen, keine Unterhaltung '
         + 'geöffnet, nichts als gelesen markiert.'),
+      button('igfu-link', 'Alte Postfach-Links entfernen',
+        async () => { await altlinksEntfernen(); standAnzeigen(); },
+        'Nimmt den Link ins alte Postfach und die alte Markerzeile aus der Beschreibung — '
+        + 'aber nur dort, wo der Instagram-Link schon drinsteht. Der Instagram-Link rückt dabei '
+        + 'nach oben.'),
       button('igfu-link', 'Fehlende Fristen nachtragen',
         async () => { await fristenNachtragen(); standAnzeigen(); },
         'Setzt eine Nachfass-Frist bei jedem Task, der noch keine hat: ab „erste ware versendet" '
@@ -3651,6 +3776,13 @@
     if (refreshBtn) {
       refreshBtn.style.left = Math.round(r.left + 8) + 'px';
       refreshBtn.style.bottom = bottom + 'px';
+    }
+    // Der Filter sitzt ueber dem Aktualisieren-Knopf, damit er die Liste nicht
+    // weiter verdeckt als noetig.
+    if (filterBtn) {
+      filterStand();
+      filterBtn.style.left = Math.round(r.left + 8) + 'px';
+      filterBtn.style.bottom = (bottom + 40) + 'px';
     }
     panel.style.left = Math.round(r.left + 8) + 'px';
     panel.style.width = Math.round(Math.min(360, r.width - 16)) + 'px';

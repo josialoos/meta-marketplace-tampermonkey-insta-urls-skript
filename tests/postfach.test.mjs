@@ -2110,6 +2110,137 @@ gruppe('Ein zweiter Klick bricht den Durchlauf ab');
     !/abbrechen/.test(refresh.textContent || ''), refresh.textContent);
 }
 
+const ALT_UND_NEU = [
+  '[Unterhaltung im Postfach öffnen](https://business.facebook.com/latest/inbox/all/?asset_id=1&selected_item_id=340282366841710301244259840012452280991&thread_type=IG_MESSAGE)',
+  '',
+  'Instagram: [@naturpedal](https://www.instagram.com/naturpedal/)',
+  '',
+  'Link zu Nachrichten: https://business.facebook.com/latest/inbox/all/?ir_qe_exposed=1',
+  '',
+  '* * *',
+  '',
+  'Vom Postfach-Skript verwaltet. Die folgende Zeile bitte nicht ändern.',
+  'igfu-thread: 340282366841710301244259840012452280991',
+  'igfu-handle: naturpedal',
+  'igfu-ware: 2026-09-24',
+  '',
+  '[Weitere Unterhaltung auf Instagram öffnen](https://www.instagram.com/direct/t/17843301684077278/)',
+  'igfu-thread: 17843301684077278',
+].join('\n');
+
+gruppe('Alte Postfach-Links werden entfernt, wo ein Instagram-Link da ist');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'naturpedal', status: 'hat sales', farbe: '#e16b16', beschreibung: ALT_UND_NEU }],
+  });
+  klick(w, knopf(doc, 'Alte Postfach-Links entfernen'));
+  await warte(w, 2000);
+  const t = serverTasks[0].beschreibung || '';
+  pruefe('Der Link ins alte Postfach ist weg', !/business\.facebook\.com/.test(t), t);
+  pruefe('Die Zeile „Link zu Nachrichten" ist weg', !/Link zu Nachrichten/.test(t), t);
+  pruefe('Die alte Markerzeile ist weg', !/igfu-thread:\s*340282/.test(t), t);
+  pruefe('Die Instagram-Kennung bleibt', /igfu-thread:\s*17843301684077278/.test(t), t);
+  pruefe('Das Profil bleibt', /Instagram: \[@naturpedal\]/.test(t), t);
+  pruefe('Handle und Ware bleiben', /igfu-handle: naturpedal/.test(t) && /igfu-ware: 2026-09-24/.test(t), t);
+  pruefe('Der Instagram-Link steht jetzt oben',
+    t.startsWith('[Unterhaltung auf Instagram öffnen](https://www.instagram.com/direct/t/17843301684077278/)'),
+    t.slice(0, 120));
+  pruefe('Nicht mehr „Weitere"', !/Weitere Unterhaltung/.test(t), t);
+}
+
+gruppe('Ohne Instagram-Link bleibt der alte stehen');
+{
+  // Sonst bliebe der Task ganz ohne Verlinkung zurueck.
+  const nurAlt = [
+    '[Unterhaltung im Postfach öffnen](https://business.facebook.com/latest/inbox/all/?selected_item_id=340282366841710301244259840012452280991&thread_type=IG_MESSAGE)',
+    '',
+    'igfu-thread: 340282366841710301244259840012452280991',
+    'igfu-handle: altperson',
+  ].join('\n');
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'altperson — Alte Person', status: 'ongeboardet', farbe: '#b660e0', beschreibung: nurAlt }],
+  });
+  klick(w, knopf(doc, 'Alte Postfach-Links entfernen'));
+  await warte(w, 1500);
+  const t = serverTasks[0].beschreibung || '';
+  pruefe('Der alte Link bleibt', /business\.facebook\.com/.test(t), t);
+  pruefe('Die alte Markerzeile bleibt', /igfu-thread:\s*340282/.test(t), t);
+}
+
+gruppe('Zwei Instagram-Unterhaltungen bleiben beide erhalten');
+{
+  const zwei = [
+    '[Unterhaltung im Postfach öffnen](https://business.facebook.com/latest/inbox/all/?selected_item_id=340282366841710301244259840012452280991)',
+    'igfu-thread: 340282366841710301244259840012452280991',
+    'igfu-handle: doppelt',
+    '',
+    '[Weitere Unterhaltung auf Instagram öffnen](https://www.instagram.com/direct/t/17843301684077278/)',
+    'igfu-thread: 17843301684077278',
+    '',
+    '[Weitere Unterhaltung auf Instagram öffnen](https://www.instagram.com/direct/t/1629424262158448/)',
+    'igfu-thread: 1629424262158448',
+  ].join('\n');
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'doppelt — Zwei Chats', status: 'ongeboardet', farbe: '#b660e0', beschreibung: zwei }],
+  });
+  klick(w, knopf(doc, 'Alte Postfach-Links entfernen'));
+  await warte(w, 1500);
+  const t = serverTasks[0].beschreibung || '';
+  pruefe('Beide Instagram-Kennungen bleiben',
+    /igfu-thread:\s*17843301684077278/.test(t) && /igfu-thread:\s*1629424262158448/.test(t), t);
+  pruefe('Beide Instagram-Links bleiben',
+    (t.match(/instagram\.com\/direct\/t\//g) || []).length === 2, t);
+  pruefe('Das alte Postfach ist raus', !/business\.facebook\.com/.test(t), t);
+}
+
+gruppe('Status „ignore" wird nicht mehr angefasst');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_UP,
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'ignore', farbe: '#e5484d',
+              beschreibung: beschreibungMit('T1') + '\nigfu-handle: annabolko.runs' }],
+    affiliates: [{ first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de', instagram: 'annabolko.runs',
+                   approved_amount: '120.00' }],
+  });
+  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await warte(w, 1500);
+  pruefe('Der Status bleibt auf ignore', serverTasks[0].status === 'ignore', serverTasks[0].status);
+}
+
+gruppe('Der Filter blendet gelesene Unterhaltungen aus');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [
+      { id: '17843301684077278', titel: 'naturpedal', vorschau: '2 new messages', zeit: '10m', ungelesen: true },
+      { id: '113874680003704', titel: 'Stefanie', vorschau: 'You: hallo', zeit: '59m' },
+      { id: '17847685227038439', titel: 'Thorsten', vorschau: 'Liked a message', zeit: '19h' },
+    ],
+  });
+  const zeilen = () => [...doc.querySelectorAll('.igrow')].filter((r) => r.style.display !== 'none').length;
+  pruefe('Zuerst sind alle drei zu sehen', zeilen() === 3, String(zeilen()));
+  const f = doc.querySelector('#igfu-filter');
+  pruefe('Der Filterknopf ist da', !!f);
+  klick(w, f);
+  await warte(w, 400);
+  pruefe('Nur die ungelesene bleibt', zeilen() === 1, String(zeilen()));
+  pruefe('Der Knopf zeigt den Zustand', /✓/.test(f.textContent || ''), f.textContent);
+  klick(w, f);
+  await warte(w, 400);
+  pruefe('Danach wieder alle', zeilen() === 3, String(zeilen()));
+}
+
+gruppe('Im alten Postfach gibt es den Filter nicht');
+{
+  const { doc, w } = await starte({ speicher: MIT_CLICKUP });
+  await warte(w, 300);
+  const f = doc.querySelector('#igfu-filter');
+  pruefe('Der Filterknopf ist ausgeblendet', !f || f.hidden === true, String(f && f.hidden));
+}
+
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));

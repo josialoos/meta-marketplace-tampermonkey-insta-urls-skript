@@ -297,6 +297,29 @@ und zieht Status, Frist und Priorität dort weiter mit. Soll ein Task wirklich
 nicht mehr angefasst werden, braucht er zusätzlich `karteileiche` oder einen der
 Endstatus `abgesagt`, `keine antwort`, `beendet`.
 
+### Alte Links aufräumen
+
+Nach dem Umzug stehen in vielen Beschreibungen beide Links. Der Menüpunkt
+**„Alte Postfach-Links entfernen"** nimmt den alten heraus — aber **nur dort, wo
+der Instagram-Link schon drinsteht**. Ein Task ohne neuen Link behält seinen
+alten, sonst bliebe er ganz ohne Verlinkung.
+
+Entfernt werden der Link ins alte Postfach, die von Hand eingefügte Zeile
+„Link zu Nachrichten: …" und die alte Markerzeile. Die Profilzeile
+„Instagram: @handle" bleibt, und der Instagram-Link rückt nach oben.
+
+---
+
+## Nur ungelesene anzeigen
+
+Instagram selbst hat keinen Filter dafür. Unten links, über dem
+Aktualisieren-Knopf, liegt deshalb **„Nur ungelesene"**. Ein Klick blendet alle
+gelesenen Unterhaltungen aus; der Knopf zeigt dann ein Häkchen. Die Einstellung
+bleibt über das Neuladen hinweg erhalten.
+
+Den Knopf gibt es nur auf instagram.com — nur dort steht der Lesestatus an jeder
+Zeile.
+
 ---
 
 ## Tasks ohne Unterhaltung verbinden

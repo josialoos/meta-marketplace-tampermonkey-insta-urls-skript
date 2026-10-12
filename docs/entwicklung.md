@@ -306,6 +306,16 @@ aus — geprüft am **unveränderten** Titel —, wird er ohne Nachfrage überno
 
 ---
 
+### Der Status `ignore`
+
+Seit dem 12.10.2026 gibt es in der Liste einen Status `ignore` (Typ „done") für
+Profile, mit denen abgeschlossen ist. Er steht in `STATUS_ENDE` und ist damit
+für die Statusleiter gesperrt — ohne diesen Eintrag hätte der UpPromote-Abgleich
+solche Tasks beim nächsten Lauf wieder auf `hat sales` gezogen.
+
+Nicht zu verwechseln mit dem **Tag** `ignore`, den das Skript bewusst nicht
+auswertet. Der Status wirkt, das Tag nicht.
+
 ### Keine eigene Ungelesen-Markierung mehr
 
 Bis 6.0 trug jede Zeile einen eigenen „Ungelesen"-Knopf, dessen Zustand im
