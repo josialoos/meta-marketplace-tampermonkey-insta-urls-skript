@@ -370,6 +370,22 @@ Zwei Gründe gibt es dafür:
    „lauf\_bulti\_lauf — Thorsten Bulthaup" ist nicht zu erraten — zumal es zwei
    Thorstens im CRM gibt. Raten wäre hier schlimmer als nichts zu tun.
 
+**Vorschläge.** Stimmt der Name überein, ist er aber zu kurz für eine
+automatische Zuordnung — „Anja", „Lena", „mel" —, steht im Panel
+**„Vorschlag: …"** mit einem Knopf **„Übernehmen"**. Ein Klick statt einer Suche
+durch die ganze Liste.
+
+Automatisch verbunden wird so etwas nicht: In tausenden privaten Chats sitzt
+garantiert noch eine Anja, und ein falsch verknüpfter Creator ist schlimmer als
+ein unverknüpfter.
+
+**Handles gegen UpPromote prüfen.** Ein Handle kann aus dem Vorschautext oder dem
+Zeilentitel stammen, und beides kann danebenliegen. UpPromote kennt ihn dagegen
+als Tatsache. Der Menüpunkt vergleicht beides — zugeordnet über die Mailadresse,
+nicht über den Handle — und listet die Abweichungen im Panel. **Geändert wird
+nichts:** hast du einen Handle von Hand korrigiert, ist UpPromote veraltet, nicht
+dein Task.
+
 **So verbindest du von Hand:** Panel öffnen, im Abschnitt **„Unterhaltungen ohne
 Task"** steht unter jeder Unterhaltung eine Auswahlliste **„Mit Task
 verbinden …"**. Den richtigen Task auswählen — fertig.

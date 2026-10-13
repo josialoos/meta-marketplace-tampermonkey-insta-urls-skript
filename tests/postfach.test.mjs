@@ -2440,6 +2440,102 @@ gruppe('Namen richtigstellen');
     serverTasks[2].name === 'sauber.person — Alles gut', serverTasks[2].name);
 }
 
+gruppe('Handles gegen UpPromote prüfen');
+{
+  const { doc, w, store } = await starte({
+    speicher: MIT_UP,
+    tasks: [
+      // Handle im Task weicht ab — UpPromote kennt hey.luzi
+      { id: 'a1', name: 'falsch.geraten — Anja', status: 'hat sales', farbe: '#e16b16',
+        beschreibung: 'x\nigfu-handle: falsch.geraten\nigfu-mail: luzi.engel@gmail.com' },
+      // Stimmt überein
+      { id: 'a2', name: 'annabolko.runs — Anna', status: 'ongeboardet', farbe: '#b660e0',
+        beschreibung: 'x\nigfu-handle: annabolko.runs\nigfu-mail: a@b.de' },
+      // Ohne Mailadresse nicht prüfbar
+      { id: 'a3', name: 'ohne.mail — Niemand', status: 'ongeboardet', farbe: '#b660e0',
+        beschreibung: 'x\nigfu-handle: ohne.mail' },
+    ],
+    affiliates: [
+      { first_name: 'Anja', last_name: 'Engel', email: 'luzi.engel@gmail.com', instagram: 'hey.luzi' },
+      { first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de', instagram: 'annabolko.runs' },
+    ],
+  });
+  klick(w, knopf(doc, 'Handles gegen UpPromote prüfen'));
+  await warte(w, 2000);
+  const d = store.get('clickup:handle-zweifel:v1') || { liste: [] };
+  pruefe('Genau eine Abweichung', d.liste.length === 1, JSON.stringify(d.liste));
+  pruefe('Es ist die richtige',
+    (d.liste[0] || {}).hier === 'falsch.geraten' && (d.liste[0] || {}).beiUp === 'hey.luzi',
+    JSON.stringify(d.liste[0]));
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const t = doc.querySelector('.igfu-body').textContent || '';
+  pruefe('Die Liste steht im Panel', /Handle weicht von UpPromote ab \(1\)/.test(t), t.slice(0, 300));
+  pruefe('Beide Handles werden genannt', /@falsch\.geraten/.test(t) && /@hey\.luzi/.test(t), t.slice(0, 400));
+}
+
+gruppe('Ohne Abweichung steht im Panel nichts davon');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_UP,
+    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: 'x\nigfu-handle: annabolko.runs\nigfu-mail: a@b.de' }],
+    affiliates: [{ first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de', instagram: 'annabolko.runs' }],
+  });
+  klick(w, knopf(doc, 'Handles gegen UpPromote prüfen'));
+  await warte(w, 1800);
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  pruefe('Kein Abschnitt', !/Handle weicht von UpPromote ab/.test(doc.querySelector('.igfu-body').textContent || ''));
+}
+
+gruppe('Kurze Namen werden vorgeschlagen, nicht verbunden');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '17843301684077295', titel: 'Anja', vorschau: 'You: Hi Anja,', zeit: '2h' }],
+    tasks: [{ id: 'a1', name: 'hey.luzi — Anja', status: 'hat sales', farbe: '#e16b16',
+              beschreibung: 'x\nigfu-handle: hey.luzi' }],
+  });
+  klick(w, doc.querySelector('#igfu-refresh'));
+  await warte(w, 2500);
+  pruefe('Nicht von selbst verbunden',
+    !/igfu-ig/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const t = doc.querySelector('.igfu-body').textContent || '';
+  pruefe('Der Vorschlag steht im Panel', /Vorschlag: Anja/.test(t), t.slice(0, 400));
+  const uebernehmen = [...doc.querySelectorAll('.igfu-link')].find((b) => b.textContent === 'Übernehmen');
+  pruefe('Es gibt einen Übernehmen-Knopf', !!uebernehmen);
+  if (uebernehmen) {
+    klick(w, uebernehmen);
+    await warte(w, 1500);
+  }
+  pruefe('Nach dem Klick ist sie verbunden',
+    /igfu-ig:\s*17843301684077295/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+  pruefe('Mit Instagram-Link',
+    /instagram\.com\/direct\/t\/17843301684077295/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+}
+
+gruppe('Bei zwei gleichnamigen Tasks gibt es keinen Vorschlag');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '17843301684077296', titel: 'Anja', vorschau: 'Hallo', zeit: '2h' }],
+    tasks: [
+      { id: 'a1', name: 'eine.anja — Anja', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'x\nigfu-handle: eine.anja' },
+      { id: 'a2', name: 'andere.anja — Anja', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'x\nigfu-handle: andere.anja' },
+    ],
+  });
+  await warte(w, 900);
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const t = doc.querySelector('.igfu-body').textContent || '';
+  pruefe('Kein Vorschlag', !/Vorschlag:/.test(t), t.slice(0, 400));
+  pruefe('Kein Übernehmen-Knopf',
+    ![...doc.querySelectorAll('.igfu-link')].some((b) => b.textContent === 'Übernehmen'));
+}
+
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));

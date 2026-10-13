@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      7.1
+// @version      7.3
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -251,7 +251,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '7.1';
+  const VERSION = '7.3';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -375,6 +375,9 @@
   const ROT = '#e5484d';
   const FELD_THREAD = 'Thread-ID';   // wird nur noch gelesen, falls vorhanden
   const CU_HANDLES = 'clickup:handles:v1';
+  // Handles, die von UpPromote abweichen. Ergebnis der Gegenprobe, nicht mehr —
+  // geaendert wird nichts automatisch.
+  const HANDLE_ZWEIFEL = 'clickup:handle-zweifel:v1';
   // Was der letzte volle Durchlauf gesehen hat. Die Diagnosezeile im Panel
   // zaehlt nur die Zeilen, die Meta gerade im Dokument haelt — nach einem
   // Durchlauf sind das wieder ein Dutzend, und damit sagt sie nichts darueber,
@@ -748,6 +751,25 @@
   // ist der Zusammenfuehrungs-Fall: dieselbe Person schreibt einmal ueber
   // Partner-Nachrichten und einmal als normale DM, und beides gehoert in
   // denselben Task.
+  // Wie nameTreffer, aber ohne die Laengenschranke fuer Einzelnamen. „Anja"
+  // ist zu wenig, um automatisch zu verbinden — in tausenden Privatchats sitzt
+  // garantiert noch eine. Als **Vorschlag** ist es aber genau richtig: ein
+  // Klick statt einer Suche durch die ganze Liste.
+  //
+  // Angewendet wird nichts davon von selbst. Das ist der Unterschied zwischen
+  // „hilfreich" und „verknuepft den falschen Creator".
+  function namensVorschlag(titel) {
+    const roh = String(titel || '').trim();
+    const form = namensform(roh);
+    if (form.length < 3) return null;
+    const passend = alleTasks().filter((x) => {
+      if (x.leiche) return false;
+      const tf = namensform(rohTitel(x.titel));
+      return tf && tf === form;
+    });
+    return passend.length === 1 ? passend[0] : null;
+  }
+
   function nameTreffer(titel, auchVerbundene) {
     const roh = String(titel || '').trim();
     const form = namensform(roh);
@@ -1533,6 +1555,49 @@
     name = name.split(/(?:You|Du):\s/)[0].replace(/\s+$/, '');
     if (!name) return null;
     return (name === alt && !handleRaus) ? null : { name, handleRaus };
+  }
+
+  // Gegenprobe gegen UpPromote. Ein Handle kann aus dem Vorschautext oder dem
+  // Zeilentitel stammen, und beides kann danebenliegen — ein kleingeschriebener
+  // Anzeigename sieht aus wie ein Handle. UpPromote dagegen kennt ihn als
+  // Tatsache, eingetragen vom Affiliate selbst.
+  //
+  // Zugeordnet wird ueber die Mailadresse, nicht ueber den Handle — sonst
+  // wuerde die Pruefung genau das voraussetzen, was sie pruefen soll.
+  //
+  // Es wird nichts geaendert. Ein abweichender Handle kann auch heissen, dass
+  // Josia ihn von Hand richtiggestellt hat und UpPromote veraltet ist.
+  async function handlesPruefen() {
+    if (!cuEingerichtet()) { toast('Bitte erst ClickUp einrichten.'); return; }
+    if (!upToken()) { toast('Dafür wird der UpPromote-Token gebraucht.'); return; }
+    if (cuLaeuft) { toast('Es läuft gerade eine Übertragung, bitte kurz warten.'); return; }
+    cuLaeuft = true;
+    try {
+      await cuTasksLaden();
+      toast('Frage UpPromote ab …');
+      const nachMail = {};
+      for (const a of await upAktiveVoll(toast)) {
+        if (a.email && a.handle) nachMail[a.email] = a.handle;
+      }
+      const zweifel = [];
+      for (const t of alleTasks()) {
+        if (t.leiche || !t.mail) continue;
+        const beiUp = nachMail[String(t.mail).toLowerCase()];
+        const hier = handleVonTask(t);
+        if (!beiUp || !hier || beiUp === hier) continue;
+        zweifel.push({ taskId: t.taskId, titel: t.titel, url: t.url, hier, beiUp });
+      }
+      GM_setValue(HANDLE_ZWEIFEL, { stand: Date.now(), liste: zweifel });
+      toast(zweifel.length
+        ? zweifel.length + ' Handles weichen von UpPromote ab — die Liste steht im Panel.'
+        : 'Alle Handles stimmen mit UpPromote überein.');
+      if (panelOpen) renderPanel();
+      updateLauncher();
+    } catch (e) {
+      toast('Handle-Prüfung: ' + e.message);
+    } finally {
+      cuLaeuft = false;
+    }
   }
 
   async function namenReparieren() {
@@ -3208,6 +3273,10 @@
         'Fragt die Instagram-Unterhaltungen bei Meta ab. Die API nennt den Handle jedes '
         + 'Gegenübers — im Postfach steht er nirgends. Es wird nur gelesen, keine Unterhaltung '
         + 'geöffnet, nichts als gelesen markiert.'),
+      button('igfu-link', 'Handles gegen UpPromote prüfen',
+        async () => { await handlesPruefen(); standAnzeigen(); },
+        'Vergleicht den Handle jedes Tasks mit dem, der bei UpPromote hinterlegt ist — '
+        + 'zugeordnet über die Mailadresse. Ändert nichts, listet nur die Abweichungen.'),
       button('igfu-link', 'Namen richtigstellen',
         async () => { await namenReparieren(); standAnzeigen(); },
         'Schneidet den Vorschautext aus Task-Namen heraus („… SticklYou: Hi Kilian,") und '
@@ -3460,12 +3529,28 @@
     for (const [, t] of offen.slice(0, 20)) {
       const tid = t.threadID;
       const treffer = nameTreffer(t.title, true);
+      const vorschlag = treffer ? null : namensVorschlag(t.title);
       const li = el('li', 'igfu-item');
       const top = el('div', 'igfu-item-top');
       top.append(
         button('igfu-name', t.title || 'Ohne Namen', () => reveal(tid), 'In der Liste anzeigen'),
-        el('span', 'igfu-meta', treffer ? 'Treffer: ' + rohTitel(treffer.titel) : 'kein Treffer'),
+        el('span', 'igfu-meta', treffer
+          ? 'Treffer: ' + rohTitel(treffer.titel)
+          : (vorschlag ? 'Vorschlag: ' + rohTitel(vorschlag.titel) : 'kein Treffer')),
       );
+      if (vorschlag) {
+        top.appendChild(button('igfu-link', 'Übernehmen', async () => {
+          try {
+            await threadAnhaengen(vorschlag, tid, bildIDVon(t));
+            toast('Verbunden: ' + rohTitel(vorschlag.titel) + ' \u2194 ' + (t.title || 'Unterhaltung'));
+            scanRows();
+            renderPanel();
+            updateLauncher();
+          } catch (e) {
+            toast('Verbinden: ' + e.message);
+          }
+        }, 'Der Name stimmt überein, ist aber zu kurz für eine automatische Zuordnung'));
+      }
       li.appendChild(top);
       li.appendChild(el('div', 'igfu-meta', 'gelesen als „' + namensform(t.title) + '"'));
 
@@ -3565,6 +3650,31 @@
     bodyEl.appendChild(ul);
   }
 
+  // Abweichungen aus der Gegenprobe gegen UpPromote.
+  function zeigeHandleZweifel() {
+    const d = GM_getValue(HANDLE_ZWEIFEL, null);
+    if (!d || !d.liste || !d.liste.length) return;
+    bodyEl.appendChild(el('h3', 'igfu-section-title',
+      'Handle weicht von UpPromote ab (' + d.liste.length + ')'));
+    bodyEl.appendChild(el('p', 'igfu-empty',
+      'Links steht, was im Task steht, rechts was UpPromote kennt. Beides kann richtig sein: '
+      + 'hast du einen Handle von Hand korrigiert, ist UpPromote veraltet. Das Skript ändert '
+      + 'hier nichts von selbst.'));
+    const ul = el('ol', 'igfu-list');
+    for (const z of d.liste.slice(0, 30)) {
+      const li = el('li', 'igfu-item');
+      const top = el('div', 'igfu-item-top');
+      top.append(
+        button('igfu-name', rohTitel(z.titel || 'Ohne Namen'),
+          () => window.open(z.url, '_blank', 'noopener'), 'Task in ClickUp öffnen'),
+        el('span', 'igfu-meta', '@' + z.hier + '  →  UpPromote: @' + z.beiUp),
+      );
+      li.appendChild(top);
+      ul.appendChild(li);
+    }
+    bodyEl.appendChild(ul);
+  }
+
   // Der Stand des Umzugs von der Business Suite auf instagram.com.
   function zeigeUmzug() {
     const offen = nurAltlink();
@@ -3597,6 +3707,7 @@
       const d = el('p', 'igfu-empty', diagnoseZeile());
       d.id = 'igfu-diagnose';
       bodyEl.appendChild(d);
+      zeigeHandleZweifel();
       zeigeUmzug();
       zeigeOhneTask();
       zeigeOhneUnterhaltung();
