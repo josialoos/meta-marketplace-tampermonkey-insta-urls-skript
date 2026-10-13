@@ -567,6 +567,33 @@ Authorization: Bearer <PAGE-TOKEN>
 dem Auslesen der Kontaktkarte gewonnen hat: eine Unterhaltung zu öffnen markiert
 sie bei Meta als gelesen, und das kommt nicht in Frage.
 
+#### Der exakte Schlüssel: die geöffnete Unterhaltung
+
+Die **Liste** auf instagram.com gibt den Handle nicht her — dort steht nur der
+Anzeigename, und „Anja" passt auf zu viele. Die **geöffnete Unterhaltung** gibt
+ihn her: im Gesprächskopf steht ein Profillink.
+
+```
+/direct/t/106620957406652/   ← die Kennung, in der Adresse
+/hey.luzi/                   ← der Handle, im Gesprächskopf
+```
+
+Vom eigenen Konto unterscheidet er sich daran, dass er **Text trägt**. Die Links
+in der linken Leiste sind reine Symbole. Am 13.10.2026 nachgemessen:
+
+| Link | x | Text |
+|---|---|---|
+| `/tzampasfood/` | 12 | — |
+| `/hey.luzi/` | 488 | „Anja\nhey.luzi" |
+
+`igOffeneUnterhaltung()` liest beides aus, `karteAuslesen()` ruft es alle drei
+Sekunden auf und verbindet sofort. **Damit braucht es keinen Namensvergleich
+mehr**, sobald eine Unterhaltung einmal offen war — und geöffnet wird sie beim
+Arbeiten ohnehin.
+
+Das ist der verlässlichste Weg, den es ohne Token gibt: keine Zusatzabfrage an
+Instagram, kein Raten, und der Handle kommt aus derselben Quelle wie das Profil.
+
 #### Die Brücke über den Zeitpunkt
 
 Die Unterhaltungs-ID der API (`t_…`) ist **nicht** das `selected_item_id`, mit dem

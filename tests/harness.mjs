@@ -53,6 +53,7 @@ export async function starte({
   zusatz = [],             // weitere Unterhaltungen hinter den vier festen
   metaUnterhaltungen = null, // [{ id, username, zeit }] fuer die Conversations-API
   ig = null,               // [{ id, titel, vorschau, zeit, ungelesen, bild }] baut die Instagram-Liste
+  igOffen = null,          // { tid, handle, titel } simuliert eine geoeffnete Unterhaltung
 } = {}) {
   // Die vier festen Threads bleiben unangetastet, damit bestehende Pruefungen
   // ihre Zeilenzahl behalten. Wer eine fuenfte Unterhaltung braucht — etwa um
@@ -78,10 +79,19 @@ export async function starte({
     + '<span>' + (c.zeit || '5m') + '</span>'
     + (c.ungelesen ? '<span>Unread</span>' : '')
     + '</div>';
-  const igBody = '<body><div id="igliste">' + (ig || []).map(igZeile).join('') + '</div></body>';
+  // Eine geoeffnete Unterhaltung: links die Leiste mit dem eigenen Konto als
+  // reines Symbol, oben im Kopf der Profillink des Gegenuebers mit Text.
+  const igKopf = igOffen
+    ? '<a href="/tzampasfood/"><i></i></a>'
+      + '<a href="/' + igOffen.handle + '/"><span>' + (igOffen.titel || igOffen.handle) + '</span>'
+      + '<span>' + igOffen.handle + '</span></a>'
+    : '';
+  const igBody = '<body>' + igKopf + '<div id="igliste">' + (ig || []).map(igZeile).join('') + '</div></body>';
 
   const dom = new JSDOM(ig ? igBody : body, {
-    url: ig ? 'https://www.instagram.com/direct/inbox/' : ('https://business.facebook.com' + pfad),
+    url: ig
+      ? ('https://www.instagram.com/direct/' + (igOffen ? 't/' + igOffen.tid + '/' : 'inbox/'))
+      : ('https://business.facebook.com' + pfad),
     runScripts: 'outside-only',
     pretendToBeVisual: true,
   });

@@ -2536,6 +2536,43 @@ gruppe('Bei zwei gleichnamigen Tasks gibt es keinen Vorschlag');
     ![...doc.querySelectorAll('.igfu-link')].some((b) => b.textContent === 'Übernehmen'));
 }
 
+gruppe('Die geöffnete Unterhaltung verrät den Handle');
+{
+  // In der Liste heisst die Zeile nur „Anja" — zu kurz zum Zuordnen. Im
+  // Gespraechskopf steht dagegen der Profillink mit dem echten Handle.
+  const { doc, w, store, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '106620957406652', titel: 'Anja', vorschau: 'You: Hi Anja,', zeit: '2h' }],
+    igOffen: { tid: '106620957406652', handle: 'hey.luzi', titel: 'Anja' },
+    tasks: [{ id: 'a1', name: 'hey.luzi — Anja', status: 'hat sales', farbe: '#e16b16',
+              beschreibung: 'x\nigfu-handle: hey.luzi' }],
+  });
+  await warte(w, 4000);
+  const handles = store.get('clickup:handles:v1') || {};
+  pruefe('Der Handle wurde gelesen',
+    (handles['106620957406652'] || {}).handle === 'hey.luzi', JSON.stringify(handles['106620957406652']));
+  pruefe('Die Quelle ist die Kontaktkarte',
+    (handles['106620957406652'] || {}).quelle === 'karte', JSON.stringify(handles['106620957406652']));
+  pruefe('Der Task wurde verbunden',
+    /igfu-ig:\s*106620957406652/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+  pruefe('Mit Instagram-Link',
+    /instagram\.com\/direct\/t\/106620957406652/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+}
+
+gruppe('Das eigene Konto wird nicht für das Gegenüber gehalten');
+{
+  // Ohne Gegenueber bleibt nur der Link auf das eigene Konto in der Leiste —
+  // und der traegt keinen Text.
+  const { doc, w, store } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '106620957406652', titel: 'Anja', vorschau: 'Hallo', zeit: '2h' }],
+  });
+  await warte(w, 2000);
+  const handles = store.get('clickup:handles:v1') || {};
+  pruefe('Kein Handle aus der Navigationsleiste',
+    !(handles['106620957406652'] || {}).handle, JSON.stringify(handles['106620957406652']));
+}
+
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));

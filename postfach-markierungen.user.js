@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      7.3
+// @version      7.4
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -251,7 +251,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '7.3';
+  const VERSION = '7.4';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -877,8 +877,51 @@
     return '';
   }
 
+  // Pfade, die wie ein Profil aussehen, aber keines sind.
+  const IG_KEIN_PROFIL = new Set(['reels', 'explore', 'direct', 'stories', 'accounts',
+    'p', 'reel', 'tv', 'about', 'legal', 'privacy', 'terms', 'your_activity']);
+
+  // Die geoeffnete Unterhaltung auf instagram.com nennt den Handle — exakt, in
+  // der Adresse des Profillinks im Gespraechskopf. Das ist der Schluessel, den
+  // die Liste nicht hergibt: dort steht nur der Anzeigename, und „Anja" passt
+  // auf zu viele.
+  //
+  // Vom eigenen Konto unterscheidet er sich zuverlaessig daran, dass er Text
+  // traegt. Die Links in der linken Leiste sind reine Symbole ohne Beschriftung.
+  // Am 13.10.2026 nachgemessen:
+  //     /tzampasfood/  x=12   kein Text        ← eigenes Konto
+  //     /hey.luzi/     x=488  „Anja\nhey.luzi" ← das Gegenueber
+  function igOffeneUnterhaltung() {
+    const m = /^\/direct\/t\/([A-Za-z0-9_-]+)\/?$/.exec(location.pathname);
+    if (!m) return null;
+    const kandidaten = [...document.querySelectorAll('a[href^="/"]')]
+      .map((a) => ({ a, href: String(a.getAttribute('href') || '') }))
+      .filter((x) => /^\/[A-Za-z0-9._]{2,30}\/$/.test(x.href))
+      .filter((x) => !IG_KEIN_PROFIL.has(x.href.slice(1, -1).toLowerCase()))
+      .filter((x) => String(x.a.innerText || '').trim());
+    if (kandidaten.length !== 1) return null;
+    const handle = kandidaten[0].href.slice(1, -1).toLowerCase();
+    if (!HANDLE_MUSTER.test(handle)) return null;
+    const zeilen = String(kandidaten[0].a.innerText || '').split('\n').map((z) => z.trim()).filter(Boolean);
+    return { tid: m[1], handle, titel: zeilen[0] || handle };
+  }
+
   function karteAuslesen() {
     if (!isInbox()) return;
+    if (isIG()) {
+      const offen = igOffeneUnterhaltung();
+      if (!offen) return;
+      const vorhanden = handleVon(offen.tid);
+      if (vorhanden && vorhanden.handle === offen.handle) return;
+      handleMerken(offen.tid, offen.handle, 'karte');
+      // Sofort versuchen zu verbinden, nicht erst beim naechsten Scan.
+      if (!cuTasks[offen.tid]) {
+        const ziel = alleTasks().find((x) => !x.leiche
+          && !(x.tids || []).includes(offen.tid) && handleVonTask(x) === offen.handle);
+        if (ziel) vormerken({ art: 'verbinden-handle', tid: offen.tid, titel: offen.titel, taskId: ziel.taskId });
+      }
+      return;
+    }
     const tid = offenerThread();
     if (!tid) return;
     const vorhanden = handleVon(tid);
