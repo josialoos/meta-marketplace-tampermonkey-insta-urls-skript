@@ -297,6 +297,22 @@ und zieht Status, Frist und Priorität dort weiter mit. Soll ein Task wirklich
 nicht mehr angefasst werden, braucht er zusätzlich `karteileiche` oder einen der
 Endstatus `abgesagt`, `keine antwort`, `beendet`.
 
+### Anschreib-Links
+
+**Zum Anschreiben brauchst du keine Unterhaltung.** Instagrams Kurzformat
+`ig.me/m/<handle>` öffnet den Chat mit einer Person allein über den Handle — und
+den hat fast jeder Task.
+
+Der Menüpunkt **„Anschreib-Links nachtragen"** setzt bei jedem Task mit Handle
+die Zeile **„Auf Instagram anschreiben"** ganz nach oben. Unabhängig davon, ob
+die Unterhaltung je zugeordnet wurde.
+
+Wo schon ein Link auf eine konkrete Unterhaltung steht, bleibt es dabei: der
+öffnet den **Verlauf**, `ig.me` nur den Chat. Neue Tasks bekommen den Link
+automatisch mit.
+
+Außen vor bleiben Tasks ohne Handle und die Endstatus.
+
 ### Alte Links aufräumen
 
 Nach dem Umzug stehen in vielen Beschreibungen beide Links. Der Menüpunkt

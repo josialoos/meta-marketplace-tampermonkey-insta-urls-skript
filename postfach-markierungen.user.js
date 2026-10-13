@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      6.6
+// @version      6.8
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -251,7 +251,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '6.6';
+  const VERSION = '6.8';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -777,11 +777,22 @@
     return raus;
   }
 
+  // Wortanfaenge, die nie ein Handle sind. „https" steht vorne, sobald eine
+  // Vorschau mit einer Adresse beginnt — und genau so sind am 12.10.2026 Tasks
+  // namens „https — Opel" entstanden.
+  const KEIN_HANDLE = new Set(['http', 'https', 'www', 'du', 'you']);
+
   function handleAusVorschau(thread) {
+    // Auf instagram.com gibt es die Form „handle: Text" nicht: dort steht vor
+    // dem Doppelpunkt der Anzeigename des Absenders, nicht sein Handle. Die
+    // Regel stammt aus dem Postfach der Business Suite und richtet hier nur
+    // Schaden an. Der Handle kommt dort aus dem Zeilentitel.
+    if (isIG()) return '';
     let text = '';
     try { text = textAusSnippet(thread.snippet, 0, []).join(' '); } catch (e) { return ''; }
     const m = text.match(/^([a-z0-9._]{2,30})\s+gefällt\b/) || text.match(/^([a-z0-9._]{2,30}):/);
-    return m && HANDLE_MUSTER.test(m[1]) ? m[1] : '';
+    if (!m || KEIN_HANDLE.has(m[1].toLowerCase())) return '';
+    return HANDLE_MUSTER.test(m[1]) ? m[1] : '';
   }
 
   // Meta stellt eigenen Nachrichten „Du: " voran. Das ist der einzige
@@ -1230,7 +1241,10 @@
     const tid = threadZuHandle(a.handle);
     const z = [];
     if (tid) z.push('[Unterhaltung im Postfach öffnen](' + postfachLink(tid) + ')', '');
-    if (a.handle) z.push('Instagram: [@' + a.handle + '](https://www.instagram.com/' + a.handle + '/)', '');
+    if (a.handle) {
+      z.push('[Auf Instagram anschreiben](' + anschreibLink(a.handle) + ')', '');
+      z.push('Instagram: [@' + a.handle + '](https://www.instagram.com/' + a.handle + '/)', '');
+    }
     z.push('---', 'Aus UpPromote übernommen. Die folgenden Zeilen bitte nicht ändern.');
     if (tid) z.push('igfu-thread: ' + tid);
     if (a.handle) z.push('igfu-handle: ' + a.handle);
@@ -1394,6 +1408,62 @@
     let neu = raus.join('\n').replace(/\n{3,}/g, '\n\n').replace(/^\s+/, '');
     if (igLink) neu = igLink + '\n\n' + neu;
     return neu.replace(/\s+$/, '');
+  }
+
+  // Zum Anschreiben braucht es keine Unterhaltungs-Kennung. Instagrams eigenes
+  // Kurzformat oeffnet den Chat mit einer Person allein ueber den Handle:
+  //
+  //     https://ig.me/m/<handle>
+  //
+  // Den Handle hat fast jeder Task. Damit bekommt jeder Datensatz sofort einen
+  // brauchbaren Link — unabhaengig davon, ob die Unterhaltung je zugeordnet
+  // wurde. Das ist der Unterschied zwischen „ich kann arbeiten" und „ich warte
+  // auf eine Zuordnung, die vielleicht nie kommt".
+  //
+  // Wo schon ein Link auf eine konkrete Unterhaltung steht, bleibt es dabei:
+  // der oeffnet den Verlauf, ig.me nur den Chat.
+  const anschreibLink = (handle) => 'https://ig.me/m/' + encodeURIComponent(handle);
+
+  async function anschreibLinksNachtragen() {
+    if (!cuEingerichtet()) { toast('Bitte erst ClickUp einrichten.'); return; }
+    if (cuLaeuft) { toast('Es läuft gerade eine Übertragung, bitte kurz warten.'); return; }
+    cuLaeuft = true;
+    let gesetzt = 0;
+    let ohneHandleZahl = 0;
+    let fehler = 0;
+    try {
+      await cuTasksLaden();
+      const kandidaten = alleTasks().filter((t) => !t.leiche
+        && !STATUS_ENDE.includes(String(t.status || '').toLowerCase().trim()));
+      toast(kandidaten.length + ' Tasks werden geprüft …');
+      for (const t of kandidaten) {
+        const h = handleVonTask(t);
+        if (!h) { ohneHandleZahl += 1; continue; }
+        try {
+          const voll = await cuRequest('GET', '/task/' + t.taskId + '?include_markdown_description=true');
+          const bisher = voll.markdown_description || voll.description || '';
+          // Schon ein Instagram-Link da? Dann nichts tun.
+          if (/instagram\.com\/direct\/t\//.test(bisher) || /ig\.me\/m\//.test(bisher)) continue;
+          const zeile = '[Auf Instagram anschreiben](' + anschreibLink(h) + ')';
+          await cuRequest('PUT', '/task/' + t.taskId, {
+            markdown_description: zeile + '\n\n' + bisher.replace(/^\s+/, ''),
+          });
+          gesetzt += 1;
+        } catch (e) {
+          fehler += 1;
+        }
+      }
+      toast(gesetzt + ' Anschreib-Links gesetzt'
+        + (ohneHandleZahl ? ', ' + ohneHandleZahl + ' ohne Handle übersprungen' : '')
+        + (fehler ? ', ' + fehler + ' fehlgeschlagen' : '') + '.');
+      await cuTasksLaden();
+      scanRows();
+      updateLauncher();
+    } catch (e) {
+      toast('Anschreib-Links: ' + e.message);
+    } finally {
+      cuLaeuft = false;
+    }
   }
 
   async function altlinksEntfernen() {
@@ -2132,11 +2202,17 @@
       if (!el) continue;
       const teile = zeilenText(el);
       if (!teile.length) continue;
+      // Zeitweise rendert Instagram Name und Vorschau in einem Textknoten, ohne
+      // Umbruch dazwischen. Dann steht im Titel so etwas wie
+      // „Hannah | Trailrun | RadelnYou: Hi Hannah," — und genau so landete das
+      // auch schon in ClickUp. Die Vorschau faengt erkennbar mit „You: " oder
+      // „Du: " an; alles ab dort gehoert nicht mehr zum Namen.
+      const titel = String(teile[0] || '').split(/(?:You|Du):\s/)[0].trim().slice(0, 120);
       const ungelesen = teile.includes('Unread') || teile.includes('Ungelesen');
       const zeit = teile.map(igZeitpunkt).find((z) => z) || 0;
       out.push([el, {
         threadID: tid,
-        title: teile[0] || '',
+        title: titel,
         timestamp: zeit,
         // Bei ungelesenen ersetzt Instagram die Vorschau durch „N new messages".
         // Der Text geht dadurch verloren — der Lesestatus sagt aber ohnehin,
@@ -2982,6 +3058,11 @@
         'Fragt die Instagram-Unterhaltungen bei Meta ab. Die API nennt den Handle jedes '
         + 'Gegenübers — im Postfach steht er nirgends. Es wird nur gelesen, keine Unterhaltung '
         + 'geöffnet, nichts als gelesen markiert.'),
+      button('igfu-link', 'Anschreib-Links nachtragen',
+        async () => { await anschreibLinksNachtragen(); standAnzeigen(); },
+        'Setzt bei jedem Task mit Handle einen Link, der den Instagram-Chat mit dieser Person '
+        + 'öffnet. Unabhängig davon, ob die Unterhaltung zugeordnet werden konnte. Wo schon ein '
+        + 'Link auf eine Unterhaltung steht, bleibt es dabei.'),
       button('igfu-link', 'Alte Postfach-Links entfernen',
         async () => { await altlinksEntfernen(); standAnzeigen(); },
         'Nimmt den Link ins alte Postfach und die alte Markerzeile aus der Beschreibung — '

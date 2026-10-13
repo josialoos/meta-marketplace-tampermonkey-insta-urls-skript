@@ -2303,6 +2303,64 @@ gruppe('Alle Endstatus bleiben stehen');
   }
 }
 
+gruppe('Eine Vorschau mit Adresse ergibt keinen Handle');
+{
+  // So sind Tasks namens „https — Opel" entstanden: die Vorschau begann mit
+  // einer Adresse, und das Muster „wort:" griff auf „https:". Geprüft wird am
+  // Handle-Speicher, nicht am Task — ein Task entstünde hier gar nicht, weil
+  // ohne Handle die Nachfrage aufgeht.
+  const { w, store } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '17843301684077290', titel: 'Opel', vorschau: 'https://cdn.uppromote.com/anleitung.pdf', zeit: '2h' }],
+  });
+  await warte(w, 900);
+  const handles = store.get('clickup:handles:v1') || {};
+  const eintrag = handles['17843301684077290'] || {};
+  pruefe('Kein Handle „https" gemerkt', eintrag.handle !== 'https', JSON.stringify(eintrag));
+  pruefe('Überhaupt kein geratener Handle', !eintrag.handle, JSON.stringify(eintrag));
+}
+
+gruppe('Rutscht die Vorschau in den Namen, wird sie abgeschnitten');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '17843301684077291', titel: 'Hannah | Trailrun | RadelnYou: Hi Hannah,', vorschau: 'egal', zeit: '2h' }],
+  });
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const t = doc.querySelector('.igfu-body').textContent || '';
+  pruefe('Die Vorschau ist raus', !/Hi Hannah/.test(t), t.slice(0, 300));
+  pruefe('Der Name bleibt stehen', /Hannah \| Trailrun \| Radeln/.test(t), t.slice(0, 300));
+}
+
+gruppe('Anschreib-Links aus dem Handle');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [
+      { id: 'a1', name: 'hey.luzi — Luzi', status: 'ongeboardet', farbe: '#b660e0',
+        beschreibung: 'aus UpPromote\nigfu-handle: hey.luzi' },
+      { id: 'a2', name: 'mit.chat — Hat schon', status: 'ongeboardet', farbe: '#b660e0',
+        beschreibung: '[Unterhaltung auf Instagram öffnen](https://www.instagram.com/direct/t/17843301684077278/)\nigfu-thread: 17843301684077278\nigfu-handle: mit.chat' },
+      { id: 'a3', name: 'Ohne Handle', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'nichts' },
+      { id: 'a4', name: 'weg.damit — Weg', status: 'abgesagt', farbe: '#e5484d',
+        beschreibung: 'x\nigfu-handle: weg.damit' },
+    ],
+  });
+  klick(w, knopf(doc, 'Anschreib-Links nachtragen'));
+  await warte(w, 2500);
+  pruefe('Der Task ohne Link bekommt einen',
+    (serverTasks[0].beschreibung || '').includes('https://ig.me/m/hey.luzi'), serverTasks[0].beschreibung);
+  pruefe('Er steht ganz oben',
+    (serverTasks[0].beschreibung || '').startsWith('[Auf Instagram anschreiben]'), serverTasks[0].beschreibung);
+  pruefe('Wer schon eine Unterhaltung hat, bleibt unberührt',
+    !/ig\.me/.test(serverTasks[1].beschreibung || ''), serverTasks[1].beschreibung);
+  pruefe('Ohne Handle passiert nichts',
+    !/ig\.me/.test(serverTasks[2].beschreibung || ''), serverTasks[2].beschreibung);
+  pruefe('Endstatus bleibt außen vor',
+    !/ig\.me/.test(serverTasks[3].beschreibung || ''), serverTasks[3].beschreibung);
+}
+
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));
