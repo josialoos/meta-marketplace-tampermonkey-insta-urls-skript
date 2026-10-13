@@ -2415,6 +2415,31 @@ gruppe('„Noch am alten Postfach" zählt jetzt richtig');
     !/Von Instagram/.test((t.split('Noch am alten Postfach')[1] || '').split(/Unterhaltungen ohne Task|Tasks ohne/)[0] || ''), t.slice(0, 400));
 }
 
+gruppe('Namen richtigstellen');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [
+      { id: 'a1', name: 'kilian.stkl — Kilian SticklYou: Hi Kilian,', status: 'angeschrieben', farbe: '#87909e',
+        beschreibung: 'x\nigfu-handle: kilian.stkl' },
+      { id: 'a2', name: 'https — Opel', status: 'angeschrieben', farbe: '#87909e',
+        beschreibung: 'x\nigfu-handle: https' },
+      { id: 'a3', name: 'sauber.person — Alles gut', status: 'angeschrieben', farbe: '#87909e',
+        beschreibung: 'x\nigfu-handle: sauber.person' },
+    ],
+  });
+  klick(w, knopf(doc, 'Namen richtigstellen'));
+  await warte(w, 2500);
+  pruefe('Die Vorschau ist aus dem Namen raus',
+    serverTasks[0].name === 'kilian.stkl — Kilian Stickl', serverTasks[0].name);
+  pruefe('Der falsche Handle ist aus dem Namen raus',
+    serverTasks[1].name === 'Opel', serverTasks[1].name);
+  pruefe('Und auch aus der Beschreibung',
+    !/igfu-handle:\s*https/.test(serverTasks[1].beschreibung || ''), serverTasks[1].beschreibung);
+  pruefe('Ein sauberer Name bleibt unangetastet',
+    serverTasks[2].name === 'sauber.person — Alles gut', serverTasks[2].name);
+}
+
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));

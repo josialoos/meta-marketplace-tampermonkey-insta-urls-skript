@@ -313,6 +313,21 @@ automatisch mit.
 
 Außen vor bleiben Tasks ohne Handle und die Endstatus.
 
+### Namen richtigstellen
+
+Zwei Fehler haben bis Version 6.8 kaputte Task-Namen erzeugt, und die bleiben
+stehen, bis man sie aufräumt:
+
+- **„kilian.stkl — Kilian SticklYou: Hi Kilian,"** — Instagram rendert zeitweise
+  Name und Vorschau in einem Textknoten, und die Vorschau rutschte in den Namen.
+- **„https — Opel"** — die Vorschau begann mit einer Adresse, und daraus wurde
+  der „Handle" `https`.
+
+Der Menüpunkt **„Namen richtigstellen"** schneidet den Vorschautext heraus und
+entfernt falsche Handles — auch aus der Beschreibung. Die betroffenen Tasks
+landen danach in **„Handles nachtragen"**, weil der echte Handle unbekannt ist.
+Ein erfundener wäre schlimmer als keiner.
+
 ### Alte Links aufräumen
 
 Nach dem Umzug stehen in vielen Beschreibungen beide Links. Der Menüpunkt

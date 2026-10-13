@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      7.0
+// @version      7.1
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -251,7 +251,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '7.0';
+  const VERSION = '7.1';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -1504,6 +1504,73 @@
       return m[1] + 'igfu-ig: ' + m[2];
     });
     return geaendert ? zeilen.join('\n') : null;
+  }
+
+  // Repariert Namen, die aus fehlerhaft gelesenen Zeilen entstanden sind.
+  // Zwei Schaeden, beide am 13.10.2026 im CRM gefunden:
+  //
+  //   „kilian.stkl — Kilian SticklYou: Hi Kilian," — die Vorschau ist in den
+  //   Namen gerutscht, weil Instagram Name und Vorschau zeitweise in einem
+  //   Textknoten rendert.
+  //
+  //   „https — Opel" — die Vorschau begann mit einer Adresse, und das Muster
+  //   „wort:" machte daraus den Handle „https".
+  //
+  // Beides ist seit 6.8 behoben, die Altlasten bleiben aber stehen.
+  function namenRichtigstellen(task) {
+    const alt = String(task.titel || '');
+    let name = alt;
+    let handleRaus = '';
+    // Falscher Handle vorne? Dann weg damit — der echte ist unbekannt, und
+    // ein erfundener ist schlimmer als keiner. Der Task faellt danach in die
+    // Liste „Handles nachtragen".
+    const m = /^([a-z0-9._]{2,30})\s+—\s+(.*)$/.exec(name);
+    if (m && KEIN_HANDLE.has(m[1].toLowerCase())) {
+      handleRaus = m[1];
+      name = m[2];
+    }
+    // Vorschau im Namen? Alles ab „You: " bzw. „Du: " gehoert nicht dazu.
+    name = name.split(/(?:You|Du):\s/)[0].replace(/\s+$/, '');
+    if (!name) return null;
+    return (name === alt && !handleRaus) ? null : { name, handleRaus };
+  }
+
+  async function namenReparieren() {
+    if (!cuEingerichtet()) { toast('Bitte erst ClickUp einrichten.'); return; }
+    if (cuLaeuft) { toast('Es läuft gerade eine Übertragung, bitte kurz warten.'); return; }
+    cuLaeuft = true;
+    let geaendert = 0;
+    let fehler = 0;
+    try {
+      await cuTasksLaden();
+      for (const t of alleTasks()) {
+        const neu = namenRichtigstellen(t);
+        if (!neu) continue;
+        try {
+          await cuRequest('PUT', '/task/' + t.taskId, { name: neu.name });
+          if (neu.handleRaus) {
+            const voll = await cuRequest('GET', '/task/' + t.taskId + '?include_markdown_description=true');
+            const bisher = voll.markdown_description || voll.description || '';
+            const ohne = bisher.split('\n')
+              .filter((z) => !new RegExp('^\\s*igfu-handle:\\s*' + neu.handleRaus + '\\s*$').test(z))
+              .join('\n');
+            if (ohne !== bisher) await cuRequest('PUT', '/task/' + t.taskId, { markdown_description: ohne });
+          }
+          geaendert += 1;
+        } catch (e) {
+          fehler += 1;
+        }
+      }
+      await cuTasksLaden();
+      toast(geaendert + ' Namen richtiggestellt'
+        + (fehler ? ', ' + fehler + ' fehlgeschlagen' : '') + '.');
+      scanRows();
+      updateLauncher();
+    } catch (e) {
+      toast('Namen: ' + e.message);
+    } finally {
+      cuLaeuft = false;
+    }
   }
 
   async function kennungenReparieren() {
@@ -3141,6 +3208,11 @@
         'Fragt die Instagram-Unterhaltungen bei Meta ab. Die API nennt den Handle jedes '
         + 'Gegenübers — im Postfach steht er nirgends. Es wird nur gelesen, keine Unterhaltung '
         + 'geöffnet, nichts als gelesen markiert.'),
+      button('igfu-link', 'Namen richtigstellen',
+        async () => { await namenReparieren(); standAnzeigen(); },
+        'Schneidet den Vorschautext aus Task-Namen heraus („… SticklYou: Hi Kilian,") und '
+        + 'entfernt falsche Handles wie „https". Betroffene Tasks landen danach in der Liste '
+        + '„Handles nachtragen".'),
       button('igfu-link', 'Kennungen richtigstellen',
         async () => { await kennungenReparieren(); standAnzeigen(); },
         'Einmalig nötig: markiert jede Unterhaltungs-Kennung, zu der ein Instagram-Link in '
