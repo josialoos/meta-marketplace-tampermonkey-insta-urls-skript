@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      6.8
+// @version      7.0
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -251,7 +251,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '6.8';
+  const VERSION = '7.0';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -602,10 +602,19 @@
   //
   // Beide Formen muessen nebeneinander bestehen: die Altbestaende tragen noch
   // die langen Kennungen, und deren Links funktionieren weiter.
-  const istHubKennung = (tid) => /^[0-9]{1,24}$/.test(String(tid || ''));
-
-  function postfachLink(tid) {
-    if (istHubKennung(tid)) return 'https://www.instagram.com/direct/t/' + encodeURIComponent(tid) + '/';
+  // An der Laenge einer Kennung laesst sich ihre Herkunft NICHT ablesen. Das
+  // war bis 6.8 die Annahme — 39 Stellen hiess Business Suite, kuerzer hiess
+  // Instagram. Am 13.10.2026 widerlegt: `1100434292377942` ist 16-stellig und
+  // stammt trotzdem aus dem alten Postfach. Der daraus gebaute Instagram-Link
+  // oeffnete nur den Posteingang, keine Unterhaltung.
+  //
+  // Deshalb wird die Herkunft jetzt festgehalten statt geraten:
+  //     igfu-thread: <kennung>   Unterhaltung im Postfach der Business Suite
+  //     igfu-ig:     <kennung>   Unterhaltung auf instagram.com
+  // Beim Schreiben entscheidet, wo das Skript gerade laeuft, nicht wie die
+  // Kennung aussieht.
+  function postfachLink(tid, aufInstagram) {
+    if (aufInstagram) return 'https://www.instagram.com/direct/t/' + encodeURIComponent(tid) + '/';
     const p = new URLSearchParams();
     const jetzt = new URLSearchParams(location.search);
     for (const k of ['asset_id', 'business_id']) {
@@ -619,9 +628,12 @@
   // Die Markerzeile ist die Verbindung zwischen Unterhaltung und Task. Sie steht
   // sichtbar in der Beschreibung, damit jeder sieht, dass sie dazugehoert.
   function beschreibung(tid, handle, bildID) {
-    const z = ['[Unterhaltung im Postfach öffnen](' + postfachLink(tid) + ')', ''];
+    const ig = isIG();
+    const z = ['[Unterhaltung ' + (ig ? 'auf Instagram' : 'im Postfach') + ' öffnen]('
+      + postfachLink(tid, ig) + ')', ''];
     if (handle) z.push('Instagram: [@' + handle + '](https://www.instagram.com/' + handle + '/)', '');
-    z.push('---', 'Vom Postfach-Skript verwaltet. Die folgenden Zeilen bitte nicht ändern.', 'igfu-thread: ' + tid);
+    z.push('---', 'Vom Postfach-Skript verwaltet. Die folgenden Zeilen bitte nicht ändern.',
+      (ig ? 'igfu-ig: ' : 'igfu-thread: ') + tid);
     if (handle) z.push('igfu-handle: ' + handle);
     // Die Bild-ID des Profilfotos ist der Schluessel, ueber den sich ein im
     // Marketplace angelegter Task spaeter mit dieser Unterhaltung verbinden laesst.
@@ -866,6 +878,10 @@
   // zwei Markerzeilen. Darum werden immer alle gelesen.
   const threadsAusText = (text) => [...String(text || '')
     .matchAll(/igfu-thread:\s*([A-Za-z0-9_-]+)/g)].map((m) => m[1]);
+  // Unterhaltungen auf instagram.com. Eigene Zeile, damit die Herkunft
+  // eindeutig ist und nicht aus der Kennung geraten werden muss.
+  const igsAusText = (text) => [...String(text || '')
+    .matchAll(/igfu-ig:\s*([A-Za-z0-9_-]+)/g)].map((m) => m[1]);
 
   // Mittag als Uhrzeit, damit ein Datum nicht durch Zeitzonen auf den Vortag rutscht
   function msVonIso(iso) {
@@ -1240,13 +1256,17 @@
   async function importAnlegen(a) {
     const tid = threadZuHandle(a.handle);
     const z = [];
-    if (tid) z.push('[Unterhaltung im Postfach öffnen](' + postfachLink(tid) + ')', '');
+    const igJetzt = isIG();
+    if (tid) {
+      z.push('[Unterhaltung ' + (igJetzt ? 'auf Instagram' : 'im Postfach') + ' öffnen]('
+        + postfachLink(tid, igJetzt) + ')', '');
+    }
     if (a.handle) {
       z.push('[Auf Instagram anschreiben](' + anschreibLink(a.handle) + ')', '');
       z.push('Instagram: [@' + a.handle + '](https://www.instagram.com/' + a.handle + '/)', '');
     }
     z.push('---', 'Aus UpPromote übernommen. Die folgenden Zeilen bitte nicht ändern.');
-    if (tid) z.push('igfu-thread: ' + tid);
+    if (tid) z.push((igJetzt ? 'igfu-ig: ' : 'igfu-thread: ') + tid);
     if (a.handle) z.push('igfu-handle: ' + a.handle);
     if (a.email) z.push('igfu-mail: ' + a.email);
     const t = await cuRequest('POST', '/list/' + encodeURIComponent(cuListe()) + '/task', {
@@ -1386,8 +1406,8 @@
   // Josia staendig.
   function altlinkAufraeumen(text) {
     const zeilen = String(text || '').split('\n');
-    const alteKennungen = threadsAusText(text).filter((t) => !istHubKennung(t));
-    const neueKennungen = threadsAusText(text).filter(istHubKennung);
+    const alteKennungen = threadsAusText(text);
+    const neueKennungen = igsAusText(text);
     if (!alteKennungen.length || !neueKennungen.length) return null;
 
     const raus = [];
@@ -1396,8 +1416,7 @@
       const t = z.trim();
       if (/business\.facebook\.com\/latest\/inbox/.test(t)) continue;
       if (/^Link zu Nachrichten:/i.test(t)) continue;
-      const marker = /^igfu-thread:\s*([A-Za-z0-9_-]+)/.exec(t);
-      if (marker && alteKennungen.includes(marker[1])) continue;
+      if (/^igfu-thread:\s*[A-Za-z0-9_-]+/.test(t)) continue;
       // Den ersten Instagram-Link herausnehmen und spaeter nach oben setzen.
       if (!igLink && /\]\(https:\/\/www\.instagram\.com\/direct\/t\//.test(t)) {
         igLink = '[Unterhaltung auf Instagram öffnen](' + t.slice(t.indexOf('](') + 2, t.lastIndexOf(')')) + ')';
@@ -1466,6 +1485,61 @@
     }
   }
 
+  // Einmalige Reparatur: Bis 6.8 bekam jede Unterhaltung die Zeile
+  // `igfu-thread:`, egal ob sie aus dem Postfach oder von instagram.com kam —
+  // unterschieden wurde an der Laenge der Kennung, und die Annahme war falsch.
+  //
+  // Richtigstellen laesst sich das am Link daneben: steht in der Beschreibung
+  // ein `instagram.com/direct/t/<kennung>`, gehoert die Kennung zu Instagram.
+  // Das ist kein Raten, sondern eine Tatsache aus derselben Beschreibung.
+  function kennungenRichtigstellen(text) {
+    const roh = String(text || '');
+    let geaendert = false;
+    const zeilen = roh.split('\n').map((z) => {
+      const m = /^(\s*)igfu-thread:\s*([A-Za-z0-9_-]+)\s*$/.exec(z);
+      if (!m) return z;
+      const inst = new RegExp('instagram\\.com/direct/t/' + m[2].replace(/[^A-Za-z0-9_-]/g, '') + '\\b');
+      if (!inst.test(roh)) return z;
+      geaendert = true;
+      return m[1] + 'igfu-ig: ' + m[2];
+    });
+    return geaendert ? zeilen.join('\n') : null;
+  }
+
+  async function kennungenReparieren() {
+    if (!cuEingerichtet()) { toast('Bitte erst ClickUp einrichten.'); return; }
+    if (cuLaeuft) { toast('Es läuft gerade eine Übertragung, bitte kurz warten.'); return; }
+    cuLaeuft = true;
+    let geaendert = 0;
+    let fehler = 0;
+    try {
+      await cuTasksLaden();
+      const alle = alleTasks();
+      toast(alle.length + ' Beschreibungen werden geprüft …');
+      for (const t of alle) {
+        try {
+          const voll = await cuRequest('GET', '/task/' + t.taskId + '?include_markdown_description=true');
+          const bisher = voll.markdown_description || voll.description || '';
+          const neu = kennungenRichtigstellen(bisher);
+          if (!neu) continue;
+          await cuRequest('PUT', '/task/' + t.taskId, { markdown_description: neu });
+          geaendert += 1;
+        } catch (e) {
+          fehler += 1;
+        }
+      }
+      await cuTasksLaden();
+      toast(geaendert + ' Kennungen als Instagram-Unterhaltung gekennzeichnet'
+        + (fehler ? ', ' + fehler + ' fehlgeschlagen' : '') + '.');
+      scanRows();
+      updateLauncher();
+    } catch (e) {
+      toast('Kennungen: ' + e.message);
+    } finally {
+      cuLaeuft = false;
+    }
+  }
+
   async function altlinksEntfernen() {
     if (!cuEingerichtet()) { toast('Bitte erst ClickUp einrichten.'); return; }
     if (cuLaeuft) { toast('Es läuft gerade eine Übertragung, bitte kurz warten.'); return; }
@@ -1475,8 +1549,7 @@
     let fehler = 0;
     try {
       await cuTasksLaden();
-      const kandidaten = alleTasks().filter((t) => (t.tids || []).some(istHubKennung)
-        && (t.tids || []).some((x) => !istHubKennung(x)));
+      const kandidaten = alleTasks().filter((t) => (t.tidsIG || []).length && (t.tidsBS || []).length);
       if (!kandidaten.length) { toast('Keine Beschreibung trägt noch einen alten Link.'); return; }
       toast(kandidaten.length + ' Beschreibungen werden aufgeräumt …');
       for (const t of kandidaten) {
@@ -1696,10 +1769,14 @@
 
   function taskAufbereiten(t) {
     const texte = [t.description, t.text_content, t.markdown_description];
-    const tids = [];
+    const tidsIG = [];
+    const tidsBS = [];
     for (const x of texte) {
-      for (const einzel of threadsAusText(x)) if (!tids.includes(einzel)) tids.push(einzel);
+      for (const einzel of igsAusText(x)) if (!tidsIG.includes(einzel)) tidsIG.push(einzel);
+      for (const einzel of threadsAusText(x)) if (!tidsBS.includes(einzel)) tidsBS.push(einzel);
     }
+    // Instagram zuerst: dort wird gearbeitet.
+    const tids = tidsIG.concat(tidsBS.filter((x) => !tidsIG.includes(x)));
     let tid = tids[0] || '';
     if (!tid) {
       // Rueckfall fuer Tasks, die noch aus der Zeit mit Custom Fields stammen.
@@ -1724,6 +1801,8 @@
       tid: tid ? String(tid) : '',
       // Die erste Markerzeile bleibt die fuehrende, tids traegt alle.
       tids: tids.map(String),
+      tidsIG: tidsIG.map(String),
+      tidsBS: tidsBS.map(String),
       bild,
       mail,
       ware,
@@ -1789,14 +1868,16 @@
     if (!task || !tid) return task;
     const voll = await cuRequest('GET', '/task/' + task.taskId + '?include_markdown_description=true');
     const bisher = voll.markdown_description || voll.description || '';
-    const schonDrin = threadsAusText(bisher);
+    const ig = isIG();
+    const schonDrin = threadsAusText(bisher).concat(igsAusText(bisher));
     if (!schonDrin.includes(tid)) {
-      const wohin = istHubKennung(tid) ? ' auf Instagram öffnen]' : ' im Postfach öffnen]';
+      const wohin = ig ? ' auf Instagram öffnen]' : ' im Postfach öffnen]';
+      const marker = (ig ? '\nigfu-ig: ' : '\nigfu-thread: ') + tid;
       const link = '[' + (schonDrin.length ? 'Weitere Unterhaltung' : 'Unterhaltung')
-        + wohin + '(' + postfachLink(tid) + ')';
+        + wohin + '(' + postfachLink(tid, ig) + ')';
       const text = schonDrin.length
-        ? bisher.replace(/\s*$/, '') + '\n\n' + link + '\nigfu-thread: ' + tid
-        : link + '\n\n' + bisher.replace(/^\s*/, '').replace(/\s*$/, '') + '\nigfu-thread: ' + tid;
+        ? bisher.replace(/\s*$/, '') + '\n\n' + link + marker
+        : link + '\n\n' + bisher.replace(/^\s*/, '').replace(/\s*$/, '') + marker;
       await cuRequest('PUT', '/task/' + task.taskId, { markdown_description: text });
     }
     // Die Bild-ID gleich festhalten, wenn der Task noch keine hat. Erst damit
@@ -1979,9 +2060,11 @@
       const voll = await cuRequest('GET', '/task/' + ziel.taskId + '?include_markdown_description=true');
       const bisher = voll.markdown_description || voll.description || '';
       if (!threadAusText(bisher)) {
+        const ig = isIG();
         const ergaenzt = bisher.replace(/\s*$/, '')
-          + '\n\n[Unterhaltung im Postfach öffnen](' + postfachLink(a.tid) + ')\n'
-          + 'igfu-thread: ' + a.tid;
+          + '\n\n[Unterhaltung ' + (ig ? 'auf Instagram' : 'im Postfach') + ' öffnen]('
+          + postfachLink(a.tid, ig) + ')\n'
+          + (ig ? 'igfu-ig: ' : 'igfu-thread: ') + a.tid;
         await cuRequest('PUT', '/task/' + ziel.taskId, { markdown_description: ergaenzt });
       }
       const w = handleVon(a.tid);
@@ -3058,6 +3141,11 @@
         'Fragt die Instagram-Unterhaltungen bei Meta ab. Die API nennt den Handle jedes '
         + 'Gegenübers — im Postfach steht er nirgends. Es wird nur gelesen, keine Unterhaltung '
         + 'geöffnet, nichts als gelesen markiert.'),
+      button('igfu-link', 'Kennungen richtigstellen',
+        async () => { await kennungenReparieren(); standAnzeigen(); },
+        'Einmalig nötig: markiert jede Unterhaltungs-Kennung, zu der ein Instagram-Link in '
+        + 'der Beschreibung steht, auch als Instagram-Unterhaltung. Vorher wurde die Herkunft '
+        + 'an der Länge der Kennung geraten, und das war falsch.'),
       button('igfu-link', 'Anschreib-Links nachtragen',
         async () => { await anschreibLinksNachtragen(); standAnzeigen(); },
         'Setzt bei jedem Task mit Handle einen Link, der den Instagram-Chat mit dieser Person '
@@ -3223,7 +3311,7 @@
     return alleTasks()
       .filter((t) => !t.leiche)
       .filter((t) => !STATUS_ENDE.includes(String(t.status || '').toLowerCase().trim()))
-      .filter((t) => (t.tids || []).length && !(t.tids || []).some(istHubKennung))
+      .filter((t) => (t.tidsBS || []).length && !(t.tidsIG || []).length)
       .sort((a, b) => String(a.titel || '').localeCompare(String(b.titel || '')));
   }
 

@@ -351,7 +351,8 @@ Shopify ────────── E-Mail
 Verbunden wird über Markerzeilen in der **Task-Beschreibung**:
 
 ```
-igfu-thread: <threadID>     Unterhaltung ↔ Task
+igfu-thread: <kennung>      Unterhaltung im Postfach der Business Suite
+igfu-ig:     <kennung>      Unterhaltung auf instagram.com
 igfu-handle: <handle>       Task ↔ UpPromote, Content, Marketplace
 igfu-bild:   <bildID>       im Marketplace erfasster Task ↔ Unterhaltung
 igfu-mail:   <adresse>      Task ↔ Shopify-Bestellung
@@ -476,6 +477,26 @@ igfu-thread: B
 - `cuTaskSichern()` legt keinen zweiten Task an, wenn zu dem Handle schon einer
   existiert, sondern hängt die Unterhaltung über `threadAnhaengen()` dort an.
   Karteileichen zählen dabei nicht mit, die sind absichtlich stillgelegt.
+
+#### Die Herkunft einer Kennung wird festgehalten, nicht geraten
+
+Bis 6.8 stand jede Unterhaltung unter `igfu-thread:`, und woher sie stammte,
+wurde an der **Länge** der Kennung abgelesen: 39 Stellen hieß Business Suite,
+kürzer hieß Instagram.
+
+**Die Annahme war falsch.** Am 13.10.2026 widerlegt an `asystole_`:
+`1100434292377942` ist 16-stellig und stammt trotzdem aus dem alten Postfach.
+Der daraus gebaute Instagram-Link öffnete nur den Posteingang, keine
+Unterhaltung — und in der Umzugsliste fehlte der Task, weil er als längst
+umgezogen galt.
+
+Seitdem gibt es zwei Markerzeilen, und beim Schreiben entscheidet `isIG()` —
+also wo das Skript gerade läuft —, nicht das Aussehen der Kennung.
+
+Die einmalige Reparatur **„Kennungen richtigstellen"** stellt den Altbestand um:
+Steht in derselben Beschreibung ein `instagram.com/direct/t/<kennung>`, gehört
+die Kennung zu Instagram. Das ist kein Raten, sondern eine Tatsache aus dem
+Dokument selbst.
 
 #### Welcher Schlüssel wofür — und warum das Profilbild gewinnt
 

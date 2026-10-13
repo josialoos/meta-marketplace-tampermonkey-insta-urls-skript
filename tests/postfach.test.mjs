@@ -1982,7 +1982,7 @@ gruppe('Der Link zeigt auf instagram.com');
     text.includes('https://www.instagram.com/direct/t/17847685227038439/'), text.slice(0, 180));
   pruefe('Kein Link in die Business Suite', !/business\.facebook\.com/.test(text), text.slice(0, 180));
   pruefe('Die Markerzeile trägt den thread_key',
-    /igfu-thread:\s*17847685227038439/.test(text), text.slice(-120));
+    /igfu-ig:\s*17847685227038439/.test(text), text.slice(-120));
 }
 
 gruppe('Alte Kennungen behalten ihren alten Link');
@@ -2045,7 +2045,7 @@ gruppe('Der Umzug: ein Altbestand bekommt seine Instagram-Unterhaltung');
   const text = serverTasks[0].beschreibung || '';
   pruefe('Es entsteht kein zweiter Task', angelegte(aufrufe).length === 0,
     JSON.stringify(angelegte(aufrufe).map((a) => a.data && a.data.name)));
-  pruefe('Die Instagram-Kennung kam dazu', /igfu-thread:\s*17843301684077278/.test(text), text.slice(-200));
+  pruefe('Die Instagram-Kennung kam dazu', /igfu-ig:\s*17843301684077278/.test(text), text.slice(-200));
   pruefe('Die alte Kennung bleibt stehen',
     /igfu-thread:\s*340282366841710301244259840012452280991/.test(text), text.slice(-200));
   pruefe('Der neue Link geht nach instagram.com',
@@ -2061,7 +2061,7 @@ gruppe('Das Panel zeigt, was noch am alten Postfach hängt');
       { id: 'a1', name: 'alt.person — Alte Person', status: 'ongeboardet', farbe: '#b660e0',
         beschreibung: 'x\nigfu-thread: 340282366841710301244259840012452280991\nigfu-handle: alt.person' },
       { id: 'a2', name: 'neu.person — Neue Person', status: 'ongeboardet', farbe: '#b660e0',
-        beschreibung: 'x\nigfu-thread: 17843301684077278\nigfu-handle: neu.person' },
+        beschreibung: 'x\nigfu-ig: 17843301684077278\nigfu-handle: neu.person' },
     ],
   });
   await warte(w, 900);
@@ -2125,7 +2125,7 @@ const ALT_UND_NEU = [
   'igfu-ware: 2026-09-24',
   '',
   '[Weitere Unterhaltung auf Instagram öffnen](https://www.instagram.com/direct/t/17843301684077278/)',
-  'igfu-thread: 17843301684077278',
+  'igfu-ig: 17843301684077278',
 ].join('\n');
 
 gruppe('Alte Postfach-Links werden entfernt, wo ein Instagram-Link da ist');
@@ -2140,7 +2140,7 @@ gruppe('Alte Postfach-Links werden entfernt, wo ein Instagram-Link da ist');
   pruefe('Der Link ins alte Postfach ist weg', !/business\.facebook\.com/.test(t), t);
   pruefe('Die Zeile „Link zu Nachrichten" ist weg', !/Link zu Nachrichten/.test(t), t);
   pruefe('Die alte Markerzeile ist weg', !/igfu-thread:\s*340282/.test(t), t);
-  pruefe('Die Instagram-Kennung bleibt', /igfu-thread:\s*17843301684077278/.test(t), t);
+  pruefe('Die Instagram-Kennung bleibt', /igfu-ig:\s*17843301684077278/.test(t), t);
   pruefe('Das Profil bleibt', /Instagram: \[@naturpedal\]/.test(t), t);
   pruefe('Handle und Ware bleiben', /igfu-handle: naturpedal/.test(t) && /igfu-ware: 2026-09-24/.test(t), t);
   pruefe('Der Instagram-Link steht jetzt oben',
@@ -2177,10 +2177,10 @@ gruppe('Zwei Instagram-Unterhaltungen bleiben beide erhalten');
     'igfu-handle: doppelt',
     '',
     '[Weitere Unterhaltung auf Instagram öffnen](https://www.instagram.com/direct/t/17843301684077278/)',
-    'igfu-thread: 17843301684077278',
+    'igfu-ig: 17843301684077278',
     '',
     '[Weitere Unterhaltung auf Instagram öffnen](https://www.instagram.com/direct/t/1629424262158448/)',
-    'igfu-thread: 1629424262158448',
+    'igfu-ig: 1629424262158448',
   ].join('\n');
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
@@ -2190,7 +2190,7 @@ gruppe('Zwei Instagram-Unterhaltungen bleiben beide erhalten');
   await warte(w, 1500);
   const t = serverTasks[0].beschreibung || '';
   pruefe('Beide Instagram-Kennungen bleiben',
-    /igfu-thread:\s*17843301684077278/.test(t) && /igfu-thread:\s*1629424262158448/.test(t), t);
+    /igfu-ig:\s*17843301684077278/.test(t) && /igfu-ig:\s*1629424262158448/.test(t), t);
   pruefe('Beide Instagram-Links bleiben',
     (t.match(/instagram\.com\/direct\/t\//g) || []).length === 2, t);
   pruefe('Das alte Postfach ist raus', !/business\.facebook\.com/.test(t), t);
@@ -2261,7 +2261,7 @@ gruppe('Ein langer Einzelname wird zugeordnet, ein kurzer Vorname nicht');
   klick(w, doc.querySelector('#igfu-refresh'));
   await warte(w, 3000);
   pruefe('GerdaLarissa wird verbunden',
-    /igfu-thread:\s*17843301684077280/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+    /igfu-ig:\s*17843301684077280/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
   pruefe('Willi bleibt unverbunden',
     !/igfu-thread/.test(serverTasks[1].beschreibung || ''), serverTasks[1].beschreibung);
 }
@@ -2341,7 +2341,7 @@ gruppe('Anschreib-Links aus dem Handle');
       { id: 'a1', name: 'hey.luzi — Luzi', status: 'ongeboardet', farbe: '#b660e0',
         beschreibung: 'aus UpPromote\nigfu-handle: hey.luzi' },
       { id: 'a2', name: 'mit.chat — Hat schon', status: 'ongeboardet', farbe: '#b660e0',
-        beschreibung: '[Unterhaltung auf Instagram öffnen](https://www.instagram.com/direct/t/17843301684077278/)\nigfu-thread: 17843301684077278\nigfu-handle: mit.chat' },
+        beschreibung: '[Unterhaltung auf Instagram öffnen](https://www.instagram.com/direct/t/17843301684077278/)\nigfu-ig: 17843301684077278\nigfu-handle: mit.chat' },
       { id: 'a3', name: 'Ohne Handle', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'nichts' },
       { id: 'a4', name: 'weg.damit — Weg', status: 'abgesagt', farbe: '#e5484d',
         beschreibung: 'x\nigfu-handle: weg.damit' },
@@ -2359,6 +2359,60 @@ gruppe('Anschreib-Links aus dem Handle');
     !/ig\.me/.test(serverTasks[2].beschreibung || ''), serverTasks[2].beschreibung);
   pruefe('Endstatus bleibt außen vor',
     !/ig\.me/.test(serverTasks[3].beschreibung || ''), serverTasks[3].beschreibung);
+}
+
+gruppe('Kennungen richtigstellen: der Link entscheidet, nicht die Länge');
+{
+  // 1100434292377942 ist 16-stellig und stammt trotzdem aus dem Postfach —
+  // genau daran ist die alte Annahme gescheitert.
+  const ausPostfach = [
+    '[Unterhaltung im Postfach öffnen](https://business.facebook.com/latest/inbox/all/?selected_item_id=1100434292377942&thread_type=IG_MESSAGE)',
+    'igfu-thread: 1100434292377942',
+    'igfu-handle: asystole_',
+  ].join('\n');
+  const vonInstagram = [
+    '[Unterhaltung auf Instagram öffnen](https://www.instagram.com/direct/t/2566949743743413/)',
+    'igfu-thread: 2566949743743413',
+    'igfu-handle: claudia.jehl',
+  ].join('\n');
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [
+      { id: 'a1', name: 'asystole_ — Sonheareth', status: 'ongeboardet', farbe: '#b660e0', beschreibung: ausPostfach },
+      { id: 'a2', name: 'claudia.jehl — Claudia', status: 'ongeboardet', farbe: '#b660e0', beschreibung: vonInstagram },
+    ],
+  });
+  klick(w, knopf(doc, 'Kennungen richtigstellen'));
+  await warte(w, 2000);
+  pruefe('Die Postfach-Kennung bleibt igfu-thread',
+    /igfu-thread:\s*1100434292377942/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+  pruefe('Sie wird nicht zu Instagram umgedeutet',
+    !/igfu-ig:/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+  pruefe('Die Instagram-Kennung wird umgestellt',
+    /igfu-ig:\s*2566949743743413/.test(serverTasks[1].beschreibung || ''), serverTasks[1].beschreibung);
+  pruefe('Und steht nicht mehr als igfu-thread',
+    !/igfu-thread:\s*2566949743743413/.test(serverTasks[1].beschreibung || ''), serverTasks[1].beschreibung);
+}
+
+gruppe('„Noch am alten Postfach" zählt jetzt richtig');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [
+      { id: 'a1', name: 'asystole_ — Aus dem Postfach', status: 'ongeboardet', farbe: '#b660e0',
+        beschreibung: 'x\nigfu-thread: 1100434292377942\nigfu-handle: asystole_' },
+      { id: 'a2', name: 'claudia.jehl — Von Instagram', status: 'ongeboardet', farbe: '#b660e0',
+        beschreibung: 'x\nigfu-ig: 2566949743743413\nigfu-handle: claudia.jehl' },
+    ],
+  });
+  await warte(w, 900);
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const t = doc.querySelector('.igfu-body').textContent || '';
+  pruefe('Die kurze Postfach-Kennung zählt als offen',
+    /Noch am alten Postfach \(1\)/.test(t), t.slice(0, 300));
+  pruefe('Der Instagram-Task nicht',
+    !/Von Instagram/.test((t.split('Noch am alten Postfach')[1] || '').split(/Unterhaltungen ohne Task|Tasks ohne/)[0] || ''), t.slice(0, 400));
 }
 
 console.log('\n' + (fehlgeschlagen
