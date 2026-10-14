@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      7.4
+// @version      7.5
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -251,7 +251,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '7.4';
+  const VERSION = '7.5';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -556,6 +556,8 @@
 
   let cuTasks = (GM_getValue(CU_TASKS, {}) || {}).tasks || {};
   let cuBilder = (GM_getValue(CU_TASKS, {}) || {}).bilder || {};
+  // Benutzer-ID → Task. Der fuehrende Index; Bild und Handle sind Rueckfall.
+  let cuNutzer = (GM_getValue(CU_TASKS, {}) || {}).nutzer || {};
   // Tasks ohne Unterhaltung. Bis Version 3.9 fielen die beim Laden einfach
   // heraus, weil cuTasks nach Thread-ID gefuehrt wird — ein importierter
   // Affiliate, der nie ueber das Partner-Postfach angeschrieben wurde, waere
@@ -674,13 +676,17 @@
     return handle + ' — ' + t;
   }
 
-  function handleMerken(tid, handle, quelle, bild, letzte) {
+  function handleMerken(tid, handle, quelle, bild, letzte, nutzer) {
     if (!tid) return;
     const alle = handles();
     const alt = alle[tid] || {};
     let geaendert = false;
     if (letzte && alt.letzte !== letzte) { alt.letzte = letzte; geaendert = true; }
     if (bild && alt.bild !== bild) { alt.bild = bild; geaendert = true; }
+    // Die Benutzer-ID wird nie ueberschrieben. Sie kommt aus den Props der
+    // Zeile und nicht aus gelesenem Text — es gibt keine bessere Quelle, die
+    // sie spaeter korrigieren koennte.
+    if (nutzer && !alt.nutzer) { alt.nutzer = String(nutzer); geaendert = true; }
     const besser = handle && (!alt.handle || (GUETE[quelle] || 0) > (GUETE[alt.quelle] || 0));
     if (besser && alt.handle !== handle) { alt.handle = handle; alt.quelle = quelle; geaendert = true; }
     else if (besser) { alt.quelle = quelle; geaendert = true; }
@@ -703,12 +709,12 @@
   // oft in Schmuckschrift, und die besteht aus eigenen Unicode-Zeichen. „𝒟𝒶𝓃𝒾ℯ𝓁𝒶"
   // ist nicht „Daniela", und toLowerCase() aendert daran nichts. NFKD loest
   // diese Zeichen in ihre schlichten Entsprechungen auf. Danach fallen die
-  // Kombinationszeichen weg, damit aus „Wäschle" und „Waschle" dasselbe wird —
+  // Kombinationszeichen weg, damit aus „Wäschl" und „Waschl" dasselbe wird —
   // auf beiden Seiten gleich, also vergleichbar.
   //
   // Am 06.10.2026 an der echten Liste geprueft:
   //   „𝒟𝒶𝓃𝒾ℯ𝓁𝒶"            → „daniela"
-  //   „𝗖𝗵𝗶𝗮𝗿𝗮 𝗪𝗮𝗹𝗱𝗻𝗲𝗿"      → „chiara waldner"
+  //   „𝗟𝗶𝗻𝗮 𝗙𝗲𝗹𝗱𝗲𝗿"      → „lina felder"
   // Kapitaelchen wie „ᴀɴᴊᴀ" haben keine solche Entsprechung und bleiben stehen.
   const namensform = (s) => String(s || '')
     .normalize('NFKD')
@@ -724,7 +730,7 @@
   // Unterhaltung ihren Task auch dann, wenn der Handle nirgends auftaucht.
   //
   // Zwei Schranken, damit nichts geraten wird:
-  //   1. Mindestens zwei Wortteile. Ein einzelner Vorname („Willi") ist zu
+  //   1. Mindestens zwei Wortteile. Ein einzelner Vorname („Timo") ist zu
   //      wenig, davon gibt es in jeder Liste mehrere.
   //   2. Genau ein passender Task. Bei zwei Treffern waere jede Wahl geraten,
   //      dann bleibt die Unterhaltung lieber unverbunden.
@@ -732,16 +738,16 @@
   // alle an der echten Liste vom 06.10.2026 entwickelt:
   //
   //   1. Beide Namen sind gleich.
-  //      „Anna Bolko NRNS" ↔ „anna_bolko_cali — Anna Bolko NRNS"
+  //      „Mara Kell NRNS" ↔ „anna_bolko_cali — Mara Kell NRNS"
   //   2. Alle Wortteile des Task-Namens kommen im Titel vor. Instagram-Namen
   //      tragen oft Beiwerk, das in ClickUp nicht steht.
-  //      „G o V e | Govind Mukubay" ↔ „govefit_ — Govind Mukubay"
+  //      „N o R d | Nordin Makuba" ↔ „nordfit_ — Nordin Makuba"
   //   3. Der Titel ist selbst ein Handle.
-  //      „naturpedal" ↔ Task „naturpedal"
+  //      „stadtpedal" ↔ Task „stadtpedal"
   //
   // Zwei Schranken verhindern Raten:
   //   - Ein einzelnes Wort zaehlt nur, wenn es als Handle geschrieben ist.
-  //     „Willi" ist ein Vorname und passt auf zu viele; „naturpedal" ist
+  //     „Timo" ist ein Vorname und passt auf zu viele; „stadtpedal" ist
   //     eindeutig. Geprueft wird dafuer der unveraenderte Titel, nicht die
   //     kleingeschriebene Form — sonst wird aus jedem Vornamen ein Handle.
   //   - Genau ein passender Task. Bei zwei Treffern waere jede Wahl geraten,
@@ -777,9 +783,9 @@
     if (!worte.length) return null;
     const einWort = worte.length === 1;
     const einzelHandle = einWort && HANDLE_MUSTER.test(roh) ? roh.toLowerCase() : '';
-    // Ein einzelnes Wort zaehlt in drei Faellen: als Handle („naturpedal"),
-    // oder wenn es lang genug ist, um fuer sich zu stehen. „GerdaLarissa" mit
-    // zwoelf Zeichen ist ein Name, den es nur einmal gibt; „Willi" mit fuenf
+    // Ein einzelnes Wort zaehlt in drei Faellen: als Handle („stadtpedal"),
+    // oder wenn es lang genug ist, um fuer sich zu stehen. „HertaLarissa" mit
+    // zwoelf Zeichen ist ein Name, den es nur einmal gibt; „Timo" mit fuenf
     // passt auf jeden Zweiten. Die Grenze liegt bei acht Zeichen, und die
     // Eindeutigkeit wird ohnehin weiter unten verlangt — es muss genau ein
     // Task passen.
@@ -813,7 +819,7 @@
 
   // Wortanfaenge, die nie ein Handle sind. „https" steht vorne, sobald eine
   // Vorschau mit einer Adresse beginnt — und genau so sind am 12.10.2026 Tasks
-  // namens „https — Opel" entstanden.
+  // namens „https — <Anzeigename>" entstanden.
   const KEIN_HANDLE = new Set(['http', 'https', 'www', 'du', 'you']);
 
   function handleAusVorschau(thread) {
@@ -890,7 +896,7 @@
   // traegt. Die Links in der linken Leiste sind reine Symbole ohne Beschriftung.
   // Am 13.10.2026 nachgemessen:
   //     /tzampasfood/  x=12   kein Text        ← eigenes Konto
-  //     /hey.luzi/     x=488  „Anja\nhey.luzi" ← das Gegenueber
+  //     /hey.lumi/     x=488  „Anja\nhey.lumi" ← das Gegenueber
   function igOffeneUnterhaltung() {
     const m = /^\/direct\/t\/([A-Za-z0-9_-]+)\/?$/.exec(location.pathname);
     if (!m) return null;
@@ -1161,8 +1167,8 @@
     const m = n.match(/^([a-z0-9._]{2,30})\s+—\s+/);
     if (m) return m[1].toLowerCase();
     // Besteht der Name nur aus einem Wort, ist er nur dann ein Handle, wenn er
-    // auch so geschrieben ist — also bereits klein. „naturpedal" und
-    // „hansj.stolz" sind Handles, „Willi" und „Sophie" sind Vornamen.
+    // auch so geschrieben ist — also bereits klein. „stadtpedal" und
+    // „hansj.stolz" sind Handles, „Timo" und „Sophie" sind Vornamen.
     //
     // Entscheidend ist, dass hier der unveraenderte Name geprueft wird. Vorher
     // stand hier n.toLowerCase(), und damit wurde aus jedem einwortigen
@@ -1574,11 +1580,11 @@
   // Repariert Namen, die aus fehlerhaft gelesenen Zeilen entstanden sind.
   // Zwei Schaeden, beide am 13.10.2026 im CRM gefunden:
   //
-  //   „kilian.stkl — Kilian SticklYou: Hi Kilian," — die Vorschau ist in den
+  //   „beispiel.stkl — Beispiel PersonYou: Hi Beispiel," — die Vorschau ist in den
   //   Namen gerutscht, weil Instagram Name und Vorschau zeitweise in einem
   //   Textknoten rendert.
   //
-  //   „https — Opel" — die Vorschau begann mit einer Adresse, und das Muster
+  //   „https — <Anzeigename>" — die Vorschau begann mit einer Adresse, und das Muster
   //   „wort:" machte daraus den Handle „https".
   //
   // Beides ist seit 6.8 behoben, die Altlasten bleiben aber stehen.
@@ -1917,6 +1923,12 @@
   }
 
   const bildAusText = (text) => (String(text || '').match(/igfu-bild:\s*([0-9]{6,})/) || [])[1] || '';
+  // Die Instagram-Benutzer-ID des Affiliates. Der einzige Schluessel, der eine
+  // Person wirklich festhaelt: der Anzeigename aendert sich und wird aus der
+  // Liste falsch gelesen, der Handle laesst sich umbenennen und steht in der
+  // Zeilenliste gar nicht, die Thread-Kennung ist je Postfach eine andere. Die
+  // ID ist fuer dieselbe Person in Partner-Nachrichten und DMs dieselbe.
+  const nutzerAusText = (text) => (String(text || '').match(/igfu-iguser:\s*([0-9]{3,})/) || [])[1] || '';
   // Die E-Mail ist die Bruecke zu Shopify. An der Geschenkbestellung dort steht
   // nur die Adresse des Affiliates, kein Instagram-Handle.
   const mailAusText = (text) => String((String(text || '')
@@ -1963,6 +1975,8 @@
     }
     let bild = '';
     for (const x of texte) { bild = bild || bildAusText(x); }
+    let nutzer = '';
+    for (const x of texte) { nutzer = nutzer || nutzerAusText(x); }
     let mail = '';
     for (const x of texte) { mail = mail || mailAusText(x); }
     let ware = '';
@@ -1979,6 +1993,7 @@
       tidsIG: tidsIG.map(String),
       tidsBS: tidsBS.map(String),
       bild,
+      nutzer,
       mail,
       ware,
       handle,
@@ -2005,12 +2020,16 @@
     const liste = encodeURIComponent(cuListe());
     const gefunden = {};
     const nachBild = {};
+    const nachNutzer = {};
     const ohneThread = [];
     for (let seite = 0; seite < 25; seite++) {
       const d = await cuRequest('GET', '/list/' + liste + '/task?include_closed=true&subtasks=false&page=' + seite);
       for (const t of d.tasks || []) {
         const neu = taskAufbereiten(t);
         if (neu.bild && !nachBild[neu.bild]) nachBild[neu.bild] = neu;
+        // Karteileichen duerfen den Index nicht besetzen, sonst zieht eine
+        // stillgelegte Dublette die Unterhaltung an sich.
+        if (neu.nutzer && !neu.leiche && !nachNutzer[neu.nutzer]) nachNutzer[neu.nutzer] = neu;
         if (!neu.tids.length) { ohneThread.push(neu); continue; }
         // Zu einer Unterhaltung kann versehentlich ein zweiter Task existieren.
         // Dann gewinnt der getaggte, sonst loescht ein leerer Doppelgaenger die
@@ -2024,6 +2043,7 @@
     }
     cuTasks = gefunden;
     cuBilder = nachBild;
+    cuNutzer = nachNutzer;
     cuOhneThread = ohneThread;
     cuSpeichern();
     return gefunden;
@@ -2031,7 +2051,7 @@
 
   function cuSpeichern() {
     GM_setValue(CU_TASKS, {
-      stand: Date.now(), tasks: cuTasks, bilder: cuBilder, ohneThread: cuOhneThread,
+      stand: Date.now(), tasks: cuTasks, bilder: cuBilder, nutzer: cuNutzer, ohneThread: cuOhneThread,
     });
   }
 
@@ -2064,6 +2084,16 @@
       await markerEintragen(task, 'igfu-bild', bild);
       task.bild = bild;
       cuBilder[bild] = task;
+    }
+    // Dasselbe fuer die Benutzer-ID, und die wiegt schwerer als die Bild-ID:
+    // ein Profilbild wird gewechselt, die ID nicht. Ab hier findet dieselbe
+    // Person ihren Task auch ueber das andere Postfach, ohne dass Handle oder
+    // Name stimmen muessen.
+    const nutzer = (handleVon(tid) || {}).nutzer || '';
+    if (nutzer && !task.nutzer) {
+      await markerEintragen(task, 'igfu-iguser', nutzer);
+      task.nutzer = nutzer;
+      if (!task.leiche) cuNutzer[nutzer] = task;
     }
     task.tids = task.tids || (task.tid ? [task.tid] : []);
     if (!task.tids.includes(tid)) task.tids.push(tid);
@@ -2284,7 +2314,12 @@
     } else if (a.art === 'handle') {
       const h = String(a.wert || '').toLowerCase();
       if (h) {
-        const neuerName = taskName(h, rohTitel(a.titel || task.titel));
+        // Der Anzeigename kommt aus dem Task, nie aus `a.titel`. Dort steht der
+        // Zeilentitel aus dem Postfach, und der hat hier nichts zu suchen: er
+        // wuerde den Namen aus UpPromote ueberschreiben. Genau darueber sind am
+        // 14.10.2026 Vorschautexte und fremde Zeilennamen in die Titel geraten.
+        // Ergaenzt wird hier nur der Handle davor.
+        const neuerName = taskName(h, rohTitel(task.titel));
         if (neuerName && neuerName !== task.titel) {
           await cuRequest('PUT', '/task/' + task.taskId, { name: neuerName });
           task.titel = neuerName;
@@ -2398,7 +2433,7 @@
   // Name, Vorschau, Zeit und Lesestatus liegen dagegen nicht in den Props,
   // sondern nur im Relay-Speicher — gerendert stehen sie als Zeilen im Text der
   // Zeile:
-  //     [0] Name            „naturpedal"
+  //     [0] Name            „stadtpedal"
   //     [1] Vorschau        „You: …" | „Liked a message" | „3 new messages"
   //     [2] Relativzeit     „10m" | „6h" | „3d" | „2w"
   //     [3] „Unread"        nur wenn ungelesen
@@ -2438,6 +2473,20 @@
   }
 
   function igRows() {
+    // Je Unterhaltung der Knoten, an dem React den threadRef haengen hat, dazu
+    // die Benutzer-ID des Gegenuebers.
+    //
+    // `users` traegt am 14.10.2026 in beiden Postfaechern genau einen Eintrag,
+    // und nie das eigene Konto — in den Partner-Nachrichten wie in den normalen
+    // DMs, gemessen an der echten Liste. Die ID bleibt ueber ein Neuladen
+    // gleich, und fuer dieselbe Person ist sie in beiden Ordnern dieselbe,
+    // obwohl die Thread-Kennungen verschieden sind: an der echten Liste
+    // nachgemessen hatte dieselbe Person als Partner-Nachricht und als DM zwei
+    // verschiedene Kennungen, aber ein und dieselbe Benutzer-ID.
+    //
+    // Damit ist sie der einzige Schluessel, der ohne Oeffnen der Unterhaltung
+    // aus der Liste zu holen ist. Bei mehr als einem Eintrag waere nicht
+    // entscheidbar, wer gemeint ist — dann lieber keine ID als eine geratene.
     const traeger = new Map();
     for (const el of document.querySelectorAll('div')) {
       const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$'));
@@ -2446,17 +2495,43 @@
       for (let i = 0; i < 6 && f; i++) {
         const p = f.memoizedProps;
         const r = p && p.threadRef;
-        if (r && r.thread_key && !traeger.has(String(r.thread_key))) traeger.set(String(r.thread_key), f);
+        if (r && r.thread_key && !traeger.has(String(r.thread_key))) {
+          const nutzer = Array.isArray(r.users) ? r.users : [];
+          traeger.set(String(r.thread_key), {
+            fiber: f,
+            userID: nutzer.length === 1 && nutzer[0] && nutzer[0].id ? String(nutzer[0].id) : '',
+          });
+        }
         f = f.return;
       }
     }
+    // Der Startknoten jeder Zeile, bevor geklettert wird. Daran wird erkannt,
+    // wann ein Aufstieg die eigene Zeile verlassen hat.
+    const anker = [];
+    for (const [tid, t] of traeger) {
+      const el = igHostUnter(t.fiber, 0);
+      if (el) anker.push([tid, el]);
+    }
     const out = [];
-    for (const [tid, f] of traeger) {
+    for (const [tid, t] of traeger) {
       // Vom Traeger nach oben, bis die Zeile Text hat. Darunter liegt nur das
       // Profilbild, und das traegt keinen Namen.
-      let el = igHostUnter(f, 0);
+      //
+      // Der Aufstieg endet zwingend an der Zeilengrenze. Ohne diese Schranke
+      // klettert er in den Behaelter, der *alle* Zeilen enthaelt, und dann ist
+      // `teile[0]` der Name der ersten Zeile der Liste statt der eigenen. Genau
+      // so trugen am 14.10.2026 mehrere Tasks den Namen einer fremden Zeile,
+      // einer sogar den Handle einer anderen Person. Lieber keine Zeile als
+      // eine mit fremdem Namen.
+      let el = igHostUnter(t.fiber, 0);
       let hoch = 0;
-      while (el && zeilenText(el).join('').length < 3 && hoch < 6) { el = el.parentElement; hoch += 1; }
+      while (el && zeilenText(el).join('').length < 3 && hoch < 6) {
+        const oben = el.parentElement;
+        if (!oben) break;
+        if (anker.some(([fremd, fEl]) => fremd !== tid && oben.contains(fEl))) break;
+        el = oben;
+        hoch += 1;
+      }
       if (!el) continue;
       const teile = zeilenText(el);
       if (!teile.length) continue;
@@ -2470,6 +2545,7 @@
       const zeit = teile.map(igZeitpunkt).find((z) => z) || 0;
       out.push([el, {
         threadID: tid,
+        userID: t.userID,
         title: titel,
         timestamp: zeit,
         // Bei ungelesenen ersetzt Instagram die Vorschau durch „N new messages".
@@ -2565,7 +2641,10 @@
 
       const vorschau = handleAusVorschau(t);
       const bild = bildIDVon(t);
-      if (vorschau || bild) handleMerken(tid, vorschau, 'vorschau', bild);
+      // Die Benutzer-ID steht in den Props der Zeile und ist damit die einzige
+      // Angabe hier, die nicht aus gelesenem Seitentext stammt.
+      const nutzerID = t.userID || '';
+      if (vorschau || bild || nutzerID) handleMerken(tid, vorschau, 'vorschau', bild, null, nutzerID);
       // Auf instagram.com steht in der Zeile haeufig der Handle selbst. Das
       // kostet nichts und ist der verlaesslichste Schluessel, den wir ohne
       // Zutun bekommen. Geprueft wird der unveraenderte Titel — sonst wird aus
@@ -2619,6 +2698,18 @@
         }
       }
 
+      // Zuerst die Benutzer-ID, vor Bild und Handle und Namen. Sie kommt aus
+      // den Props der Zeile, nicht aus gelesenem Text, ist ueber ein Neuladen
+      // stabil und fuer dieselbe Person in beiden Postfaechern dieselbe. Damit
+      // deckt sie beide Faelle auf einmal ab: den Task, der noch gar keine
+      // Unterhaltung hat, und den, der schon eine im anderen Ordner hat.
+      if (!cuTasks[tid] && nutzerID && cuNutzer[nutzerID]
+          && !cuNutzer[nutzerID].leiche && !(cuNutzer[nutzerID].tids || []).includes(tid)) {
+        vormerken({
+          art: 'verbinden-handle', tid, titel: t.title, taskId: cuNutzer[nutzerID].taskId, bild,
+        });
+      }
+
       // Gibt es zu dieser Unterhaltung noch keinen Task, aber einen im
       // Marketplace erfassten mit demselben Profilbild, gehoeren sie zusammen.
       if (!cuTasks[tid] && bild && cuBilder[bild] && !cuBilder[bild].tid) {
@@ -2653,15 +2744,28 @@
           && !(x.tids || []).includes(tid) && handleVonTask(x) === hier);
         if (perHandle) {
           vormerken({ art: 'verbinden-handle', tid, titel: t.title, taskId: perHandle.taskId, bild });
-        } else if (!hier) {
-          // Kein Handle zu holen: dann ueber den Anzeigenamen versuchen, und
-          // zwar auch in Tasks, die schon eine Unterhaltung haben — genau dort
-          // sitzt der Zusammenfuehrungs-Fall.
-          const ziel = nameTreffer(t.title, true);
-          if (ziel) {
-            vormerken({ art: 'verbinden-handle', tid, titel: t.title, taskId: ziel.taskId, bild });
-          }
         }
+        // Fruehr wurde hier, wenn kein Handle zu holen war, ueber den
+        // Anzeigenamen verknuepft — automatisch. Das ist seit 7.5 vorbei.
+        //
+        // Der Grund ist nicht, dass der Namensvergleich falsch lag; seine
+        // Schranken sind eng, und ein belegter Fehltreffer ist nicht bekannt.
+        // Es sind drei andere:
+        //
+        //   1. Sein Eingangsmaterial kommt aus der Postfachzeile, und genau
+        //      das hat sich am 14.10.2026 als unzuverlaessig erwiesen — 33
+        //      Task-Titel trugen Vorschautext, weitere den Namen der
+        //      Nachbarzeile.
+        //   2. Sein Fehler ist still: zwei Creator in einem Datensatz faellt
+        //      erst Wochen spaeter an Zahlen auf, die nicht passen. Ein nicht
+        //      verknuepfter Task steht dagegen sichtbar im Panel.
+        //   3. Die Benutzer-ID deckt inzwischen ab, was er frueher tragen
+        //      musste — auch den Zusammenfuehrungs-Fall, und die kommt aus den
+        //      Props statt aus gelesenem Text.
+        //
+        // Vorgeschlagen wird weiter: im Panel unter „Unterhaltungen ohne Task",
+        // mit Knopf zum Uebernehmen. Das ist zugleich das Protokoll — dort ist
+        // zu sehen, was der Vergleich zugeordnet haette.
       }
 
       if (fOn && follow[tid].title !== t.title) { follow[tid].title = t.title; followTitles = true; }
@@ -2784,7 +2888,7 @@
       const bekannt = handleVon(tid);
       if (bekannt && bekannt.handle) return bekannt.handle;
       // Auf instagram.com steht in der Zeile haeufig der Handle selbst
-      // („naturpedal"), nicht der Anzeigename. Dann ist nichts zu holen und
+      // („stadtpedal"), nicht der Anzeigename. Dann ist nichts zu holen und
       // nichts zu fragen. Geprueft wird der unveraenderte Titel — so wie
       // ueberall, sonst wird aus jedem Vornamen ein Handle.
       const ausTitel = String(titel || '').trim();
@@ -2813,8 +2917,8 @@
     // cuTaskSichern nicht erkennen, dass es zu dieser Person schon einen Task
     // gibt, und legt einen zweiten an. Genau so waere aus Thorsten im normalen
     // Postfach eine Dublette geworden: die Zeile heisst dort
-    // „Thorsten | Laufen & Trailrunning", der Task „lauf_bulti_lauf — Thorsten
-    // Bulthaup", und ohne Handle verbindet die beiden nichts.
+    // „Thorsten | Laufen & Trailrunning", der Task „lauf_bolti_lauf — Thorsten
+    // Bolthaup", und ohne Handle verbindet die beiden nichts.
     //
     // Vorher lief das absichtlich nebenher, damit das Anlegen nicht wartet. Der
     // gesparte Augenblick ist eine Dublette im CRM nicht wert.
@@ -3322,7 +3426,7 @@
         + 'zugeordnet über die Mailadresse. Ändert nichts, listet nur die Abweichungen.'),
       button('igfu-link', 'Namen richtigstellen',
         async () => { await namenReparieren(); standAnzeigen(); },
-        'Schneidet den Vorschautext aus Task-Namen heraus („… SticklYou: Hi Kilian,") und '
+        'Schneidet den Vorschautext aus Task-Namen heraus („… PersonYou: Hi Beispiel,") und '
         + 'entfernt falsche Handles wie „https". Betroffene Tasks landen danach in der Liste '
         + '„Handles nachtragen".'),
       button('igfu-link', 'Kennungen richtigstellen',
@@ -3480,7 +3584,7 @@
   // findet das Skript die Zuordnung dann haeufig nicht von selbst: im normalen
   // Postfach nennt der Vorschautext nie den Handle, und der Anzeigename traegt
   // meist nur den Vornamen plus Beiwerk. „Thorsten | Laufen & Trailrunning"
-  // gegen „lauf_bulti_lauf — Thorsten Bulthaup" ist nicht zu raten, zumal es
+  // gegen „lauf_bolti_lauf — Torsten Bolthaup" ist nicht zu raten, zumal es
   // zwei Thorstens gibt. Deshalb hier die Liste und ein Knopf zum Verbinden
   // von Hand. Ein Klick, und ab dann laeuft alles Weitere automatisch — die
   // Bild-ID wird dabei gelernt und traegt kuenftige Zuordnungen.

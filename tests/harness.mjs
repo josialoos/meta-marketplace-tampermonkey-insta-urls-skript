@@ -15,11 +15,11 @@ const avatar = (id) => ['https://scontent-muc2-1.cdninstagram.com/v/t51.2885-19/
 
 export const THREADS = [
   // Handle in der Vorschau, „gefällt"-Form
-  { threadID: 'T1', title: 'Anna Bolko', snippet: vorschau('annabolko.runs gefällt eine Nachricht'), participantProfileURIs: avatar('111111111'), timestamp: new Date(2026, 8, 14, 12, 0, 0).getTime() },
+  { threadID: 'T1', title: 'Mara Kell', snippet: vorschau('marakell.runs gefällt eine Nachricht'), participantProfileURIs: avatar('111111111'), timestamp: new Date(2026, 8, 14, 12, 0, 0).getTime() },
   // Grossgeschriebener Vorname vor dem Doppelpunkt, das ist kein Handle
-  { threadID: 'T2', title: 'Corina Bösch', snippet: vorschau('Corina: Hallo Josia, danke dir!'), participantProfileURIs: avatar('222222222'), timestamp: new Date(2026, 8, 20, 9, 30, 0).getTime() },
+  { threadID: 'T2', title: 'Rosina Bärtl', snippet: vorschau('Rosina: Hallo Josia, danke dir!'), participantProfileURIs: avatar('222222222'), timestamp: new Date(2026, 8, 20, 9, 30, 0).getTime() },
   // Du hast zuletzt geschrieben, kein Handle zu holen
-  { threadID: 'T3', title: 'Willi', snippet: vorschau('Du: Melde dich gern nochmal'), participantProfileURIs: avatar('333333333'), timestamp: new Date(2026, 7, 30, 18, 0, 0).getTime() },
+  { threadID: 'T3', title: 'Timo', snippet: vorschau('Du: Melde dich gern nochmal'), participantProfileURIs: avatar('333333333'), timestamp: new Date(2026, 7, 30, 18, 0, 0).getTime() },
   // Kein Instagram. Steht im Hauptpostfach mit drin und darf keine Pillen bekommen.
   { threadID: 'T4', title: 'Manage AI', snippet: vorschau('Du: Test'), participantProfileURIs: avatar('444444444'), timestamp: new Date(2026, 8, 25, 9, 0, 0).getTime(), commPlatform: 'MESSENGER' },
 ];
@@ -71,13 +71,16 @@ export async function starte({
   if (voriges) { try { voriges.close(); } catch { /* schon zu */ } }
   // Instagram bringt eine eigene Liste mit: andere Struktur, andere Domain.
   // Die Zeile traegt ihren Text in getrennten Elementen, genau wie dort.
+  // ohneText: eine Zeile, die ihren Namen nicht selbst traegt. Damit klettert
+  // das Skript auf der Suche nach Text nach oben — und muss an der Zeilengrenze
+  // haltmachen, statt sich den Namen der Nachbarzeile zu nehmen.
   const igZeile = (c) =>
     '<div class="igrow">'
     + '<img src="https://scontent-fra3-1.cdninstagram.com/v/t51.82787-19/' + (c.bild || '900000001') + '_17967_n.jpg">'
-    + '<span>' + c.titel + '</span>'
-    + '<span>' + (c.vorschau || '') + '</span>'
-    + '<span>' + (c.zeit || '5m') + '</span>'
-    + (c.ungelesen ? '<span>Unread</span>' : '')
+    + (c.ohneText ? '' : '<span>' + c.titel + '</span>'
+      + '<span>' + (c.vorschau || '') + '</span>'
+      + '<span>' + (c.zeit || '5m') + '</span>'
+      + (c.ungelesen ? '<span>Unread</span>' : ''))
     + '</div>';
   // Eine geoeffnete Unterhaltung: links die Leiste mit dem eigenen Konto als
   // reines Symbol, oben im Kopf der Profillink des Gegenuebers mit Text.
@@ -104,8 +107,14 @@ export async function starte({
   // Auf instagram.com haengt die Kennung an props.threadRef.thread_key, und das
   // Element findet das Skript ueber fiber.stateNode.
   [...doc.querySelectorAll('.igrow')].forEach((r, i) => {
+    const c = ig[i] || {};
+    // `users` traegt in beiden Postfaechern genau einen Eintrag, den Gegenueber.
+    // Fehlt die Angabe im Test, bleibt sie weg — dann muss das Skript ohne ID
+    // zurechtkommen, so wie bei alten Unterhaltungen.
+    const ref = { thread_key: String(c.id || ''), thread_fbid: 'fb' + i };
+    if (c.nutzer) ref.users = [{ id: String(c.nutzer) }];
     r['__reactFiber$test'] = {
-      memoizedProps: { threadRef: { thread_key: String((ig[i] || {}).id || ''), thread_fbid: 'fb' + i } },
+      memoizedProps: { threadRef: ref },
       stateNode: r, child: null, return: null, alternate: null,
     };
   });
@@ -272,8 +281,11 @@ export async function starte({
   // Wartezeit haelt nur so lange, wie der Lauf schnell ist — wird die Suite
   // laenger, fallen Pruefungen um, obwohl am Skript nichts falsch ist. Genau
   // das ist am 06.10. und am 09.10.2026 passiert.
+  // Zeilen ohne eigenen Text bekommen bewusst keine Knopfleiste — sie werden
+  // uebersprungen, statt sich einen fremden Namen zu borgen. Sie zaehlen hier
+  // also nicht mit, sonst liefe die Wartschleife in ihre Schranke.
   const erwartet = ig
-    ? ig.length
+    ? ig.filter((c) => !c.ohneText).length
     : (markt ? 0 : THREADS.concat(zusatz).filter((t) => !t.commPlatform || t.commPlatform === 'INSTAGRAM_DIRECT').length);
   for (let i = 0; i < 40 && erwartet; i++) {
     if (doc.querySelectorAll('.igfu-tags').length >= erwartet) break;

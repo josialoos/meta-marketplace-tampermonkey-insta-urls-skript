@@ -318,9 +318,9 @@ Außen vor bleiben Tasks ohne Handle und die Endstatus.
 Zwei Fehler haben bis Version 6.8 kaputte Task-Namen erzeugt, und die bleiben
 stehen, bis man sie aufräumt:
 
-- **„kilian.stkl — Kilian SticklYou: Hi Kilian,"** — Instagram rendert zeitweise
+- **„beispiel.stkl — Beispiel PersonYou: Hi Beispiel,"** — Instagram rendert zeitweise
   Name und Vorschau in einem Textknoten, und die Vorschau rutschte in den Namen.
-- **„https — Opel"** — die Vorschau begann mit einer Adresse, und daraus wurde
+- **„https — <Anzeigename>"** — die Vorschau begann mit einer Adresse, und daraus wurde
   der „Handle" `https`.
 
 Der Menüpunkt **„Namen richtigstellen"** schneidet den Vorschautext heraus und
@@ -367,7 +367,7 @@ Zwei Gründe gibt es dafür:
 2. **Das Skript findet die Zuordnung nicht.** Im normalen Postfach nennt der
    Vorschautext nie den Handle, und der Anzeigename trägt meist nur den Vornamen
    plus Beiwerk. „Thorsten | Laufen & Trailrunning" gegen
-   „lauf\_bulti\_lauf — Thorsten Bulthaup" ist nicht zu erraten — zumal es zwei
+   „lauf\_bolti\_lauf — Torsten Bolthaup" ist nicht zu erraten — zumal es zwei
    Thorstens im CRM gibt. Raten wäre hier schlimmer als nichts zu tun.
 
 **Vorschläge.** Stimmt der Name überein, ist er aber zu kurz für eine
@@ -559,6 +559,16 @@ Handle ergänzen, fertig: Format `handle — Anzeigename` im Titel. Beim nächst
 Aktualisieren verschwindet der Tag von selbst, und das Skript schreibt den
 Handle zusätzlich als Zeile `igfu-handle:` in die Beschreibung — die ist dann
 die maßgebliche Stelle, eine spätere Umbenennung schadet nicht mehr.
+
+**Ein Task-Titel sieht falsch aus**
+Der Titel ist seit Version 7.5 reine Beschriftung. Zugeordnet wird über die
+Zeile `igfu-iguser:` in der Beschreibung — die Instagram-Benutzer-ID des
+Affiliates. Ein schiefer Name kostet deshalb nichts mehr und darf von Hand
+korrigiert werden; das Skript schreibt ihn nicht wieder um.
+
+Bis Version 7.4 war das anders: da konnte Text aus der Postfachzeile in den
+Titel geraten, etwa die Vorschau („… You: Hi Anna,") oder, bei Zeilen ohne
+eigenen Text, der Name der Nachbarzeile. Beide Wege sind zu.
 
 **Nach dem Aktualisieren steht „… Änderungen gehen noch raus"**
 Normal. Die Warteschlange wird nach und nach abgearbeitet; beim nächsten Lauf

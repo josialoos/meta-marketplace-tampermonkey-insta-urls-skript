@@ -48,7 +48,7 @@ gruppe('Status aus ClickUp erscheint in der Zeile');
 {
   const { doc } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'Anna Bolko', status: 'verhandlung', farbe: '#b660e0',
+    tasks: [{ id: 'a1', name: 'Mara Kell', status: 'verhandlung', farbe: '#b660e0',
               beschreibung: beschreibungMit('T1'), tags: [TAG] }],
   });
   const c = chip(doc, 0, 'crm');
@@ -62,7 +62,7 @@ gruppe('Alte Tasks mit Custom Field werden weiter erkannt');
 {
   const { doc } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'alt', name: 'Willi', status: 'zugesagt', farbe: '#30a46c', beschreibung: '',
+    tasks: [{ id: 'alt', name: 'Timo', status: 'zugesagt', farbe: '#30a46c', beschreibung: '',
               custom_fields: [{ id: 'f1', name: 'Thread-ID', value: 'T3' }] }],
   });
   pruefe('Rückfall auf das alte Feld greift', chip(doc, 2, 'crm').textContent === 'zugesagt',
@@ -76,7 +76,7 @@ gruppe('Follow-up-Klick legt Task an und setzt den Tag');
   await warte(w, 600);
   const neu = angelegte(aufrufe);
   pruefe('Genau ein Task wurde angelegt', neu.length === 1, JSON.stringify(neu.map((n) => n.data.name)));
-  pruefe('Task trägt den Anzeigenamen', neu[0] && neu[0].data.name === 'Corina Bösch');
+  pruefe('Task trägt den Anzeigenamen', neu[0] && neu[0].data.name === 'Rosina Bärtl');
   const b = neu[0] ? neu[0].data.markdown_description : '';
   pruefe('Markerzeile steht in der Beschreibung', /igfu-thread:\s*T2/.test(b), b);
   pruefe('Rücksprung-Link zeigt direkt auf die Unterhaltung',
@@ -103,8 +103,8 @@ gruppe('Fehlender Tag wird einmalig im Space angelegt');
 gruppe('Follow-up abräumen entfernt den Tag');
 {
   const { doc, w, serverTasks, aufrufe } = await starte({
-    speicher: { ...MIT_CLICKUP, 'igfu:v1': { T1: { title: 'Anna Bolko', flaggedAt: 1, due: '', note: '' } } },
-    tasks: [{ id: 'a1', name: 'Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+    speicher: { ...MIT_CLICKUP, 'igfu:v1': { T1: { title: 'Mara Kell', flaggedAt: 1, due: '', note: '' } } },
+    tasks: [{ id: 'a1', name: 'Mara Kell', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T1'), tags: [TAG] }],
   });
   pruefe('Startet als markiert', chip(doc, 0, 'followup').classList.contains('on'));
@@ -117,7 +117,7 @@ gruppe('Follow-up abräumen entfernt den Tag');
 gruppe('Abräumen ohne Task legt keinen an');
 {
   const { doc, w, aufrufe } = await starte({
-    speicher: { ...MIT_CLICKUP, 'igfu:v1': { T1: { title: 'Anna Bolko', flaggedAt: 1, due: '', note: '' } } },
+    speicher: { ...MIT_CLICKUP, 'igfu:v1': { T1: { title: 'Mara Kell', flaggedAt: 1, due: '', note: '' } } },
   });
   klick(w, chip(doc, 0, 'followup'));
   await warte(w, 600);
@@ -128,7 +128,7 @@ gruppe('CRM-Pille öffnet den vorhandenen Task');
 {
   const { doc, w } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'Anna Bolko', status: 'zugesagt', farbe: '#30a46c', beschreibung: beschreibungMit('T1') }],
+    tasks: [{ id: 'a1', name: 'Mara Kell', status: 'zugesagt', farbe: '#30a46c', beschreibung: beschreibungMit('T1') }],
   });
   klick(w, chip(doc, 0, 'crm'));
   await warte(w, 100);
@@ -182,13 +182,13 @@ gruppe('Token bleibt im GM-Speicher');
 gruppe('Übernahme der lokalen Follow-ups');
 {
   const lokal = {
-    T1: { title: 'Anna Bolko', flaggedAt: 1, due: '2026-10-08', note: 'Rate offen' },
-    T2: { title: 'Corina Bösch', flaggedAt: 2, due: '', note: '' },
-    T3: { title: 'Willi', flaggedAt: 3, due: '', note: '' },
+    T1: { title: 'Mara Kell', flaggedAt: 1, due: '2026-10-08', note: 'Rate offen' },
+    T2: { title: 'Rosina Bärtl', flaggedAt: 2, due: '', note: '' },
+    T3: { title: 'Timo', flaggedAt: 3, due: '', note: '' },
   };
   const { doc, w, aufrufe, serverTasks } = await starte({
     speicher: { ...MIT_CLICKUP, 'igfu:v1': lokal },
-    tasks: [{ id: 'vorhanden', name: 'Corina Bösch', status: 'angeschrieben', farbe: '#87909e',
+    tasks: [{ id: 'vorhanden', name: 'Rosina Bärtl', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T2'), tags: [TAG] }],
   });
   klick(w, knopf(doc, 'Lokale Follow-ups übernehmen'));
@@ -229,8 +229,8 @@ gruppe('Ein Task ohne Tag löscht keine Markierung, die nie übertragen wurde');
   // Genau der Fall vom 29.09.2026: Klick auf die CRM-Pille legte einen Task an,
   // der Abgleich las den fehlenden Tag als "kein Follow-up" und loeschte lokal.
   const { doc, w, store } = await starte({
-    speicher: { ...MIT_CLICKUP, 'igfu:v1': { T1: { title: 'Anna Bolko', flaggedAt: 1, due: '', note: '' } } },
-    tasks: [{ id: 'a1', name: 'Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+    speicher: { ...MIT_CLICKUP, 'igfu:v1': { T1: { title: 'Mara Kell', flaggedAt: 1, due: '', note: '' } } },
+    tasks: [{ id: 'a1', name: 'Mara Kell', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T1'), tags: [] }],
   });
   pruefe('Markierung überlebt den ersten Abgleich', !!store.get('igfu:v1').T1);
@@ -245,8 +245,8 @@ gruppe('Entfernt jemand den Tag in ClickUp, verschwindet die Markierung');
 {
   const { doc, w, store } = await starte({
     speicher: { ...MIT_CLICKUP,
-      'igfu:v1': { T1: { title: 'Anna Bolko', flaggedAt: 1, due: '', note: '', inCu: true } } },
-    tasks: [{ id: 'a1', name: 'Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+      'igfu:v1': { T1: { title: 'Mara Kell', flaggedAt: 1, due: '', note: '', inCu: true } } },
+    tasks: [{ id: 'a1', name: 'Mara Kell', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T1'), tags: [] }],
   });
   pruefe('Markierung ist weg', !store.get('igfu:v1').T1, JSON.stringify(store.get('igfu:v1')));
@@ -256,7 +256,7 @@ gruppe('Entfernt jemand den Tag in ClickUp, verschwindet die Markierung');
 gruppe('Ein Klick auf die CRM-Pille lässt das Follow-up in Ruhe');
 {
   const { doc, w, store, serverTasks } = await starte({
-    speicher: { ...MIT_CLICKUP, 'igfu:v1': { T1: { title: 'Anna Bolko', flaggedAt: 1, due: '', note: '' } } },
+    speicher: { ...MIT_CLICKUP, 'igfu:v1': { T1: { title: 'Mara Kell', flaggedAt: 1, due: '', note: '' } } },
   });
   klick(w, chip(doc, 0, 'crm'));
   await warte(w, 600);
@@ -281,31 +281,31 @@ gruppe('Handle aus der Vorschau landet im Task-Namen');
   klick(w, chip(doc, 0, 'followup'));
   await warte(w, 700);
   const neu = angelegte(aufrufe)[0];
-  pruefe('Name ist „handle — Anzeigename"', neu && neu.data.name === 'annabolko.runs — Anna Bolko', neu && neu.data.name);
+  pruefe('Name ist „handle — Anzeigename"', neu && neu.data.name === 'marakell.runs — Mara Kell', neu && neu.data.name);
   pruefe('Status wird ausdrücklich gesetzt', neu && neu.data.status === 'angeschrieben', neu && neu.data.status);
   pruefe('Bild-ID steht in der Beschreibung',
     neu && /igfu-bild:\s*111111111/.test(neu.data.markdown_description), neu && neu.data.markdown_description);
   pruefe('Instagram-Link steht in der Beschreibung',
-    neu && neu.data.markdown_description.includes('instagram.com/annabolko.runs'));
+    neu && neu.data.markdown_description.includes('instagram.com/marakell.runs'));
 }
 
 gruppe('Großgeschriebener Vorname wird nicht als Handle genommen');
 {
   const { doc, w, aufrufe } = await starte({ speicher: MIT_CLICKUP });
-  klick(w, chip(doc, 1, 'followup'));   // Corina, Vorschau „Corina: Hallo Josia"
+  klick(w, chip(doc, 1, 'followup'));   // Rosina, Vorschau „Rosina: Hallo Josia"
   await warte(w, 700);
   const neu = angelegte(aufrufe)[0];
-  pruefe('Name bleibt der Anzeigename', neu && neu.data.name === 'Corina Bösch', neu && neu.data.name);
+  pruefe('Name bleibt der Anzeigename', neu && neu.data.name === 'Rosina Bärtl', neu && neu.data.name);
   pruefe('Kein Handle in der Beschreibung', neu && !/Instagram: \[@/.test(neu.data.markdown_description));
 }
 
 gruppe('Ohne Handle bleibt es beim Anzeigenamen');
 {
   const { doc, w, aufrufe } = await starte({ speicher: MIT_CLICKUP });
-  klick(w, chip(doc, 2, 'followup'));   // Willi, Vorschau „Du: …"
+  klick(w, chip(doc, 2, 'followup'));   // Timo, Vorschau „Du: …"
   await warte(w, 700);
   const neu = angelegte(aufrufe)[0];
-  pruefe('Name ist nur der Anzeigename', neu && neu.data.name === 'Willi', neu && neu.data.name);
+  pruefe('Name ist nur der Anzeigename', neu && neu.data.name === 'Timo', neu && neu.data.name);
 }
 
 gruppe('Die Kontaktkarte schlägt die Vorschau und benennt um');
@@ -313,15 +313,15 @@ gruppe('Die Kontaktkarte schlägt die Vorschau und benennt um');
   const { w, serverTasks, aufrufe } = await starte({
     pfad: '/latest/inbox/all/?selected_item_id=T1',
     speicher: MIT_CLICKUP,
-    karte: { handle: 'die.echte.anna' },
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+    karte: { handle: 'die.echte.mara' },
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T1'), tags: [TAG] }],
   });
   await warte(w, 4000);   // der Kartenleser läuft alle drei Sekunden
   const umbenannt = aufrufe.filter((a) => a.methode === 'PUT' && a.data && a.data.name);
   pruefe('Es wird umbenannt', umbenannt.length === 1, JSON.stringify(umbenannt.map((u) => u.data.name)));
   pruefe('Neuer Name nutzt das Handle aus der Karte',
-    serverTasks[0].name === 'die.echte.anna — Anna Bolko', serverTasks[0].name);
+    serverTasks[0].name === 'die.echte.mara — Mara Kell', serverTasks[0].name);
   pruefe('Kein zusätzlicher Task', angelegte(aufrufe).length === 0);
 }
 
@@ -330,7 +330,7 @@ gruppe('Umbenennen legt keinen Task an');
   const { w, aufrufe } = await starte({
     pfad: '/latest/inbox/all/?selected_item_id=T3',
     speicher: MIT_CLICKUP,
-    karte: { handle: 'willi.unterwegs' },
+    karte: { handle: 'timo.unterwegs' },
   });
   await warte(w, 4000);
   pruefe('Kein Task entstanden', angelegte(aufrufe).length === 0, JSON.stringify(angelegte(aufrufe)));
@@ -341,10 +341,10 @@ gruppe('Doppelter Task: der getaggte gewinnt');
 {
   const { doc, store } = await starte({
     speicher: { ...MIT_CLICKUP,
-      'igfu:v1': { T1: { title: 'Anna Bolko', flaggedAt: 1, due: '', note: '', inCu: true } } },
+      'igfu:v1': { T1: { title: 'Mara Kell', flaggedAt: 1, due: '', note: '', inCu: true } } },
     tasks: [
-      { id: 'mitTag', name: 'Anna Bolko', status: 'angeschrieben', farbe: '#87909e', beschreibung: beschreibungMit('T1'), tags: [TAG] },
-      { id: 'ohneTag', name: 'Anna Bolko', status: 'angeschrieben', farbe: '#87909e', beschreibung: beschreibungMit('T1'), tags: [] },
+      { id: 'mitTag', name: 'Mara Kell', status: 'angeschrieben', farbe: '#87909e', beschreibung: beschreibungMit('T1'), tags: [TAG] },
+      { id: 'ohneTag', name: 'Mara Kell', status: 'angeschrieben', farbe: '#87909e', beschreibung: beschreibungMit('T1'), tags: [] },
     ],
   });
   pruefe('Markierung überlebt den Doppelgänger', !!store.get('igfu:v1').T1, JSON.stringify(store.get('igfu:v1')));
@@ -354,8 +354,8 @@ gruppe('Doppelter Task: der getaggte gewinnt');
 gruppe('Zwei Übernahmen gleichzeitig legen nichts doppelt an');
 {
   const lokal = {
-    T1: { title: 'Anna Bolko', flaggedAt: 1, due: '', note: '' },
-    T2: { title: 'Corina Bösch', flaggedAt: 2, due: '', note: '' },
+    T1: { title: 'Mara Kell', flaggedAt: 1, due: '', note: '' },
+    T2: { title: 'Rosina Bärtl', flaggedAt: 2, due: '', note: '' },
   };
   const { doc, w, aufrufe, serverTasks } = await starte({ speicher: { ...MIT_CLICKUP, 'igfu:v1': lokal } });
   const b = knopf(doc, 'Lokale Follow-ups übernehmen');
@@ -375,18 +375,18 @@ gruppe('Marketplace: Creator erfassen');
   const { doc, w, aufrufe, serverTasks } = await starte({
     pfad: '/creator_marketing_hub/creator_discovery/',
     speicher: MIT_CLICKUP,
-    markt: [{ handle: 'hey.luzi', bild: '573134618' }, { handle: 'theveganberlin', bild: '610648384' }],
+    markt: [{ handle: 'hey.lumi', bild: '573134618' }, { handle: 'theveganberlin', bild: '610648384' }],
   });
   await warte(w, 600);
   pruefe('An jeder Karte eine Pille', doc.querySelectorAll('.igfu-crm-pille').length === 2,
     String(doc.querySelectorAll('.igfu-crm-pille').length));
-  const p = marktPille(doc, 'hey.luzi');
+  const p = marktPille(doc, 'hey.lumi');
   pruefe('Pille lädt zum Erfassen ein', p && p.textContent === 'ins CRM +', p && p.textContent);
   klick(w, p);
   await warte(w, 600);
   const neu = angelegte(aufrufe)[0];
   pruefe('Genau ein Task', angelegte(aufrufe).length === 1);
-  pruefe('Name ist das Handle', neu && neu.data.name === 'hey.luzi', neu && neu.data.name);
+  pruefe('Name ist das Handle', neu && neu.data.name === 'hey.lumi', neu && neu.data.name);
   pruefe('Status ist recherchiert', neu && neu.data.status === 'recherchiert', neu && neu.data.status);
   pruefe('Bild-ID in der Beschreibung', neu && /igfu-bild:\s*573134618/.test(neu.data.markdown_description));
   pruefe('Noch keine Thread-Zeile', neu && !/igfu-thread:/.test(neu.data.markdown_description));
@@ -399,10 +399,10 @@ gruppe('Die eigene Pille wird nicht selbst zur Karte');
   const { doc, w } = await starte({
     pfad: '/creator_marketing_hub/creator_discovery/',
     speicher: MIT_CLICKUP,
-    markt: [{ handle: 'hey.luzi', bild: '573134618' }],
+    markt: [{ handle: 'hey.lumi', bild: '573134618' }],
   });
   await warte(w, 600);
-  const p = marktPille(doc, 'hey.luzi');
+  const p = marktPille(doc, 'hey.lumi');
   klick(w, p);
   await warte(w, 800);
   pruefe('Status steht auf der Pille', p.textContent === 'recherchiert', p.textContent);
@@ -417,12 +417,12 @@ gruppe('Marketplace: schon erfasster Creator zeigt seinen Status');
   const { doc, w } = await starte({
     pfad: '/creator_marketing_hub/creator_discovery/',
     speicher: MIT_CLICKUP,
-    markt: [{ handle: 'hey.luzi', bild: '573134618' }],
-    tasks: [{ id: 'm1', name: 'hey.luzi', status: 'verhandlung', farbe: '#b660e0',
+    markt: [{ handle: 'hey.lumi', bild: '573134618' }],
+    tasks: [{ id: 'm1', name: 'hey.lumi', status: 'verhandlung', farbe: '#b660e0',
               beschreibung: 'igfu-bild: 573134618', tags: [] }],
   });
   await warte(w, 700);
-  const p = marktPille(doc, 'hey.luzi');
+  const p = marktPille(doc, 'hey.lumi');
   pruefe('Status steht auf der Pille', p && p.textContent === 'verhandlung', p && p.textContent);
   klick(w, p);
   await warte(w, 300);
@@ -434,23 +434,23 @@ gruppe('Die Unterhaltung findet ihren Marketplace-Task über das Profilbild');
   // T1 traegt die Bild-ID 111111111, dazu gibt es schon einen erfassten Creator
   const { w, serverTasks, aufrufe } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'm1', name: 'annabolko.runs', status: 'recherchiert', farbe: '#656f7d',
-              beschreibung: 'Instagram: @annabolko.runs\n\nigfu-bild: 111111111', tags: [] }],
+    tasks: [{ id: 'm1', name: 'marakell.runs', status: 'recherchiert', farbe: '#656f7d',
+              beschreibung: 'Instagram: @marakell.runs\n\nigfu-bild: 111111111', tags: [] }],
   });
   await warte(w, 1200);
   pruefe('Kein neuer Task', angelegte(aufrufe).length === 0, JSON.stringify(angelegte(aufrufe)));
   pruefe('Thread-Zeile wurde ergänzt', /igfu-thread:\s*T1/.test(serverTasks[0].beschreibung), serverTasks[0].beschreibung);
-  pruefe('Handle in der Beschreibung blieb erhalten', /@annabolko\.runs/.test(serverTasks[0].beschreibung));
+  pruefe('Handle in der Beschreibung blieb erhalten', /@marakell\.runs/.test(serverTasks[0].beschreibung));
   pruefe('Status steht jetzt auf angeschrieben', serverTasks[0].status === 'angeschrieben', serverTasks[0].status);
   pruefe('Name trägt Handle und Anzeigenamen',
-    serverTasks[0].name === 'annabolko.runs — Anna Bolko', serverTasks[0].name);
+    serverTasks[0].name === 'marakell.runs — Mara Kell', serverTasks[0].name);
 }
 
 gruppe('Ein bereits verbundener Task wird nicht nochmal verbunden');
 {
   const { w, aufrufe } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'm1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+    tasks: [{ id: 'm1', name: 'marakell.runs — Mara Kell', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T1') + '\nigfu-bild: 111111111', tags: [] }],
   });
   await warte(w, 1200);
@@ -465,13 +465,13 @@ gruppe('UpPromote: bestätigte Affiliates werden ongeboardet');
   const { doc, w, serverTasks, aufrufe } = await starte({
     speicher: MIT_UP,
     tasks: [
-      { id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+      { id: 'a1', name: 'marakell.runs — Mara Kell', status: 'angeschrieben', farbe: '#87909e',
         beschreibung: beschreibungMit('T1'), tags: [TAG] },
-      { id: 'a2', name: 'Corina Bösch', status: 'angeschrieben', farbe: '#87909e',
+      { id: 'a2', name: 'Rosina Bärtl', status: 'angeschrieben', farbe: '#87909e',
         beschreibung: beschreibungMit('T2'), tags: [TAG] },
     ],
     affiliates: [
-      { first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de', instagram: 'https://www.instagram.com/annabolko.runs/' },
+      { first_name: 'Mara', last_name: 'Kell', email: 'a@b.de', instagram: 'https://www.instagram.com/marakell.runs/' },
       { first_name: 'Fremd', last_name: 'Person', email: 'x@y.de', instagram: '@jemand.anders' },
     ],
   });
@@ -489,10 +489,10 @@ gruppe('UpPromote: Sales heben den Status auf „hat sales"');
 {
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_UP,
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'ongeboardet', farbe: '#b660e0',
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'ongeboardet', farbe: '#b660e0',
               beschreibung: beschreibungMit('T1'), tags: [TAG] }],
-    affiliates: [{ first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de',
-                   instagram: 'annabolko.runs', approved_amount: '12.50' }],
+    affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de',
+                   instagram: 'marakell.runs', approved_amount: '12.50' }],
   });
   klick(w, knopf(doc, 'UpPromote abgleichen'));
   await warte(w, 1200);
@@ -503,10 +503,10 @@ gruppe('UpPromote: ohne Umsatz bleibt es bei ongeboardet');
 {
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_UP,
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T1'), tags: [TAG] }],
-    affiliates: [{ first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de',
-                   instagram: 'annabolko.runs', denied_amount: '99.00' }],
+    affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de',
+                   instagram: 'marakell.runs', denied_amount: '99.00' }],
   });
   klick(w, knopf(doc, 'UpPromote abgleichen'));
   await warte(w, 1200);
@@ -519,14 +519,14 @@ gruppe('Die Leiter zieht keinen Task zurück');
   const { doc, w, serverTasks, aufrufe } = await starte({
     speicher: MIT_UP,
     tasks: [
-      { id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'erste ware versendet', farbe: '#b660e0',
+      { id: 'a1', name: 'marakell.runs — Mara Kell', status: 'erste ware versendet', farbe: '#b660e0',
         beschreibung: beschreibungMit('T1') + '\nigfu-mail: a@b.de', tags: [TAG] },
-      { id: 'a2', name: 'corina_boesch — Corina Bösch', status: 'abgesagt', farbe: '#e5484d',
+      { id: 'a2', name: 'rosina_baertl — Rosina Bärtl', status: 'abgesagt', farbe: '#e5484d',
         beschreibung: beschreibungMit('T2') + '\nigfu-mail: c@b.de', tags: [TAG] },
     ],
     affiliates: [
-      { first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de', instagram: 'annabolko.runs' },
-      { first_name: 'Corina', last_name: 'Bösch', email: 'c@b.de', instagram: 'corina_boesch' },
+      { first_name: 'Mara', last_name: 'Kell', email: 'a@b.de', instagram: 'marakell.runs' },
+      { first_name: 'Rosina', last_name: 'Bösch', email: 'c@b.de', instagram: 'rosina_baertl' },
     ],
   });
   klick(w, knopf(doc, 'UpPromote abgleichen'));
@@ -544,14 +544,14 @@ gruppe('UpPromote: die E-Mail wird als Brücke zu Shopify nachgetragen');
 {
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_UP,
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'ongeboardet', farbe: '#b660e0',
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'ongeboardet', farbe: '#b660e0',
               beschreibung: beschreibungMit('T1'), tags: [TAG] }],
-    affiliates: [{ first_name: 'Anna', last_name: 'Bolko', email: 'Anna@B.de', instagram: 'annabolko.runs' }],
+    affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'Mara@B.de', instagram: 'marakell.runs' }],
   });
   klick(w, knopf(doc, 'UpPromote abgleichen'));
   await warte(w, 1500);
   pruefe('Markerzeile steht in der Beschreibung',
-    /igfu-mail:\s*anna@b\.de/.test(serverTasks[0].beschreibung || ''),
+    /igfu-mail:\s*mara@b\.de/.test(serverTasks[0].beschreibung || ''),
     (serverTasks[0].beschreibung || '').slice(-80));
   pruefe('Der Thread-Marker bleibt erhalten',
     /igfu-thread:/.test(serverTasks[0].beschreibung || ''));
@@ -592,14 +592,14 @@ gruppe('Eingesammelter Content hebt auf „erster content"');
     speicher: {
       ...MIT_CLICKUP,
       'clickup:content:v1': {
-        'annabolko.runs': { bereit: true, anfragen: false, stand: Date.now() },
-        'corina_boesch': { bereit: false, anfragen: true, stand: Date.now() },
+        'marakell.runs': { bereit: true, anfragen: false, stand: Date.now() },
+        'rosina_baertl': { bereit: false, anfragen: true, stand: Date.now() },
       },
     },
     tasks: [
-      { id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'ongeboardet', farbe: '#b660e0',
+      { id: 'a1', name: 'marakell.runs — Mara Kell', status: 'ongeboardet', farbe: '#b660e0',
         beschreibung: beschreibungMit('T1'), tags: [TAG] },
-      { id: 'a2', name: 'corina_boesch — Corina Bösch', status: 'angeschrieben', farbe: '#87909e',
+      { id: 'a2', name: 'rosina_baertl — Rosina Bärtl', status: 'angeschrieben', farbe: '#87909e',
         beschreibung: beschreibungMit('T2'), tags: [TAG] },
     ],
   });
@@ -616,9 +616,9 @@ gruppe('Content zieht niemanden von „hat sales" zurück');
   const { doc, w, serverTasks, aufrufe } = await starte({
     speicher: {
       ...MIT_CLICKUP,
-      'clickup:content:v1': { 'annabolko.runs': { bereit: true, anfragen: false, stand: Date.now() } },
+      'clickup:content:v1': { 'marakell.runs': { bereit: true, anfragen: false, stand: Date.now() } },
     },
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'hat sales', farbe: '#e16b16',
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'hat sales', farbe: '#e16b16',
               beschreibung: beschreibungMit('T1'), tags: [TAG] }],
   });
   klick(w, doc.querySelector('#igfu-refresh'));
@@ -633,7 +633,7 @@ gruppe('Ohne eingesammelten Content passiert nichts');
 {
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'ongeboardet', farbe: '#b660e0',
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'ongeboardet', farbe: '#b660e0',
               beschreibung: beschreibungMit('T1'), tags: [TAG] }],
   });
   klick(w, doc.querySelector('#igfu-refresh'));
@@ -644,16 +644,16 @@ gruppe('Ohne eingesammelten Content passiert nichts');
 gruppe('UpPromote: Handle wird aus allen Schreibweisen gelesen');
 {
   const faelle = [
-    ['https://www.instagram.com/annabolko.runs/', 'volle URL'],
-    ['@annabolko.runs', 'mit At-Zeichen'],
-    ['annabolko.runs', 'nackt'],
+    ['https://www.instagram.com/marakell.runs/', 'volle URL'],
+    ['@marakell.runs', 'mit At-Zeichen'],
+    ['marakell.runs', 'nackt'],
   ];
   for (const [wert, name] of faelle) {
     const { doc, w, serverTasks } = await starte({
       speicher: MIT_UP,
-      tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+      tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'angeschrieben', farbe: '#87909e',
                 beschreibung: beschreibungMit('T1'), tags: [TAG] }],
-      affiliates: [{ first_name: 'Anna', last_name: 'B', email: 'a@b.de', instagram: wert }],
+      affiliates: [{ first_name: 'Mara', last_name: 'K', email: 'a@b.de', instagram: wert }],
     });
     klick(w, knopf(doc, 'UpPromote abgleichen'));
     await warte(w, 1000);
@@ -665,10 +665,10 @@ gruppe('UpPromote: Handle auch aus einem Anmeldefeld');
 {
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_UP,
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T1'), tags: [TAG] }],
-    affiliates: [{ first_name: 'Anna', last_name: 'B', email: 'a@b.de', instagram: '',
-                   custom_fields: [{ name: 'Dein Instagram-Handle', value: 'annabolko.runs' }] }],
+    affiliates: [{ first_name: 'Mara', last_name: 'K', email: 'a@b.de', instagram: '',
+                   custom_fields: [{ name: 'Dein Instagram-Handle', value: 'marakell.runs' }] }],
   });
   klick(w, knopf(doc, 'UpPromote abgleichen'));
   await warte(w, 1000);
@@ -679,9 +679,9 @@ gruppe('UpPromote: bereits ongeboardet wird nicht erneut geschrieben');
 {
   const { doc, w, aufrufe } = await starte({
     speicher: MIT_UP,
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'ongeboardet', farbe: '#b660e0',
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'ongeboardet', farbe: '#b660e0',
               beschreibung: beschreibungMit('T1'), tags: [TAG] }],
-    affiliates: [{ first_name: 'Anna', last_name: 'B', email: 'a@b.de', instagram: 'annabolko.runs' }],
+    affiliates: [{ first_name: 'Mara', last_name: 'K', email: 'a@b.de', instagram: 'marakell.runs' }],
   });
   klick(w, knopf(doc, 'UpPromote abgleichen'));
   await warte(w, 1000);
@@ -692,7 +692,7 @@ gruppe('UpPromote: ohne Token passiert nichts');
 {
   const { doc, w, aufrufe } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T1'), tags: [TAG] }],
   });
   klick(w, knopf(doc, 'UpPromote abgleichen'));
@@ -707,20 +707,20 @@ const alsDatum = (ms) => ms ? new Date(Number(ms)).toISOString().slice(0, 10) : 
 
 gruppe('Fehlender Handle wird aus der Kontaktkarte geholt');
 {
-  // T3 = Willi. Weder Name noch Vorschautext geben einen Handle her, die
+  // T3 = Timo. Weder Name noch Vorschautext geben einen Handle her, die
   // Kontaktkarte schon. Stufe 1: Unterhaltung öffnen, Karte lesen, nachtragen.
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
-    karte: { handle: 'willi__83' },
+    karte: { handle: 'timo__83' },
   });
   await warte(w, 600);
-  klick(w, chip(doc, 2, 'followup'));   // Willi
+  klick(w, chip(doc, 2, 'followup'));   // Timo
   await warte(w, 2500);
   pruefe('Task trägt den Handle im Namen',
-    serverTasks[0] && serverTasks[0].name === 'willi__83 — Willi',
+    serverTasks[0] && serverTasks[0].name === 'timo__83 — Timo',
     serverTasks[0] && serverTasks[0].name);
   pruefe('Markerzeile ist gesetzt',
-    /igfu-handle:\s*willi__83/.test((serverTasks[0] || {}).beschreibung || ''),
+    /igfu-handle:\s*timo__83/.test((serverTasks[0] || {}).beschreibung || ''),
     ((serverTasks[0] || {}).beschreibung || '').slice(-80));
 }
 
@@ -730,11 +730,11 @@ gruppe('Ohne Kontaktkarte wird der Task trotzdem angelegt');
   // Cosima gar nicht sichtbar.
   const { doc, w, serverTasks } = await starte({ speicher: MIT_CLICKUP });
   await warte(w, 600);
-  klick(w, chip(doc, 2, 'followup'));   // Willi, keine Karte vorhanden
+  klick(w, chip(doc, 2, 'followup'));   // Timo, keine Karte vorhanden
   await warte(w, 1500);
   pruefe('Task existiert', serverTasks.length === 1, String(serverTasks.length));
   pruefe('Name bleibt vorerst ohne Handle',
-    serverTasks[0] && serverTasks[0].name === 'Willi', serverTasks[0] && serverTasks[0].name);
+    serverTasks[0] && serverTasks[0].name === 'Timo', serverTasks[0] && serverTasks[0].name);
 }
 
 gruppe('Ohne Kontaktkarte erscheint die Nachfrage');
@@ -745,7 +745,7 @@ gruppe('Ohne Kontaktkarte erscheint die Nachfrage');
   await warte(w, 6500);                 // Kartensuche läuft erst ab
   const frage = doc.querySelector('#igfu-frage');
   pruefe('Nachfrage ist da', !!frage);
-  pruefe('Sie nennt den Namen', !!frage && /Willi/.test(frage.textContent || ''));
+  pruefe('Sie nennt den Namen', !!frage && /Timo/.test(frage.textContent || ''));
   pruefe('Sie lässt sich überspringen',
     !!frage && /Später nachtragen/.test(frage.textContent || ''));
 }
@@ -754,7 +754,7 @@ gruppe('Das Panel listet Tasks ohne Handle zum Nachtragen');
 {
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'Willi', status: 'angeschrieben', farbe: '#87909e',
+    tasks: [{ id: 'a1', name: 'Timo', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T3'), tags: [TAG] }],
   });
   await warte(w, 900);
@@ -769,13 +769,13 @@ gruppe('Das Panel listet Tasks ohne Handle zum Nachtragen');
   const feld = [...doc.querySelectorAll('#igfu-panel input')].find((i) => i.placeholder === 'Handle');
   pruefe('Eingabefeld vorhanden', !!feld);
   if (feld) {
-    feld.value = 'willi__83';
+    feld.value = 'timo__83';
     const uebernehmen = [...doc.querySelectorAll('#igfu-panel button')]
       .find((b) => (b.textContent || '').trim() === 'Übernehmen');
     klick(w, uebernehmen);
     await warte(w, 1200);
     pruefe('Handle landet im Task',
-      serverTasks[0].name === 'willi__83 — Willi', serverTasks[0].name);
+      serverTasks[0].name === 'timo__83 — Timo', serverTasks[0].name);
   }
 }
 
@@ -783,9 +783,9 @@ gruppe('Notizen aus UpPromote landen als Kommentar');
 {
   const { doc, w, serverTasks, aufrufe } = await starte({
     speicher: MIT_UP,
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'ongeboardet', farbe: '#b660e0',
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'ongeboardet', farbe: '#b660e0',
               beschreibung: beschreibungMit('T1'), tags: [] }],
-    affiliates: [{ first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de', instagram: 'annabolko.runs',
+    affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de', instagram: 'marakell.runs',
                    internal_note: 'Will nur Reels machen', personal_detail: 'Läuft Ultratrails' }],
   });
   klick(w, knopf(doc, 'UpPromote abgleichen'));
@@ -805,9 +805,9 @@ gruppe('Dieselbe Notiz kommt kein zweites Mal');
 {
   const { doc, w, aufrufe } = await starte({
     speicher: MIT_UP,
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'ongeboardet', farbe: '#b660e0',
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'ongeboardet', farbe: '#b660e0',
               beschreibung: beschreibungMit('T1'), tags: [] }],
-    affiliates: [{ first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de', instagram: 'annabolko.runs',
+    affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de', instagram: 'marakell.runs',
                    internal_note: 'Will nur Reels machen' }],
   });
   klick(w, knopf(doc, 'UpPromote abgleichen'));
@@ -822,9 +822,9 @@ gruppe('Ohne Notiz passiert nichts');
 {
   const { doc, w, aufrufe } = await starte({
     speicher: MIT_UP,
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'ongeboardet', farbe: '#b660e0',
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'ongeboardet', farbe: '#b660e0',
               beschreibung: beschreibungMit('T1'), tags: [] }],
-    affiliates: [{ first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de', instagram: 'annabolko.runs' }],
+    affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de', instagram: 'marakell.runs' }],
   });
   klick(w, knopf(doc, 'UpPromote abgleichen'));
   await warte(w, 2000);
@@ -846,7 +846,7 @@ gruppe('Der Link gilt für Partner-Nachrichten und normale DMs gleichermaßen');
 {
   const { doc, w, aufrufe } = await starte({ speicher: MIT_CLICKUP });
   await warte(w, 600);
-  klick(w, chip(doc, 1, 'followup'));   // Corina
+  klick(w, chip(doc, 1, 'followup'));   // Rosina
   await warte(w, 1200);
   const neu = aufrufe.find((a) => a.methode === 'POST' && a.data && a.data.markdown_description);
   const text = neu ? neu.data.markdown_description : '';
@@ -944,12 +944,12 @@ gruppe('Import: ohne Handle gibt es den roten Tag');
 
 gruppe('Ein Task ohne Unterhaltung wird später über den Handle verbunden');
 {
-  // T1 = Anna, Vorschau nennt annabolko.runs. Der Task kennt den Handle, aber
+  // T1 = Anna, Vorschau nennt marakell.runs. Der Task kennt den Handle, aber
   // keine Unterhaltung — genau der Fall nach einem Import.
   const { w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'ongeboardet', farbe: '#b660e0',
-              beschreibung: 'Instagram: @annabolko.runs\n\nigfu-handle: annabolko.runs', tags: [] }],
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: 'Instagram: @marakell.runs\n\nigfu-handle: marakell.runs', tags: [] }],
   });
   await warte(w, 2000);
   pruefe('Thread-Marker wurde nachgetragen',
@@ -963,13 +963,13 @@ gruppe('Handle wandert als Markerzeile in die Beschreibung');
 {
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T1'), tags: [TAG] }],
   });
   klick(w, doc.querySelector('#igfu-refresh'));
   await warte(w, 2500);
   pruefe('Markerzeile wurde nachgetragen',
-    /igfu-handle:\s*annabolko\.runs/.test(serverTasks[0].beschreibung || ''),
+    /igfu-handle:\s*marakell\.runs/.test(serverTasks[0].beschreibung || ''),
     (serverTasks[0].beschreibung || '').slice(-90));
   pruefe('Kein Tag „handle-fehlt"',
     !(serverTasks[0].tags || []).includes('handle-fehlt'), JSON.stringify(serverTasks[0].tags));
@@ -992,7 +992,7 @@ gruppe('Der Tag verschwindet, sobald der Handle da ist');
 {
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T1'), tags: [TAG, 'handle-fehlt'] }],
   });
   klick(w, doc.querySelector('#igfu-refresh'));
@@ -1007,9 +1007,9 @@ gruppe('Die Markerzeile schlägt den Namen');
   // trotzdem zuordnen können — genau dafür ist der Marker da.
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_UP,
-    tasks: [{ id: 'a1', name: 'Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
-              beschreibung: beschreibungMit('T1') + '\nigfu-handle: annabolko.runs', tags: [TAG] }],
-    affiliates: [{ first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de', instagram: 'annabolko.runs' }],
+    tasks: [{ id: 'a1', name: 'Mara Kell', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1') + '\nigfu-handle: marakell.runs', tags: [TAG] }],
+    affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de', instagram: 'marakell.runs' }],
   });
   klick(w, knopf(doc, 'UpPromote abgleichen'));
   await warte(w, 1500);
@@ -1021,7 +1021,7 @@ gruppe('Bei abgesagt interessiert kein fehlender Handle');
 {
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'Willi', status: 'abgesagt', farbe: '#e5484d',
+    tasks: [{ id: 'a1', name: 'Timo', status: 'abgesagt', farbe: '#e5484d',
               beschreibung: beschreibungMit('T1'), tags: [TAG] }],
   });
   klick(w, doc.querySelector('#igfu-refresh'));
@@ -1035,7 +1035,7 @@ gruppe('Nachfass-Frist: 14 Tage nach der letzten Nachricht');
   // T1 = Anna, letzte Nachricht 14.09.2026
   const { w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+    tasks: [{ id: 'a1', name: 'Mara Kell', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T1'), tags: [TAG] }],
   });
   await warte(w, 1500);
@@ -1047,13 +1047,13 @@ gruppe('Nachfass-Frist: 14 Tage nach der letzten Nachricht');
 
 gruppe('Nachfass-Frist: Versand schlägt die 14 Tage, wenn er später liegt');
 {
-  // T3 = Willi, letzte Nachricht 30.08.2026 → +14 Tage = 13.09.
+  // T3 = Timo, letzte Nachricht 30.08.2026 → +14 Tage = 13.09.
   // Versand Montag 14.09. + 10 Wochentage = 28.09., die spätere gilt.
   // Zugleich die Probe auf die Wochentagsrechnung: kalendarisch wären es
   // der 24.09., nur mit übersprungenen Wochenenden kommt der 28.09. heraus.
   const { w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'Willi', status: 'angeschrieben', farbe: '#87909e',
+    tasks: [{ id: 'a1', name: 'Timo', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T3') + '\nigfu-ware: 2026-09-14', tags: [TAG] }],
   });
   await warte(w, 1500);
@@ -1069,7 +1069,7 @@ gruppe('Startdatum liegt nie nach der Frist');
   const frueh = new Date(2026, 8, 1, 12, 0, 0).getTime();
   const { w, aufrufe } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'Corina Bösch', status: 'angeschrieben', farbe: '#87909e',
+    tasks: [{ id: 'a1', name: 'Rosina Bärtl', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T2') + '\nigfu-ware: 2026-09-01',
               tags: [TAG], due: frueh }],
   });
@@ -1087,9 +1087,9 @@ gruppe('Der Tag „ad-code" wird gesetzt und bleibt');
   const { doc, w, serverTasks } = await starte({
     speicher: {
       ...MIT_CLICKUP,
-      'clickup:content:v1': { 'annabolko.runs': { bereit: true, anfragen: false, stand: Date.now() } },
+      'clickup:content:v1': { 'marakell.runs': { bereit: true, anfragen: false, stand: Date.now() } },
     },
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'hat sales', farbe: '#e16b16',
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'hat sales', farbe: '#e16b16',
               beschreibung: beschreibungMit('T1'), tags: [TAG] }],
   });
   klick(w, doc.querySelector('#igfu-refresh'));
@@ -1105,7 +1105,7 @@ gruppe('Datum der letzten Nachricht landet im Startdatum');
 {
   const { w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+    tasks: [{ id: 'a1', name: 'Mara Kell', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T1'), tags: [TAG] }],
   });
   await warte(w, 1200);
@@ -1118,7 +1118,7 @@ gruppe('Stimmt das Startdatum schon, wird nicht geschrieben');
   const passend = new Date(2026, 8, 14, 12, 0, 0).getTime();
   const { w, aufrufe } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+    tasks: [{ id: 'a1', name: 'Mara Kell', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T1'), tags: [TAG], start: passend }],
   });
   await warte(w, 1200);
@@ -1131,7 +1131,7 @@ gruppe('Neuer Task bekommt das Datum gleich mit');
 {
   const { doc, w, aufrufe } = await starte({ speicher: MIT_CLICKUP });
   await warte(w, 600);
-  klick(w, chip(doc, 1, 'followup'));   // Corina, letzte Nachricht 20.09.2026
+  klick(w, chip(doc, 1, 'followup'));   // Rosina, letzte Nachricht 20.09.2026
   await warte(w, 900);
   const neu = angelegte(aufrufe)[0];
   pruefe('Startdatum ist beim Anlegen dabei',
@@ -1141,10 +1141,10 @@ gruppe('Neuer Task bekommt das Datum gleich mit');
 
 gruppe('Liegt die Antwort bei uns, wird der Task dringend');
 {
-  // T2 = Corina, Vorschau „Corina: Hallo Josia, danke dir!" — sie hat zuletzt geschrieben
+  // T2 = Rosina, Vorschau „Rosina: Hallo Josia, danke dir!" — sie hat zuletzt geschrieben
   const { w, serverTasks, aufrufe } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'Corina Bösch', status: 'angeschrieben', farbe: '#87909e',
+    tasks: [{ id: 'a1', name: 'Rosina Bärtl', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T2'), tags: [TAG] }],
   });
   await warte(w, 1200);
@@ -1155,10 +1155,10 @@ gruppe('Liegt die Antwort bei uns, wird der Task dringend');
 
 gruppe('Haben wir zuletzt geschrieben, faellt urgent wieder weg');
 {
-  // T3 = Willi, Vorschau „Du: Melde dich gern nochmal"
+  // T3 = Timo, Vorschau „Du: Melde dich gern nochmal"
   const { w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'Willi', status: 'angeschrieben', farbe: '#87909e',
+    tasks: [{ id: 'a1', name: 'Timo', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T3'), tags: [TAG], prio: 'urgent' }],
   });
   await warte(w, 1200);
@@ -1167,10 +1167,10 @@ gruppe('Haben wir zuletzt geschrieben, faellt urgent wieder weg');
 
 gruppe('Eine blosse Reaktion aendert die Prioritaet nicht');
 {
-  // T1 = Anna, Vorschau „annabolko.runs gefällt eine Nachricht" — keine offene Nachricht
+  // T1 = Anna, Vorschau „marakell.runs gefällt eine Nachricht" — keine offene Nachricht
   const { w, serverTasks, aufrufe } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+    tasks: [{ id: 'a1', name: 'Mara Kell', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T1'), tags: [TAG], prio: 'urgent' }],
   });
   await warte(w, 1200);
@@ -1182,11 +1182,11 @@ gruppe('Eine blosse Reaktion aendert die Prioritaet nicht');
 
 gruppe('Hat Josia den Task schon einsortiert, bleibt die Prioritaet seine');
 {
-  // T2 = Corina, Gegenueber zuletzt. Status ist aber nicht mehr angeschrieben,
+  // T2 = Rosina, Gegenueber zuletzt. Status ist aber nicht mehr angeschrieben,
   // also hat Josia den Fall selbst in der Hand.
   const { w, serverTasks, aufrufe } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'Corina Bösch', status: 'kommunikation', farbe: '#7b68ee',
+    tasks: [{ id: 'a1', name: 'Rosina Bärtl', status: 'kommunikation', farbe: '#7b68ee',
               beschreibung: beschreibungMit('T2'), tags: [TAG] }],
   });
   await warte(w, 1200);
@@ -1307,9 +1307,9 @@ gruppe('Die Karteileiche bleibt beim UpPromote-Abgleich stehen');
 {
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_UP,
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T1'), tags: [TAG, 'karteileiche'] }],
-    affiliates: [{ first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de', instagram: 'annabolko.runs' }],
+    affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de', instagram: 'marakell.runs' }],
   });
   klick(w, knopf(doc, 'UpPromote abgleichen'));
   await warte(w, 1200);
@@ -1317,23 +1317,39 @@ gruppe('Die Karteileiche bleibt beim UpPromote-Abgleich stehen');
     serverTasks[0].status === 'angeschrieben', serverTasks[0].status);
 }
 
-gruppe('Eine Unterhaltung findet ihren Task über den Anzeigenamen');
+gruppe('Eine Unterhaltung wird über den Anzeigenamen vorgeschlagen');
 {
+  // Seit 7.5 verknuepft der Namensvergleich nicht mehr von selbst — er legt
+  // vor, verbunden wird per Klick. Der Vergleich selbst ist unveraendert; was
+  // sich geaendert hat, ist nur, wer die Entscheidung trifft.
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'Corina Bösch', status: 'ongeboardet', farbe: '#b660e0',
+    tasks: [{ id: 'a1', name: 'Rosina Bärtl', status: 'ongeboardet', farbe: '#b660e0',
               beschreibung: 'Aus UpPromote übernommen.\nigfu-mail: c@b.de' }],
   });
   klick(w, doc.querySelector('#igfu-refresh'));
   await warte(w, 2500);
-  pruefe('Die Markerzeile igfu-thread wurde nachgetragen',
+  pruefe('Nicht von selbst verbunden',
+    !/igfu-thread/.test(serverTasks[0].beschreibung || ''),
+    (serverTasks[0].beschreibung || '').slice(-120));
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const panel = doc.querySelector('.igfu-body').textContent || '';
+  pruefe('Der Treffer steht im Panel', /Treffer: Rosina Bärtl/.test(panel), panel.slice(0, 400));
+  // Die Zeilen stehen in der Reihenfolge der Unterhaltungen: Anna, Rosina, Timo.
+  const auswahl = doc.querySelectorAll('.igfu-auswahl')[1];
+  pruefe('Es gibt eine Auswahl zum Verbinden', !!auswahl);
+  if (auswahl) {
+    auswahl.value = 'a1';
+    auswahl.dispatchEvent(new w.Event('change', { bubbles: true }));
+    await warte(w, 2000);
+  }
+  pruefe('Nach dem Verbinden steht die Markerzeile igfu-thread da',
     /igfu-thread:\s*T2/.test(serverTasks[0].beschreibung || ''),
     (serverTasks[0].beschreibung || '').slice(-120));
   pruefe('Der Link ins Postfach steht in der Beschreibung',
     /selected_item_id=T2/.test(serverTasks[0].beschreibung || ''),
     (serverTasks[0].beschreibung || '').slice(0, 120));
-  pruefe('Das Datum der letzten Nachricht landet im Startdatum',
-    !!serverTasks[0].start, String(serverTasks[0].start));
 }
 
 gruppe('Zwei gleich benannte Tasks bleiben unverbunden');
@@ -1341,8 +1357,8 @@ gruppe('Zwei gleich benannte Tasks bleiben unverbunden');
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
     tasks: [
-      { id: 'a1', name: 'Corina Bösch', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'eine' },
-      { id: 'a2', name: 'Corina Bösch', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'andere' },
+      { id: 'a1', name: 'Rosina Bärtl', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'eine' },
+      { id: 'a2', name: 'Rosina Bärtl', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'andere' },
     ],
   });
   klick(w, doc.querySelector('#igfu-refresh'));
@@ -1357,7 +1373,7 @@ gruppe('Ein einzelner Vorname verbindet nicht');
 {
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'Willi', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'nur Vorname' }],
+    tasks: [{ id: 'a1', name: 'Timo', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'nur Vorname' }],
   });
   klick(w, doc.querySelector('#igfu-refresh'));
   await warte(w, 2500);
@@ -1369,7 +1385,7 @@ gruppe('Eine Karteileiche wird nicht über den Namen verbunden');
 {
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'Corina Bösch', status: 'ongeboardet', farbe: '#b660e0',
+    tasks: [{ id: 'a1', name: 'Rosina Bärtl', status: 'ongeboardet', farbe: '#b660e0',
               beschreibung: 'altes Konto', tags: ['karteileiche'] }],
   });
   klick(w, doc.querySelector('#igfu-refresh'));
@@ -1381,12 +1397,12 @@ gruppe('Eine Karteileiche wird nicht über den Namen verbunden');
 gruppe('Dieselbe Person in zwei Unterhaltungen landet in einem Task');
 {
   // T5 ist dieselbe Person wie T1: der Vorschautext nennt denselben Handle.
-  const spaeter = macheThread({ id: 'T5', titel: 'Anna Bolko', zeit: new Date(2026, 9, 1, 10, 0, 0).getTime(),
-    vorschau: 'annabolko.runs gefällt eine Nachricht' });
+  const spaeter = macheThread({ id: 'T5', titel: 'Mara Kell', zeit: new Date(2026, 9, 1, 10, 0, 0).getTime(),
+    vorschau: 'marakell.runs gefällt eine Nachricht' });
   const { doc, w, serverTasks, aufrufe } = await starte({
     speicher: MIT_CLICKUP,
     zusatz: [spaeter],
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T1'), tags: [TAG] }],
   });
   klick(w, chip(doc, 4, 'crm'));
@@ -1406,13 +1422,13 @@ gruppe('Dieselbe Person in zwei Unterhaltungen landet in einem Task');
 
 gruppe('Bei zwei Unterhaltungen zählt die spätere für das Startdatum');
 {
-  const spaeter = macheThread({ id: 'T5', titel: 'Anna Bolko', zeit: new Date(2026, 9, 1, 10, 0, 0).getTime(),
-    vorschau: 'annabolko.runs gefällt eine Nachricht' });
+  const spaeter = macheThread({ id: 'T5', titel: 'Mara Kell', zeit: new Date(2026, 9, 1, 10, 0, 0).getTime(),
+    vorschau: 'marakell.runs gefällt eine Nachricht' });
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
     zusatz: [spaeter],
     // Die Beschreibung traegt beide Unterhaltungen von Anfang an.
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T1') + '\nigfu-thread: T5', tags: [TAG] }],
   });
   klick(w, doc.querySelector('#igfu-refresh'));
@@ -1423,12 +1439,12 @@ gruppe('Bei zwei Unterhaltungen zählt die spätere für das Startdatum');
 
 gruppe('Eine Karteileiche fängt die zweite Unterhaltung nicht ab');
 {
-  const spaeter = macheThread({ id: 'T5', titel: 'Anna Bolko', zeit: new Date(2026, 9, 1, 10, 0, 0).getTime(),
-    vorschau: 'annabolko.runs gefällt eine Nachricht' });
+  const spaeter = macheThread({ id: 'T5', titel: 'Mara Kell', zeit: new Date(2026, 9, 1, 10, 0, 0).getTime(),
+    vorschau: 'marakell.runs gefällt eine Nachricht' });
   const { doc, w, serverTasks, aufrufe } = await starte({
     speicher: MIT_CLICKUP,
     zusatz: [spaeter],
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T1'), tags: [TAG, 'karteileiche'] }],
   });
   klick(w, chip(doc, 4, 'crm'));
@@ -1457,7 +1473,7 @@ gruppe('Die Diagnosezeile zählt Tasks und Handles mit');
 {
   const { doc, w } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T1'), tags: [TAG] }],
   });
   await warte(w, 900);
@@ -1479,7 +1495,7 @@ gruppe('Das Panel zeigt die Unterhaltungen ohne Task');
 {
   const { doc, w } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'Corina Bösch', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'ohne Thread' }],
+    tasks: [{ id: 'a1', name: 'Rosina Bärtl', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'ohne Thread' }],
   });
   await warte(w, 900);
   klick(w, doc.querySelector('#igfu-launch'));
@@ -1487,26 +1503,27 @@ gruppe('Das Panel zeigt die Unterhaltungen ohne Task');
   const text = doc.querySelector('.igfu-body').textContent || '';
   pruefe('Der Abschnitt ist da', /Unterhaltungen ohne Task/.test(text));
   pruefe('Für Anna steht kein Treffer', /kein Treffer/.test(text));
-  pruefe('Die gelesene Form wird gezeigt', /gelesen als „anna bolko"/.test(text), text.slice(0, 400));
-  // Corina wurde über die Namensbrücke schon verbunden und gehört damit nicht
-  // mehr in diese Liste. Geprüft wird genau dieser Abschnitt, nicht das ganze
-  // Panel — andere Abschnitte dürfen sie sehr wohl nennen.
+  pruefe('Die gelesene Form wird gezeigt', /gelesen als „mara kell"/.test(text), text.slice(0, 400));
+  // Rosina bleibt seit 7.5 in dieser Liste stehen: der Namensvergleich findet
+  // sie, verbindet aber nicht mehr von selbst. Statt stillschweigend zu
+  // verschwinden, steht sie hier mit ihrem Vorschlag — das ist zugleich das
+  // Protokoll dessen, was frueher ungefragt passiert waere.
   const abschnitt = (text.split('Unterhaltungen ohne Task')[1] || '')
     .split(/Tasks ohne Unterhaltung|Handles nachtragen|Follow-ups/)[0];
-  pruefe('Die verbundene Unterhaltung steht nicht mehr drin',
-    !/Corina/.test(abschnitt), abschnitt.slice(0, 300));
+  pruefe('Die erkannte Unterhaltung steht mit ihrem Treffer drin',
+    /Treffer: Rosina Bärtl/.test(abschnitt), abschnitt.slice(0, 300));
 }
 
 gruppe('Dasselbe Profilbild führt zwei Unterhaltungen zusammen');
 {
   // T5 ist dieselbe Person wie T1: gleiche Bild-ID, aber der Vorschautext nennt
   // keinen Handle — so sehen normale DMs aus.
-  const zweite = macheThread({ id: 'T5', titel: 'Anna B. 🏃', bild: '111111111',
-    zeit: new Date(2026, 9, 2, 8, 0, 0).getTime(), vorschau: 'Anna: Hey, schau mal' });
+  const zweite = macheThread({ id: 'T5', titel: 'Mara K. 🏃', bild: '111111111',
+    zeit: new Date(2026, 9, 2, 8, 0, 0).getTime(), vorschau: 'Mara: Hey, schau mal' });
   const { doc, w, serverTasks, aufrufe } = await starte({
     speicher: MIT_CLICKUP,
     zusatz: [zweite],
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T1') + '\nigfu-bild: 111111111', tags: [TAG] }],
   });
   klick(w, doc.querySelector('#igfu-refresh'));
@@ -1524,10 +1541,21 @@ gruppe('Die Bild-ID wird nachgetragen, wenn sie noch fehlt');
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
     // Task ohne Unterhaltung und ohne Bild-ID, Name passt auf T2.
-    tasks: [{ id: 'a1', name: 'Corina Bösch', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'aus UpPromote' }],
+    tasks: [{ id: 'a1', name: 'Rosina Bärtl', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'aus UpPromote' }],
   });
   klick(w, doc.querySelector('#igfu-refresh'));
   await warte(w, 3000);
+  // Verbunden wird seit 7.5 per Klick. Die Bild-ID wird beim Verbinden
+  // nachgetragen — darum geht es hier.
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const auswahl = doc.querySelectorAll('.igfu-auswahl')[1];
+  pruefe('Es gibt eine Auswahl zum Verbinden', !!auswahl);
+  if (auswahl) {
+    auswahl.value = 'a1';
+    auswahl.dispatchEvent(new w.Event('change', { bubbles: true }));
+    await warte(w, 2000);
+  }
   pruefe('Die Unterhaltung ist verbunden',
     /igfu-thread:\s*T2/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
   pruefe('Die Bild-ID steht jetzt dabei',
@@ -1537,12 +1565,12 @@ gruppe('Die Bild-ID wird nachgetragen, wenn sie noch fehlt');
 
 gruppe('Eine Karteileiche fängt das Zusammenführen über das Bild nicht ab');
 {
-  const zweite = macheThread({ id: 'T5', titel: 'Anna B. 🏃', bild: '111111111',
-    zeit: new Date(2026, 9, 2, 8, 0, 0).getTime(), vorschau: 'Anna: Hey, schau mal' });
+  const zweite = macheThread({ id: 'T5', titel: 'Mara K. 🏃', bild: '111111111',
+    zeit: new Date(2026, 9, 2, 8, 0, 0).getTime(), vorschau: 'Mara: Hey, schau mal' });
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
     zusatz: [zweite],
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'angeschrieben', farbe: '#87909e',
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T1') + '\nigfu-bild: 111111111', tags: [TAG, 'karteileiche'] }],
   });
   klick(w, doc.querySelector('#igfu-refresh'));
@@ -1556,18 +1584,23 @@ gruppe('Schmuckschrift im Anzeigenamen wird aufgelöst');
 {
   // Meta zeigt den Namen in fetter Schmuckschrift, ClickUp schlicht. Das sind
   // eigene Unicode-Zeichen, kein Formatierungs-Beiwerk.
-  const schmuck = macheThread({ id: 'T5', titel: '𝗖𝗵𝗶𝗮𝗿𝗮 𝗪𝗮𝗹𝗱𝗻𝗲𝗿',
+  const schmuck = macheThread({ id: 'T5', titel: '𝗟𝗶𝗻𝗮 𝗙𝗲𝗹𝗱𝗲𝗿',
     bild: '777777777', zeit: new Date(2026, 9, 2, 9, 0, 0).getTime(), vorschau: 'Hey, schau mal' });
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
     zusatz: [schmuck],
-    tasks: [{ id: 'a1', name: 'chiara_waldner — Chiara Waldner', status: 'ongeboardet', farbe: '#b660e0',
-              beschreibung: 'aus UpPromote\nigfu-handle: chiara_waldner' }],
+    tasks: [{ id: 'a1', name: 'lina_felder — Lina Felder', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: 'aus UpPromote\nigfu-handle: lina_felder' }],
   });
   klick(w, doc.querySelector('#igfu-refresh'));
   await warte(w, 3000);
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const panel = doc.querySelector('.igfu-body').textContent || '';
   pruefe('Der schlicht geschriebene Task wird gefunden',
-    /igfu-thread:\s*T5/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+    /Treffer: Lina Felder/.test(panel), panel.slice(0, 800));
+  pruefe('Von selbst verbunden wird nichts',
+    !/igfu-thread:\s*T5/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
 }
 
 gruppe('Ein einzelner Vorname bleibt unverbunden, auch in Schmuckschrift');
@@ -1589,34 +1622,44 @@ gruppe('Ein einzelner Vorname bleibt unverbunden, auch in Schmuckschrift');
 
 gruppe('Beiwerk im Instagram-Namen stört nicht');
 {
-  const mitBeiwerk = macheThread({ id: 'T5', titel: 'G o V e | Govind Mukubay', bild: '777777777',
-    zeit: new Date(2026, 9, 2, 9, 0, 0).getTime(), vorschau: 'Govind: Hallo' });
+  const mitBeiwerk = macheThread({ id: 'T5', titel: 'N o R d | Nordin Makuba', bild: '777777777',
+    zeit: new Date(2026, 9, 2, 9, 0, 0).getTime(), vorschau: 'Nordin: Hallo' });
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
     zusatz: [mitBeiwerk],
-    tasks: [{ id: 'a1', name: 'govefit_ — Govind Mukubay', status: 'ongeboardet', farbe: '#b660e0',
-              beschreibung: 'aus UpPromote\nigfu-handle: govefit_' }],
+    tasks: [{ id: 'a1', name: 'nordfit_ — Nordin Makuba', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: 'aus UpPromote\nigfu-handle: nordfit_' }],
   });
   klick(w, doc.querySelector('#igfu-refresh'));
   await warte(w, 3000);
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const panel = doc.querySelector('.igfu-body').textContent || '';
   pruefe('Der Task wird trotz Beiwerk gefunden',
-    /igfu-thread:\s*T5/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+    /Treffer: Nordin Makuba/.test(panel), panel.slice(0, 800));
 }
 
 gruppe('Ein einzelnes Wort zählt nur als Handle');
 {
-  const alsHandle = macheThread({ id: 'T5', titel: 'naturpedal', bild: '777777777',
+  const alsHandle = macheThread({ id: 'T5', titel: 'stadtpedal', bild: '777777777',
     zeit: new Date(2026, 9, 2, 9, 0, 0).getTime(), vorschau: 'Hallo' });
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
     zusatz: [alsHandle],
-    tasks: [{ id: 'a1', name: 'naturpedal', status: 'hat sales', farbe: '#008844', beschreibung: 'alt' },
-            { id: 'a2', name: 'Willi', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'alt' }],
+    tasks: [{ id: 'a1', name: 'stadtpedal', status: 'hat sales', farbe: '#008844', beschreibung: 'alt' },
+            { id: 'a2', name: 'Timo', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'alt' }],
   });
   klick(w, doc.querySelector('#igfu-refresh'));
   await warte(w, 3000);
-  pruefe('Der Handle-Task wird verbunden',
-    /igfu-thread:\s*T5/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const panel = doc.querySelector('.igfu-body').textContent || '';
+  pruefe('Der Handle-Task wird als Treffer erkannt',
+    /Treffer: stadtpedal/.test(panel), panel.slice(0, 800));
+  // „Timo" darf als schwacher Vorschlag erscheinen — ein Klick ist in Ordnung,
+  // ein Treffer waere es nicht.
+  pruefe('Der Vorname-Task ist kein Treffer',
+    !/Treffer: Timo/.test(panel), panel.slice(0, 800));
   pruefe('Der Vorname-Task bleibt unverbunden',
     !/igfu-thread/.test(serverTasks[1].beschreibung || ''), serverTasks[1].beschreibung);
 }
@@ -1624,22 +1667,28 @@ gruppe('Ein einzelnes Wort zählt nur als Handle');
 gruppe('Die zweite Unterhaltung findet den Task auch über den Namen');
 {
   // Der Task hat schon eine Unterhaltung. Trotzdem gehört die zweite dorthin.
-  const zweite = macheThread({ id: 'T5', titel: 'Corina Bösch', bild: '777777777',
-    zeit: new Date(2026, 9, 3, 9, 0, 0).getTime(), vorschau: 'Corina: noch was' });
+  const zweite = macheThread({ id: 'T5', titel: 'Rosina Bärtl', bild: '777777777',
+    zeit: new Date(2026, 9, 3, 9, 0, 0).getTime(), vorschau: 'Rosina: noch was' });
   const { doc, w, serverTasks, aufrufe } = await starte({
     speicher: MIT_CLICKUP,
     zusatz: [zweite],
-    tasks: [{ id: 'a1', name: 'Corina Bösch', status: 'ongeboardet', farbe: '#b660e0',
+    tasks: [{ id: 'a1', name: 'Rosina Bärtl', status: 'ongeboardet', farbe: '#b660e0',
               beschreibung: beschreibungMit('T2') }],
   });
   klick(w, doc.querySelector('#igfu-refresh'));
   await warte(w, 3000);
   pruefe('Es entsteht kein zweiter Task', angelegte(aufrufe).length === 0,
     JSON.stringify(angelegte(aufrufe).map((a) => a.data && a.data.name)));
-  pruefe('Beide Unterhaltungen hängen am selben Task',
-    /igfu-thread:\s*T2/.test(serverTasks[0].beschreibung || '')
-    && /igfu-thread:\s*T5/.test(serverTasks[0].beschreibung || ''),
+  pruefe('Die erste Unterhaltung bleibt am Task',
+    /igfu-thread:\s*T2/.test(serverTasks[0].beschreibung || ''),
     (serverTasks[0].beschreibung || '').slice(-180));
+  // Das Zusammenfuehren traegt seit 7.5 die Benutzer-ID, nicht der Name. Fuer
+  // Unterhaltungen ohne ID bleibt der Vorschlag.
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const panel = doc.querySelector('.igfu-body').textContent || '';
+  pruefe('Die zweite wird zum selben Task gefunden',
+    /Treffer: Rosina Bärtl/.test(panel), panel.slice(0, 800));
 }
 
 gruppe('Fehlende Fristen nachtragen: Warenversand');
@@ -1782,8 +1831,8 @@ gruppe('Tasks ohne Unterhaltung stehen im Panel');
   const { doc, w } = await starte({
     speicher: MIT_CLICKUP,
     tasks: [
-      { id: 'a1', name: 'lauf_bulti_lauf — Thorsten Bulthaup', status: 'hat sales', farbe: '#e16b16',
-        beschreibung: 'aus UpPromote\nigfu-handle: lauf_bulti_lauf' },
+      { id: 'a1', name: 'lauf_bolti_lauf — Torsten Bolthaup', status: 'hat sales', farbe: '#e16b16',
+        beschreibung: 'aus UpPromote\nigfu-handle: lauf_bolti_lauf' },
       { id: 'a2', name: 'abgesagt.person — Weg Damit', status: 'abgesagt', farbe: '#87909e',
         beschreibung: 'aus UpPromote\nigfu-handle: abgesagt.person' },
       { id: 'a3', name: 'leiche.person — Alt Konto', status: 'ongeboardet', farbe: '#b660e0',
@@ -1795,7 +1844,7 @@ gruppe('Tasks ohne Unterhaltung stehen im Panel');
   await warte(w, 300);
   const t = doc.querySelector('.igfu-body').textContent || '';
   pruefe('Der Abschnitt nennt die Zahl', /Tasks ohne Unterhaltung \(1\)/.test(t), t.slice(0, 500));
-  pruefe('Der offene Task steht drin', /Thorsten Bulthaup/.test(t));
+  pruefe('Der offene Task steht drin', /Torsten Bolthaup/.test(t));
   pruefe('Ein Endstatus steht nicht drin', !/Weg Damit/.test(t));
   pruefe('Eine Karteileiche steht nicht drin', !/Alt Konto/.test(t));
   // Auf den Knopf pruefen, nicht auf den Text: der Hinweissatz nennt das Wort
@@ -1809,8 +1858,8 @@ gruppe('Die offene Unterhaltung lässt sich von Hand verbinden');
   const { doc, w, serverTasks } = await starte({
     pfad: '/latest/inbox/all/?selected_item_id=T3',
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'lauf_bulti_lauf — Thorsten Bulthaup', status: 'hat sales', farbe: '#e16b16',
-              beschreibung: 'aus UpPromote\nigfu-handle: lauf_bulti_lauf' }],
+    tasks: [{ id: 'a1', name: 'lauf_bolti_lauf — Torsten Bolthaup', status: 'hat sales', farbe: '#e16b16',
+              beschreibung: 'aus UpPromote\nigfu-handle: lauf_bolti_lauf' }],
   });
   await warte(w, 900);
   klick(w, doc.querySelector('#igfu-launch'));
@@ -1835,10 +1884,10 @@ gruppe('CRM-Pille legt keine Dublette an, wenn der Handle passt');
   // Task ohne Unterhaltung — es darf kein zweiter entstehen.
   const { doc, w, serverTasks, aufrufe } = await starte({
     speicher: MIT_CLICKUP,
-    karte: { handle: 'lauf_bulti_lauf' },
+    karte: { handle: 'lauf_bolti_lauf' },
     pfad: '/latest/inbox/all/?selected_item_id=T3',
-    tasks: [{ id: 'a1', name: 'lauf_bulti_lauf — Thorsten Bulthaup', status: 'hat sales', farbe: '#e16b16',
-              beschreibung: 'aus UpPromote\nigfu-handle: lauf_bulti_lauf' }],
+    tasks: [{ id: 'a1', name: 'lauf_bolti_lauf — Torsten Bolthaup', status: 'hat sales', farbe: '#e16b16',
+              beschreibung: 'aus UpPromote\nigfu-handle: lauf_bolti_lauf' }],
   });
   klick(w, chip(doc, 2, 'crm'));
   await warte(w, 3000);
@@ -1852,8 +1901,8 @@ gruppe('Die Auswahl zum Verbinden steht an der Unterhaltung');
 {
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'lauf_bulti_lauf — Thorsten Bulthaup', status: 'hat sales', farbe: '#e16b16',
-              beschreibung: 'aus UpPromote\nigfu-handle: lauf_bulti_lauf' }],
+    tasks: [{ id: 'a1', name: 'lauf_bolti_lauf — Torsten Bolthaup', status: 'hat sales', farbe: '#e16b16',
+              beschreibung: 'aus UpPromote\nigfu-handle: lauf_bolti_lauf' }],
   });
   await warte(w, 900);
   klick(w, doc.querySelector('#igfu-launch'));
@@ -1861,7 +1910,7 @@ gruppe('Die Auswahl zum Verbinden steht an der Unterhaltung');
   const auswahl = doc.querySelector('.igfu-auswahl');
   pruefe('Es gibt eine Auswahl', !!auswahl);
   pruefe('Der Task steht zur Wahl',
-    !!auswahl && /Thorsten Bulthaup/.test(auswahl.textContent || ''), auswahl && auswahl.textContent);
+    !!auswahl && /Torsten Bolthaup/.test(auswahl.textContent || ''), auswahl && auswahl.textContent);
   if (auswahl) {
     auswahl.value = 'a1';
     auswahl.dispatchEvent(new w.Event('change', { bubbles: true }));
@@ -1876,7 +1925,7 @@ gruppe('Die Auswahl zum Verbinden steht an der Unterhaltung');
 const MIT_META = { ...MIT_CLICKUP, 'meta:token:v1': 'EAAG_geheim_meta' };
 // Die Seiten-ID steht als asset_id in der Postfach-Adresse.
 const META_PFAD = '/latest/inbox/all/?asset_id=' + PAGE;
-// T2 ist „Corina Bösch", Zeitstempel 20.09.2026 09:30.
+// T2 ist „Rosina Bärtl", Zeitstempel 20.09.2026 09:30.
 const T2_ZEIT = new Date(2026, 8, 20, 9, 30, 0).getTime();
 
 gruppe('Die Meta-API liefert den Handle, den das Postfach nicht nennt');
@@ -1884,7 +1933,7 @@ gruppe('Die Meta-API liefert den Handle, den das Postfach nicht nennt');
   const { doc, w, store, aufrufe } = await starte({
     pfad: META_PFAD,
     speicher: MIT_META,
-    metaUnterhaltungen: [{ id: 't_111', username: 'corina_boesch', zeit: T2_ZEIT }],
+    metaUnterhaltungen: [{ id: 't_111', username: 'rosina_baertl', zeit: T2_ZEIT }],
   });
   klick(w, knopf(doc, 'Handles über die Meta-API holen'));
   await warte(w, 1500);
@@ -1897,12 +1946,12 @@ gruppe('Die Meta-API liefert den Handle, den das Postfach nicht nennt');
   const funde = store.get('meta:funde:v1');
   pruefe('Ein Handle wurde abgelegt', !!funde && funde.liste.length === 1, JSON.stringify(funde));
   pruefe('Die eigene Seite zählt nicht als Gegenüber',
-    !!funde && funde.liste[0].handle === 'corina_boesch', JSON.stringify(funde));
+    !!funde && funde.liste[0].handle === 'rosina_baertl', JSON.stringify(funde));
   // Der Scan ordnet ueber den Zeitpunkt zu.
   await warte(w, 700);
   const handles = store.get('clickup:handles:v1') || {};
   pruefe('Die Unterhaltung kennt jetzt ihren Handle',
-    (handles.T2 || {}).handle === 'corina_boesch', JSON.stringify(handles.T2));
+    (handles.T2 || {}).handle === 'rosina_baertl', JSON.stringify(handles.T2));
   pruefe('Die Quelle ist die API', (handles.T2 || {}).quelle === 'api', JSON.stringify(handles.T2));
 }
 
@@ -1911,7 +1960,7 @@ gruppe('Der Meta-Token steht in keiner Adresse');
   const { doc, w, aufrufe } = await starte({
     pfad: META_PFAD,
     speicher: MIT_META,
-    metaUnterhaltungen: [{ id: 't_111', username: 'corina_boesch', zeit: T2_ZEIT }],
+    metaUnterhaltungen: [{ id: 't_111', username: 'rosina_baertl', zeit: T2_ZEIT }],
   });
   klick(w, knopf(doc, 'Handles über die Meta-API holen'));
   await warte(w, 1500);
@@ -1928,7 +1977,7 @@ gruppe('Zwei Unterhaltungen zur selben Zeit bleiben unzugeordnet');
     pfad: META_PFAD,
     speicher: MIT_META,
     metaUnterhaltungen: [
-      { id: 't_111', username: 'corina_boesch', zeit: T2_ZEIT },
+      { id: 't_111', username: 'rosina_baertl', zeit: T2_ZEIT },
       { id: 't_222', username: 'jemand_anders', zeit: T2_ZEIT + 1000 },
     ],
   });
@@ -1952,7 +2001,7 @@ gruppe('Auf instagram.com wird die Liste gelesen');
   const { doc, w } = await starte({
     speicher: MIT_CLICKUP,
     ig: [
-      { id: '17843301684077278', titel: 'naturpedal', vorschau: '3 new messages', zeit: '10m', ungelesen: true, bild: '840052174' },
+      { id: '17843301684077278', titel: 'stadtpedal', vorschau: '3 new messages', zeit: '10m', ungelesen: true, bild: '840052174' },
       { id: '113874680003704', titel: 'Stefanie | Vegan Food Inspo', vorschau: 'You: habe dir geantwortet ;)', zeit: '59m' },
       { id: '17847685227038439', titel: 'Thorsten | Laufen & Trailrunning', vorschau: 'Liked a message', zeit: '19h' },
     ],
@@ -1971,7 +2020,7 @@ gruppe('Der Link zeigt auf instagram.com');
 {
   const { doc, w, serverTasks, aufrufe } = await starte({
     speicher: MIT_CLICKUP,
-    ig: [{ id: '17847685227038439', titel: 'naturpedal', vorschau: 'Hallo', zeit: '2h' }],
+    ig: [{ id: '17847685227038439', titel: 'stadtpedal', vorschau: 'Hallo', zeit: '2h' }],
   });
   klick(w, chip(doc, 0, 'crm'));
   await warte(w, 2500);
@@ -2007,9 +2056,9 @@ gruppe('Ungelesen heißt: das Gegenüber hat geschrieben');
 {
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
-    ig: [{ id: '17843301684077278', titel: 'naturpedal', vorschau: '3 new messages', zeit: '10m', ungelesen: true }],
-    tasks: [{ id: 'a1', name: 'naturpedal', status: 'angeschrieben', farbe: '#87909e',
-              beschreibung: 'x\nigfu-thread: 17843301684077278\nigfu-handle: naturpedal' }],
+    ig: [{ id: '17843301684077278', titel: 'stadtpedal', vorschau: '3 new messages', zeit: '10m', ungelesen: true }],
+    tasks: [{ id: 'a1', name: 'stadtpedal', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: 'x\nigfu-thread: 17843301684077278\nigfu-handle: stadtpedal' }],
   });
   klick(w, doc.querySelector('#igfu-refresh'));
   await warte(w, 2500);
@@ -2036,9 +2085,9 @@ gruppe('Der Umzug: ein Altbestand bekommt seine Instagram-Unterhaltung');
   // Handle, den Instagram als Zeilentitel zeigt.
   const { doc, w, serverTasks, aufrufe } = await starte({
     speicher: MIT_CLICKUP,
-    ig: [{ id: '17843301684077278', titel: 'naturpedal', vorschau: 'Hallo', zeit: '2h' }],
-    tasks: [{ id: 'a1', name: 'naturpedal', status: 'hat sales', farbe: '#e16b16',
-              beschreibung: 'x\nigfu-thread: 340282366841710301244259840012452280991\nigfu-handle: naturpedal' }],
+    ig: [{ id: '17843301684077278', titel: 'stadtpedal', vorschau: 'Hallo', zeit: '2h' }],
+    tasks: [{ id: 'a1', name: 'stadtpedal', status: 'hat sales', farbe: '#e16b16',
+              beschreibung: 'x\nigfu-thread: 340282366841710301244259840012452280991\nigfu-handle: stadtpedal' }],
   });
   klick(w, doc.querySelector('#igfu-refresh'));
   await warte(w, 3000);
@@ -2113,7 +2162,7 @@ gruppe('Ein zweiter Klick bricht den Durchlauf ab');
 const ALT_UND_NEU = [
   '[Unterhaltung im Postfach öffnen](https://business.facebook.com/latest/inbox/all/?asset_id=1&selected_item_id=340282366841710301244259840012452280991&thread_type=IG_MESSAGE)',
   '',
-  'Instagram: [@naturpedal](https://www.instagram.com/naturpedal/)',
+  'Instagram: [@stadtpedal](https://www.instagram.com/stadtpedal/)',
   '',
   'Link zu Nachrichten: https://business.facebook.com/latest/inbox/all/?ir_qe_exposed=1',
   '',
@@ -2121,7 +2170,7 @@ const ALT_UND_NEU = [
   '',
   'Vom Postfach-Skript verwaltet. Die folgende Zeile bitte nicht ändern.',
   'igfu-thread: 340282366841710301244259840012452280991',
-  'igfu-handle: naturpedal',
+  'igfu-handle: stadtpedal',
   'igfu-ware: 2026-09-24',
   '',
   '[Weitere Unterhaltung auf Instagram öffnen](https://www.instagram.com/direct/t/17843301684077278/)',
@@ -2132,7 +2181,7 @@ gruppe('Alte Postfach-Links werden entfernt, wo ein Instagram-Link da ist');
 {
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
-    tasks: [{ id: 'a1', name: 'naturpedal', status: 'hat sales', farbe: '#e16b16', beschreibung: ALT_UND_NEU }],
+    tasks: [{ id: 'a1', name: 'stadtpedal', status: 'hat sales', farbe: '#e16b16', beschreibung: ALT_UND_NEU }],
   });
   klick(w, knopf(doc, 'Alte Postfach-Links entfernen'));
   await warte(w, 2000);
@@ -2141,8 +2190,8 @@ gruppe('Alte Postfach-Links werden entfernt, wo ein Instagram-Link da ist');
   pruefe('Die Zeile „Link zu Nachrichten" ist weg', !/Link zu Nachrichten/.test(t), t);
   pruefe('Die alte Markerzeile ist weg', !/igfu-thread:\s*340282/.test(t), t);
   pruefe('Die Instagram-Kennung bleibt', /igfu-ig:\s*17843301684077278/.test(t), t);
-  pruefe('Das Profil bleibt', /Instagram: \[@naturpedal\]/.test(t), t);
-  pruefe('Handle und Ware bleiben', /igfu-handle: naturpedal/.test(t) && /igfu-ware: 2026-09-24/.test(t), t);
+  pruefe('Das Profil bleibt', /Instagram: \[@stadtpedal\]/.test(t), t);
+  pruefe('Handle und Ware bleiben', /igfu-handle: stadtpedal/.test(t) && /igfu-ware: 2026-09-24/.test(t), t);
   pruefe('Der Instagram-Link steht jetzt oben',
     t.startsWith('[Unterhaltung auf Instagram öffnen](https://www.instagram.com/direct/t/17843301684077278/)'),
     t.slice(0, 120));
@@ -2200,9 +2249,9 @@ gruppe('Status „ignore" wird nicht mehr angefasst');
 {
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_UP,
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status: 'ignore', farbe: '#e5484d',
-              beschreibung: beschreibungMit('T1') + '\nigfu-handle: annabolko.runs' }],
-    affiliates: [{ first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de', instagram: 'annabolko.runs',
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'ignore', farbe: '#e5484d',
+              beschreibung: beschreibungMit('T1') + '\nigfu-handle: marakell.runs' }],
+    affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de', instagram: 'marakell.runs',
                    approved_amount: '120.00' }],
   });
   klick(w, knopf(doc, 'UpPromote abgleichen'));
@@ -2215,7 +2264,7 @@ gruppe('Der Filter blendet gelesene Unterhaltungen aus');
   const { doc, w } = await starte({
     speicher: MIT_CLICKUP,
     ig: [
-      { id: '17843301684077278', titel: 'naturpedal', vorschau: '2 new messages', zeit: '10m', ungelesen: true },
+      { id: '17843301684077278', titel: 'stadtpedal', vorschau: '2 new messages', zeit: '10m', ungelesen: true },
       { id: '113874680003704', titel: 'Stefanie', vorschau: 'You: hallo', zeit: '59m' },
       { id: '17847685227038439', titel: 'Thorsten', vorschau: 'Liked a message', zeit: '19h' },
     ],
@@ -2243,26 +2292,32 @@ gruppe('Im alten Postfach gibt es den Filter nicht');
 
 gruppe('Ein langer Einzelname wird zugeordnet, ein kurzer Vorname nicht');
 {
-  // „GerdaLarissa" ist ein Wort, aber kein Handle — Grossbuchstaben. Zwoelf
-  // Zeichen reichen trotzdem, um dafuer geradezustehen. „Willi" nicht.
+  // „HertaLarissa" ist ein Wort, aber kein Handle — Grossbuchstaben. Zwoelf
+  // Zeichen reichen trotzdem, um dafuer geradezustehen. „Timo" nicht.
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
     ig: [
-      { id: '17843301684077280', titel: 'GerdaLarissa', vorschau: 'Hallo', zeit: '3h' },
-      { id: '17843301684077281', titel: 'Willi', vorschau: 'Hallo', zeit: '4h' },
+      { id: '17843301684077280', titel: 'HertaLarissa', vorschau: 'Hallo', zeit: '3h' },
+      { id: '17843301684077281', titel: 'Timo', vorschau: 'Hallo', zeit: '4h' },
     ],
     tasks: [
-      { id: 'a1', name: 'gerdafichtel — GerdaLarissa', status: 'erste ware versendet', farbe: '#b660e0',
-        beschreibung: 'aus UpPromote\nigfu-handle: gerdafichtel' },
-      { id: 'a2', name: 'willi__83 — Willi', status: 'angeschrieben', farbe: '#87909e',
-        beschreibung: 'aus UpPromote\nigfu-handle: willi__83' },
+      { id: 'a1', name: 'hertafichtel — HertaLarissa', status: 'erste ware versendet', farbe: '#b660e0',
+        beschreibung: 'aus UpPromote\nigfu-handle: hertafichtel' },
+      { id: 'a2', name: 'timo__83 — Timo', status: 'angeschrieben', farbe: '#87909e',
+        beschreibung: 'aus UpPromote\nigfu-handle: timo__83' },
     ],
   });
   klick(w, doc.querySelector('#igfu-refresh'));
   await warte(w, 3000);
-  pruefe('GerdaLarissa wird verbunden',
-    /igfu-ig:\s*17843301684077280/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
-  pruefe('Willi bleibt unverbunden',
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const panel = doc.querySelector('.igfu-body').textContent || '';
+  pruefe('HertaLarissa wird als Treffer erkannt',
+    /Treffer: HertaLarissa/.test(panel), panel.slice(0, 800));
+  // Der kurze Vorname darf vorgeschlagen werden, aber nie als Treffer gelten.
+  pruefe('Timo ist kein Treffer',
+    !/Treffer: Timo/.test(panel), panel.slice(0, 800));
+  pruefe('Timo bleibt unverbunden',
     !/igfu-thread/.test(serverTasks[1].beschreibung || ''), serverTasks[1].beschreibung);
 }
 
@@ -2292,10 +2347,10 @@ gruppe('Alle Endstatus bleiben stehen');
   for (const status of ['abgesagt', 'ignore', 'keine antwort', 'beendet']) {
     const { doc, w, serverTasks } = await starte({
       speicher: MIT_UP,
-      tasks: [{ id: 'a1', name: 'annabolko.runs — Anna Bolko', status, farbe: '#e5484d',
-                beschreibung: beschreibungMit('T1') + '\nigfu-handle: annabolko.runs' }],
-      affiliates: [{ first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de',
-                     instagram: 'annabolko.runs', approved_amount: '120.00' }],
+      tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status, farbe: '#e5484d',
+                beschreibung: beschreibungMit('T1') + '\nigfu-handle: marakell.runs' }],
+      affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de',
+                     instagram: 'marakell.runs', approved_amount: '120.00' }],
     });
     klick(w, knopf(doc, 'UpPromote abgleichen'));
     await warte(w, 1200);
@@ -2305,13 +2360,13 @@ gruppe('Alle Endstatus bleiben stehen');
 
 gruppe('Eine Vorschau mit Adresse ergibt keinen Handle');
 {
-  // So sind Tasks namens „https — Opel" entstanden: die Vorschau begann mit
+  // So sind Tasks namens „https — Erste Zeile" entstanden: die Vorschau begann mit
   // einer Adresse, und das Muster „wort:" griff auf „https:". Geprüft wird am
   // Handle-Speicher, nicht am Task — ein Task entstünde hier gar nicht, weil
   // ohne Handle die Nachfrage aufgeht.
   const { w, store } = await starte({
     speicher: MIT_CLICKUP,
-    ig: [{ id: '17843301684077290', titel: 'Opel', vorschau: 'https://cdn.uppromote.com/anleitung.pdf', zeit: '2h' }],
+    ig: [{ id: '17843301684077290', titel: 'Erste Zeile', vorschau: 'https://cdn.uppromote.com/anleitung.pdf', zeit: '2h' }],
   });
   await warte(w, 900);
   const handles = store.get('clickup:handles:v1') || {};
@@ -2338,8 +2393,8 @@ gruppe('Anschreib-Links aus dem Handle');
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
     tasks: [
-      { id: 'a1', name: 'hey.luzi — Luzi', status: 'ongeboardet', farbe: '#b660e0',
-        beschreibung: 'aus UpPromote\nigfu-handle: hey.luzi' },
+      { id: 'a1', name: 'hey.lumi — Lumi', status: 'ongeboardet', farbe: '#b660e0',
+        beschreibung: 'aus UpPromote\nigfu-handle: hey.lumi' },
       { id: 'a2', name: 'mit.chat — Hat schon', status: 'ongeboardet', farbe: '#b660e0',
         beschreibung: '[Unterhaltung auf Instagram öffnen](https://www.instagram.com/direct/t/17843301684077278/)\nigfu-ig: 17843301684077278\nigfu-handle: mit.chat' },
       { id: 'a3', name: 'Ohne Handle', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'nichts' },
@@ -2350,7 +2405,7 @@ gruppe('Anschreib-Links aus dem Handle');
   klick(w, knopf(doc, 'Anschreib-Links nachtragen'));
   await warte(w, 2500);
   pruefe('Der Task ohne Link bekommt einen',
-    (serverTasks[0].beschreibung || '').includes('https://ig.me/m/hey.luzi'), serverTasks[0].beschreibung);
+    (serverTasks[0].beschreibung || '').includes('https://ig.me/m/hey.lumi'), serverTasks[0].beschreibung);
   pruefe('Er steht ganz oben',
     (serverTasks[0].beschreibung || '').startsWith('[Auf Instagram anschreiben]'), serverTasks[0].beschreibung);
   pruefe('Wer schon eine Unterhaltung hat, bleibt unberührt',
@@ -2368,18 +2423,18 @@ gruppe('Kennungen richtigstellen: der Link entscheidet, nicht die Länge');
   const ausPostfach = [
     '[Unterhaltung im Postfach öffnen](https://business.facebook.com/latest/inbox/all/?selected_item_id=1100434292377942&thread_type=IG_MESSAGE)',
     'igfu-thread: 1100434292377942',
-    'igfu-handle: asystole_',
+    'igfu-handle: nachtstill_',
   ].join('\n');
   const vonInstagram = [
     '[Unterhaltung auf Instagram öffnen](https://www.instagram.com/direct/t/2566949743743413/)',
     'igfu-thread: 2566949743743413',
-    'igfu-handle: claudia.jehl',
+    'igfu-handle: clara.kehl',
   ].join('\n');
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
     tasks: [
-      { id: 'a1', name: 'asystole_ — Sonheareth', status: 'ongeboardet', farbe: '#b660e0', beschreibung: ausPostfach },
-      { id: 'a2', name: 'claudia.jehl — Claudia', status: 'ongeboardet', farbe: '#b660e0', beschreibung: vonInstagram },
+      { id: 'a1', name: 'nachtstill_ — Noreth', status: 'ongeboardet', farbe: '#b660e0', beschreibung: ausPostfach },
+      { id: 'a2', name: 'clara.kehl — Clara', status: 'ongeboardet', farbe: '#b660e0', beschreibung: vonInstagram },
     ],
   });
   klick(w, knopf(doc, 'Kennungen richtigstellen'));
@@ -2399,10 +2454,10 @@ gruppe('„Noch am alten Postfach" zählt jetzt richtig');
   const { doc, w } = await starte({
     speicher: MIT_CLICKUP,
     tasks: [
-      { id: 'a1', name: 'asystole_ — Aus dem Postfach', status: 'ongeboardet', farbe: '#b660e0',
-        beschreibung: 'x\nigfu-thread: 1100434292377942\nigfu-handle: asystole_' },
-      { id: 'a2', name: 'claudia.jehl — Von Instagram', status: 'ongeboardet', farbe: '#b660e0',
-        beschreibung: 'x\nigfu-ig: 2566949743743413\nigfu-handle: claudia.jehl' },
+      { id: 'a1', name: 'nachtstill_ — Aus dem Postfach', status: 'ongeboardet', farbe: '#b660e0',
+        beschreibung: 'x\nigfu-thread: 1100434292377942\nigfu-handle: nachtstill_' },
+      { id: 'a2', name: 'clara.kehl — Von Instagram', status: 'ongeboardet', farbe: '#b660e0',
+        beschreibung: 'x\nigfu-ig: 2566949743743413\nigfu-handle: clara.kehl' },
     ],
   });
   await warte(w, 900);
@@ -2420,9 +2475,9 @@ gruppe('Namen richtigstellen');
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
     tasks: [
-      { id: 'a1', name: 'kilian.stkl — Kilian SticklYou: Hi Kilian,', status: 'angeschrieben', farbe: '#87909e',
-        beschreibung: 'x\nigfu-handle: kilian.stkl' },
-      { id: 'a2', name: 'https — Opel', status: 'angeschrieben', farbe: '#87909e',
+      { id: 'a1', name: 'beispiel.stkl — Beispiel PersonYou: Hi Beispiel,', status: 'angeschrieben', farbe: '#87909e',
+        beschreibung: 'x\nigfu-handle: beispiel.stkl' },
+      { id: 'a2', name: 'https — Erste Zeile', status: 'angeschrieben', farbe: '#87909e',
         beschreibung: 'x\nigfu-handle: https' },
       { id: 'a3', name: 'sauber.person — Alles gut', status: 'angeschrieben', farbe: '#87909e',
         beschreibung: 'x\nigfu-handle: sauber.person' },
@@ -2431,9 +2486,9 @@ gruppe('Namen richtigstellen');
   klick(w, knopf(doc, 'Namen richtigstellen'));
   await warte(w, 2500);
   pruefe('Die Vorschau ist aus dem Namen raus',
-    serverTasks[0].name === 'kilian.stkl — Kilian Stickl', serverTasks[0].name);
+    serverTasks[0].name === 'beispiel.stkl — Beispiel Person', serverTasks[0].name);
   pruefe('Der falsche Handle ist aus dem Namen raus',
-    serverTasks[1].name === 'Opel', serverTasks[1].name);
+    serverTasks[1].name === 'Erste Zeile', serverTasks[1].name);
   pruefe('Und auch aus der Beschreibung',
     !/igfu-handle:\s*https/.test(serverTasks[1].beschreibung || ''), serverTasks[1].beschreibung);
   pruefe('Ein sauberer Name bleibt unangetastet',
@@ -2445,19 +2500,19 @@ gruppe('Handles gegen UpPromote prüfen');
   const { doc, w, store } = await starte({
     speicher: MIT_UP,
     tasks: [
-      // Handle im Task weicht ab — UpPromote kennt hey.luzi
-      { id: 'a1', name: 'falsch.geraten — Anja', status: 'hat sales', farbe: '#e16b16',
-        beschreibung: 'x\nigfu-handle: falsch.geraten\nigfu-mail: luzi.engel@gmail.com' },
+      // Handle im Task weicht ab — UpPromote kennt hey.lumi
+      { id: 'a1', name: 'falsch.geraten — Anka', status: 'hat sales', farbe: '#e16b16',
+        beschreibung: 'x\nigfu-handle: falsch.geraten\nigfu-mail: anka.engl@example.de' },
       // Stimmt überein
-      { id: 'a2', name: 'annabolko.runs — Anna', status: 'ongeboardet', farbe: '#b660e0',
-        beschreibung: 'x\nigfu-handle: annabolko.runs\nigfu-mail: a@b.de' },
+      { id: 'a2', name: 'marakell.runs — Mara', status: 'ongeboardet', farbe: '#b660e0',
+        beschreibung: 'x\nigfu-handle: marakell.runs\nigfu-mail: a@b.de' },
       // Ohne Mailadresse nicht prüfbar
       { id: 'a3', name: 'ohne.mail — Niemand', status: 'ongeboardet', farbe: '#b660e0',
         beschreibung: 'x\nigfu-handle: ohne.mail' },
     ],
     affiliates: [
-      { first_name: 'Anja', last_name: 'Engel', email: 'luzi.engel@gmail.com', instagram: 'hey.luzi' },
-      { first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de', instagram: 'annabolko.runs' },
+      { first_name: 'Anka', last_name: 'Engl', email: 'anka.engl@example.de', instagram: 'hey.lumi' },
+      { first_name: 'Mara', last_name: 'Kell', email: 'a@b.de', instagram: 'marakell.runs' },
     ],
   });
   klick(w, knopf(doc, 'Handles gegen UpPromote prüfen'));
@@ -2465,22 +2520,22 @@ gruppe('Handles gegen UpPromote prüfen');
   const d = store.get('clickup:handle-zweifel:v1') || { liste: [] };
   pruefe('Genau eine Abweichung', d.liste.length === 1, JSON.stringify(d.liste));
   pruefe('Es ist die richtige',
-    (d.liste[0] || {}).hier === 'falsch.geraten' && (d.liste[0] || {}).beiUp === 'hey.luzi',
+    (d.liste[0] || {}).hier === 'falsch.geraten' && (d.liste[0] || {}).beiUp === 'hey.lumi',
     JSON.stringify(d.liste[0]));
   klick(w, doc.querySelector('#igfu-launch'));
   await warte(w, 300);
   const t = doc.querySelector('.igfu-body').textContent || '';
   pruefe('Die Liste steht im Panel', /Handle weicht von UpPromote ab \(1\)/.test(t), t.slice(0, 300));
-  pruefe('Beide Handles werden genannt', /@falsch\.geraten/.test(t) && /@hey\.luzi/.test(t), t.slice(0, 400));
+  pruefe('Beide Handles werden genannt', /@falsch\.geraten/.test(t) && /@hey\.lumi/.test(t), t.slice(0, 400));
 }
 
 gruppe('Ohne Abweichung steht im Panel nichts davon');
 {
   const { doc, w } = await starte({
     speicher: MIT_UP,
-    tasks: [{ id: 'a1', name: 'annabolko.runs — Anna', status: 'ongeboardet', farbe: '#b660e0',
-              beschreibung: 'x\nigfu-handle: annabolko.runs\nigfu-mail: a@b.de' }],
-    affiliates: [{ first_name: 'Anna', last_name: 'Bolko', email: 'a@b.de', instagram: 'annabolko.runs' }],
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: 'x\nigfu-handle: marakell.runs\nigfu-mail: a@b.de' }],
+    affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de', instagram: 'marakell.runs' }],
   });
   klick(w, knopf(doc, 'Handles gegen UpPromote prüfen'));
   await warte(w, 1800);
@@ -2493,9 +2548,9 @@ gruppe('Kurze Namen werden vorgeschlagen, nicht verbunden');
 {
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
-    ig: [{ id: '17843301684077295', titel: 'Anja', vorschau: 'You: Hi Anja,', zeit: '2h' }],
-    tasks: [{ id: 'a1', name: 'hey.luzi — Anja', status: 'hat sales', farbe: '#e16b16',
-              beschreibung: 'x\nigfu-handle: hey.luzi' }],
+    ig: [{ id: '17843301684077295', titel: 'Anka', vorschau: 'You: Hi Anka,', zeit: '2h' }],
+    tasks: [{ id: 'a1', name: 'hey.lumi — Anka', status: 'hat sales', farbe: '#e16b16',
+              beschreibung: 'x\nigfu-handle: hey.lumi' }],
   });
   klick(w, doc.querySelector('#igfu-refresh'));
   await warte(w, 2500);
@@ -2504,7 +2559,7 @@ gruppe('Kurze Namen werden vorgeschlagen, nicht verbunden');
   klick(w, doc.querySelector('#igfu-launch'));
   await warte(w, 300);
   const t = doc.querySelector('.igfu-body').textContent || '';
-  pruefe('Der Vorschlag steht im Panel', /Vorschlag: Anja/.test(t), t.slice(0, 400));
+  pruefe('Der Vorschlag steht im Panel', /Vorschlag: Anka/.test(t), t.slice(0, 400));
   const uebernehmen = [...doc.querySelectorAll('.igfu-link')].find((b) => b.textContent === 'Übernehmen');
   pruefe('Es gibt einen Übernehmen-Knopf', !!uebernehmen);
   if (uebernehmen) {
@@ -2521,10 +2576,10 @@ gruppe('Bei zwei gleichnamigen Tasks gibt es keinen Vorschlag');
 {
   const { doc, w } = await starte({
     speicher: MIT_CLICKUP,
-    ig: [{ id: '17843301684077296', titel: 'Anja', vorschau: 'Hallo', zeit: '2h' }],
+    ig: [{ id: '17843301684077296', titel: 'Anka', vorschau: 'Hallo', zeit: '2h' }],
     tasks: [
-      { id: 'a1', name: 'eine.anja — Anja', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'x\nigfu-handle: eine.anja' },
-      { id: 'a2', name: 'andere.anja — Anja', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'x\nigfu-handle: andere.anja' },
+      { id: 'a1', name: 'eine.anka — Anka', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'x\nigfu-handle: eine.anka' },
+      { id: 'a2', name: 'andere.anka — Anka', status: 'ongeboardet', farbe: '#b660e0', beschreibung: 'x\nigfu-handle: andere.anka' },
     ],
   });
   await warte(w, 900);
@@ -2538,19 +2593,19 @@ gruppe('Bei zwei gleichnamigen Tasks gibt es keinen Vorschlag');
 
 gruppe('Die geöffnete Unterhaltung verrät den Handle');
 {
-  // In der Liste heisst die Zeile nur „Anja" — zu kurz zum Zuordnen. Im
+  // In der Liste heisst die Zeile nur „Anka" — zu kurz zum Zuordnen. Im
   // Gespraechskopf steht dagegen der Profillink mit dem echten Handle.
   const { doc, w, store, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
-    ig: [{ id: '106620957406652', titel: 'Anja', vorschau: 'You: Hi Anja,', zeit: '2h' }],
-    igOffen: { tid: '106620957406652', handle: 'hey.luzi', titel: 'Anja' },
-    tasks: [{ id: 'a1', name: 'hey.luzi — Anja', status: 'hat sales', farbe: '#e16b16',
-              beschreibung: 'x\nigfu-handle: hey.luzi' }],
+    ig: [{ id: '106620957406652', titel: 'Anka', vorschau: 'You: Hi Anka,', zeit: '2h' }],
+    igOffen: { tid: '106620957406652', handle: 'hey.lumi', titel: 'Anka' },
+    tasks: [{ id: 'a1', name: 'hey.lumi — Anka', status: 'hat sales', farbe: '#e16b16',
+              beschreibung: 'x\nigfu-handle: hey.lumi' }],
   });
   await warte(w, 4000);
   const handles = store.get('clickup:handles:v1') || {};
   pruefe('Der Handle wurde gelesen',
-    (handles['106620957406652'] || {}).handle === 'hey.luzi', JSON.stringify(handles['106620957406652']));
+    (handles['106620957406652'] || {}).handle === 'hey.lumi', JSON.stringify(handles['106620957406652']));
   pruefe('Die Quelle ist die Kontaktkarte',
     (handles['106620957406652'] || {}).quelle === 'karte', JSON.stringify(handles['106620957406652']));
   pruefe('Der Task wurde verbunden',
@@ -2565,12 +2620,77 @@ gruppe('Das eigene Konto wird nicht für das Gegenüber gehalten');
   // und der traegt keinen Text.
   const { doc, w, store } = await starte({
     speicher: MIT_CLICKUP,
-    ig: [{ id: '106620957406652', titel: 'Anja', vorschau: 'Hallo', zeit: '2h' }],
+    ig: [{ id: '106620957406652', titel: 'Anka', vorschau: 'Hallo', zeit: '2h' }],
   });
   await warte(w, 2000);
   const handles = store.get('clickup:handles:v1') || {};
   pruefe('Kein Handle aus der Navigationsleiste',
     !(handles['106620957406652'] || {}).handle, JSON.stringify(handles['106620957406652']));
+}
+
+gruppe('Eine Zeile ohne eigenen Text borgt sich keinen fremden Namen');
+{
+  // Die zweite Zeile traegt ihren Namen nicht selbst. Ohne Schranke klettert
+  // das Skript auf der Suche nach Text bis in den Behaelter, der alle Zeilen
+  // enthaelt, und nimmt den Namen der ersten. Genau so bekam der Task von
+  // am 14.10.2026 mehrere Tasks den Namen einer fremden Zeile — einer sogar
+  // den Handle einer wildfremden Person.
+  const { doc, w, store } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [
+      { id: '111000111', titel: 'Erste Zeile', vorschau: 'Hallo', zeit: '2h' },
+      { id: '222000222', titel: 'Zweite Zeile', ohneText: true },
+    ],
+  });
+  await warte(w, 2500);
+  const handles = store.get('clickup:handles:v1') || {};
+  pruefe('Die textlose Zeile wird übersprungen',
+    !handles['222000222'], JSON.stringify(handles['222000222']));
+  pruefe('Die Zeile mit Text wird normal versorgt',
+    doc.querySelectorAll('.igfu-tags').length === 1,
+    String(doc.querySelectorAll('.igfu-tags').length));
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const panel = doc.querySelector('.igfu-body').textContent || '';
+  pruefe('Der Name der ersten Zeile taucht nicht zweimal auf',
+    (panel.match(/Erste Zeile/g) || []).length <= 1, panel.slice(0, 400));
+}
+
+gruppe('Die Benutzer-ID wird am Task verankert');
+{
+  const { w, store, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '333000333', titel: 'Zweitname', vorschau: 'Hallo', zeit: '2h', nutzer: '4100000077' }],
+    igOffen: { tid: '333000333', handle: 'zzz.zweitname', titel: 'Zweitname' },
+    tasks: [{ id: 'c1', name: 'zzz.zweitname — Zweitname', status: 'hat sales', farbe: '#e16b16',
+              beschreibung: 'x\nigfu-handle: zzz.zweitname' }],
+  });
+  await warte(w, 4000);
+  const handles = store.get('clickup:handles:v1') || {};
+  pruefe('Die ID steht im Speicher',
+    (handles['333000333'] || {}).nutzer === '4100000077', JSON.stringify(handles['333000333']));
+  pruefe('Die ID steht als Markerzeile am Task',
+    /igfu-iguser:\s*4100000077/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+}
+
+gruppe('Dieselbe Person in zwei Postfächern bleibt ein Task');
+{
+  // Am 14.10.2026 an der echten Liste gemessen: dieselbe Person als
+  // Partner-Nachricht und als normale DM —
+  // zwei Kennungen, aber dieselbe Benutzer-ID. Ueber den Namen waere das nicht
+  // zu entscheiden, ueber die ID schon.
+  const { w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '100000000000002', titel: 'Zweitname', vorschau: 'Hallo', zeit: '2h', nutzer: '4100000077' }],
+    tasks: [{ id: 'c1', name: 'zzz.zweitname — Zweitname', status: 'hat sales', farbe: '#e16b16',
+              beschreibung: 'Unterhaltung\nigfu-ig: 2100000000000001\nigfu-handle: zzz.zweitname\nigfu-iguser: 4100000077' }],
+  });
+  await warte(w, 4000);
+  pruefe('Kein zweiter Task', serverTasks.length === 1, String(serverTasks.length));
+  pruefe('Die zweite Unterhaltung hängt am selben Task',
+    /igfu-ig:\s*100000000000002/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+  pruefe('Die erste bleibt stehen',
+    /igfu-ig:\s*2100000000000001/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
 }
 
 console.log('\n' + (fehlgeschlagen
