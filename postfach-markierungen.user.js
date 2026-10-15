@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      7.5
+// @version      7.6
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -251,7 +251,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '7.5';
+  const VERSION = '7.6';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -2338,6 +2338,14 @@
         await cuRequest('PUT', '/task/' + task.taskId, { name: neu });
         task.titel = neu;
       }
+    } else if (a.art === 'nutzer') {
+      const id = String(a.wert || '');
+      if (id && !task.nutzer) {
+        await markerEintragen(task, 'igfu-iguser', id);
+        task.nutzer = id;
+        if (!task.leiche) cuNutzer[id] = task;
+        cuSpeichern();
+      }
     } else if (a.art === 'notiz') {
       if (String(a.wert || '').trim()) {
         await cuRequest('POST', '/task/' + task.taskId + '/comment', { comment_text: a.wert, notify_all: false });
@@ -2696,6 +2704,15 @@
             vormerken({ art: 'prio', tid, titel: t.title, wert: soll ? 'urgent' : '' });
           }
         }
+      }
+
+      // Die Benutzer-ID an einem Task nachtragen, der seine Unterhaltung schon
+      // hat. Ohne das bekaemen nur neu verknuepfte Tasks eine ID, denn
+      // geschrieben wird sie sonst allein beim Verknuepfen — der ganze Bestand
+      // bliebe ohne Schluessel. Gesetzt wird einmal; danach ist `task.nutzer`
+      // belegt und hier nichts mehr zu tun.
+      if (nutzerID && cuTasks[tid] && !cuTasks[tid].nutzer && !cuTasks[tid].leiche) {
+        vormerken({ art: 'nutzer', tid, titel: t.title, wert: nutzerID });
       }
 
       // Zuerst die Benutzer-ID, vor Bild und Handle und Namen. Sie kommt aus

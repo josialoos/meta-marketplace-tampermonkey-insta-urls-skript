@@ -2693,6 +2693,24 @@ gruppe('Dieselbe Person in zwei Postfächern bleibt ein Task');
     /igfu-ig:\s*2100000000000001/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
 }
 
+gruppe('Ein schon verbundener Task bekommt die Benutzer-ID nachgetragen');
+{
+  // Geschrieben wird die ID sonst allein beim Verknüpfen. Ohne dieses
+  // Nachtragen bekäme nur Neues einen Schlüssel, und der ganze Bestand — rund
+  // zweihundert Tasks, die ihre Unterhaltung längst haben — bliebe ohne.
+  const { w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '444000444', titel: 'Schon verbunden', vorschau: 'Hallo', zeit: '2h', nutzer: '4100000088' }],
+    tasks: [{ id: 'a1', name: 'zzz.verbunden — Schon Verbunden', status: 'hat sales', farbe: '#e16b16',
+              beschreibung: 'Unterhaltung\nigfu-ig: 444000444\nigfu-handle: zzz.verbunden' }],
+  });
+  await warte(w, 3000);
+  pruefe('Die Markerzeile wurde nachgetragen',
+    /igfu-iguser:\s*4100000088/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+  pruefe('Die bestehende Unterhaltung bleibt stehen',
+    /igfu-ig:\s*444000444/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+}
+
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));

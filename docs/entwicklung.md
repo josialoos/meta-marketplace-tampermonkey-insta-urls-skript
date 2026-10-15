@@ -405,6 +405,15 @@ sondern aus den Props der Zeile. Am 14.10.2026 an der echten Liste gemessen:
 Einmal gesetzt, wird sie nie überschrieben: es gibt keine bessere Quelle, die
 sie korrigieren könnte.
 
+Geschrieben wird sie an zwei Stellen, und die zweite ist die wichtigere:
+
+* beim **Verknüpfen** einer Unterhaltung, in `threadAnhaengen()`
+* **nachträglich** an Tasks, die ihre Unterhaltung längst haben — sonst bekäme
+  nur Neues einen Schlüssel, und der Bestand bliebe ohne. Ausgelöst wird das
+  beim Lesen der Zeile, nicht durch „Aktualisieren": einmal durch beide
+  Postfächer scrollen genügt, danach ist `task.nutzer` belegt und es passiert
+  nichts mehr.
+
 #### Wie verglichen wird — an der echten Liste entwickelt
 
 `namensform()` faltet beide Seiten auf eine vergleichbare Form:
