@@ -2711,6 +2711,44 @@ gruppe('Ein schon verbundener Task bekommt die Benutzer-ID nachgetragen');
     /igfu-ig:\s*444000444/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
 }
 
+gruppe('Auch in einer Partner-Unterhaltung wird der Handle gelesen');
+{
+  // Dort trägt kein Profillink Text, und der Schrägstrich am Ende fehlt. Bis
+  // 7.6 fand der Leser deshalb nichts, und Partner ohne sprechenden
+  // Anzeigenamen blieben dauerhaft unverbunden.
+  const { w, store, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '1600607831797831', titel: 'zzz', vorschau: 'Hallo', zeit: '2h' }],
+    igOffen: { tid: '1600607831797831', handle: 'zzz.auf.zeit', partner: true },
+    tasks: [{ id: 'a1', name: 'zzz.auf.zeit — Zzz Aufzeit', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: 'x\nigfu-handle: zzz.auf.zeit' }],
+  });
+  await warte(w, 4000);
+  const handles = store.get('clickup:handles:v1') || {};
+  pruefe('Der Handle wurde gelesen',
+    (handles['1600607831797831'] || {}).handle === 'zzz.auf.zeit',
+    JSON.stringify(handles['1600607831797831']));
+  pruefe('Der Task wurde darüber verbunden',
+    /igfu-ig:\s*1600607831797831/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+}
+
+gruppe('Ein kurzer Anzeigename wird nicht für einen Handle gehalten');
+{
+  // „zzz" ist handle-förmig, aber es ist nur der Anzeigename von zzz.auf.zeit.
+  // Würde er als Handle gemerkt, blockierte er jede bessere Quelle, weil
+  // handleBeschaffen() bei bekanntem Handle sofort zurückkehrt.
+  const { w, store } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '990000990', titel: 'zzz', vorschau: 'Hallo', zeit: '2h' }],
+    tasks: [{ id: 'a1', name: 'zzz.auf.zeit — Zzz Aufzeit', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: 'x\nigfu-handle: zzz.auf.zeit' }],
+  });
+  await warte(w, 2500);
+  const handles = store.get('clickup:handles:v1') || {};
+  pruefe('„zzz" wurde nicht als Handle gemerkt',
+    (handles['990000990'] || {}).handle !== 'zzz', JSON.stringify(handles['990000990']));
+}
+
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));

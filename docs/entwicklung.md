@@ -626,6 +626,40 @@ Arbeiten ohnehin.
 Das ist der verlässlichste Weg, den es ohne Token gibt: keine Zusatzabfrage an
 Instagram, kein Raten, und der Handle kommt aus derselben Quelle wie das Profil.
 
+##### In Partner-Unterhaltungen sieht das anders aus
+
+Die Regel oben wurde an normalen DMs entwickelt und galt dort. In einer
+**Partner-Unterhaltung** stimmt sie nicht, am 15.10.2026 nachgemessen:
+
+* **Kein** Profillink trägt Text — auch der auf das Gegenüber nicht.
+* Der Schrägstrich am Ende fehlt: `/<handle>` statt `/<handle>/`.
+
+Bis 7.6 fand der Leser dort deshalb grundsätzlich nichts, und Partner ohne
+sprechenden Anzeigenamen blieben dauerhaft unverbunden. Unterschieden wird
+jetzt über zwei Merkmale, beide gemessen:
+
+| Merkmal | Partner-Unterhaltung | normale DM |
+|---|---|---|
+| Anzahl der Verlinkungen | 7 zu 1 | 1 zu 1 |
+| Text am Link | keiner | nur beim Gegenüber |
+
+Erst die Anzahl, dann der Text. Sind beide gleich, wird **nichts** genommen.
+
+Zusätzlich lernt das Skript das **eigene Konto** einmal auf der Listenseite —
+auf `/direct/inbox/` ist es dort der einzige Profillink — und schließt es
+danach als Kandidaten aus. Gelernt wird nur bei genau einem Treffer: im
+Partner-Ordner steht rechts ein Vorschlagskasten mit fremden Handles, und die
+gehören zu niemandem aus der Liste.
+
+##### Der Zeilentitel zählt nur als Handle, wenn es ihn gibt
+
+Auf instagram.com steht in der Zeile häufig der Handle selbst. Übernommen wird
+er aber nur, wenn ein Task in der Liste ihn trägt. Sonst ist er geraten:
+„flo" ist handle-förmig, aber es ist der Anzeigename von `flo.auf.zeit`. Einmal
+als Handle gemerkt, blockierte er **jede** bessere Quelle, weil
+`handleBeschaffen()` bei bekanntem Handle sofort zurückkehrt — der Task wurde
+nie gefunden, egal wie oft der Durchlauf lief.
+
 #### Die Brücke über den Zeitpunkt
 
 Die Unterhaltungs-ID der API (`t_…`) ist **nicht** das `selected_item_id`, mit dem

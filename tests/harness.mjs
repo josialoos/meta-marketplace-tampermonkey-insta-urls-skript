@@ -84,10 +84,17 @@ export async function starte({
     + '</div>';
   // Eine geoeffnete Unterhaltung: links die Leiste mit dem eigenen Konto als
   // reines Symbol, oben im Kopf der Profillink des Gegenuebers mit Text.
+  // partner: In einer Partner-Unterhaltung traegt kein einziger Profillink
+  // Text — auch der auf das Gegenueber nicht — und der Schraegstrich am Ende
+  // fehlt. Unterscheidbar ist das Gegenueber dort nur daran, dass es vielfach
+  // verlinkt ist, das eigene Konto dagegen nur in der Navigationsleiste.
   const igKopf = igOffen
-    ? '<a href="/tzampasfood/"><i></i></a>'
-      + '<a href="/' + igOffen.handle + '/"><span>' + (igOffen.titel || igOffen.handle) + '</span>'
-      + '<span>' + igOffen.handle + '</span></a>'
+    ? (igOffen.partner
+      ? '<a href="/tzampasfood/"><i></i></a>'
+        + ('<a href="/' + igOffen.handle + '"><i></i></a>').repeat(3)
+      : '<a href="/tzampasfood/"><i></i></a>'
+        + '<a href="/' + igOffen.handle + '/"><span>' + (igOffen.titel || igOffen.handle) + '</span>'
+        + '<span>' + igOffen.handle + '</span></a>')
     : '';
   const igBody = '<body>' + igKopf + '<div id="igliste">' + (ig || []).map(igZeile).join('') + '</div></body>';
 
@@ -289,6 +296,15 @@ export async function starte({
     : (markt ? 0 : THREADS.concat(zusatz).filter((t) => !t.commPlatform || t.commPlatform === 'INSTAGRAM_DIRECT').length);
   for (let i = 0; i < 40 && erwartet; i++) {
     if (doc.querySelectorAll('.igfu-tags').length >= erwartet) break;
+    await warte(w, 50);
+  }
+  // Auf das Menü gesondert warten. Es entsteht erst, wenn ClickUp eingerichtet
+  // ist, und zwar unabhaengig von den Zeilen — knopf() griff deshalb
+  // gelegentlich ins Leere und die Suite brach ab. Am 15.10.2026 gemessen: in
+  // etwa jedem zweiten Lauf, immer an einer anderen Stelle. Ein Testlauf, der
+  // zufaellig rot wird, entwertet jede Mutationspruefung.
+  for (let i = 0; i < 60 && speicher['clickup:token:v1']; i++) {
+    if (doc.querySelector('.igfu-form button')) break;
     await warte(w, 50);
   }
   await warte(w, 120);

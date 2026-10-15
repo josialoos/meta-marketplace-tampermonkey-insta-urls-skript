@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      7.6
+// @version      7.7
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -251,7 +251,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '7.6';
+  const VERSION = '7.7';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -897,24 +897,82 @@
   // Am 13.10.2026 nachgemessen:
   //     /tzampasfood/  x=12   kein Text        ← eigenes Konto
   //     /hey.lumi/     x=488  „Anja\nhey.lumi" ← das Gegenueber
+  // Das eigene Konto haengt in der Navigationsleiste und taucht damit in jeder
+  // Unterhaltung als Profillink auf. Ohne es zu kennen, ist nicht zu
+  // entscheiden, welcher der Links das Gegenueber ist.
+  const IG_SELBST = 'ig:selbst:v1';
+  const eigenerHandle = () => String(GM_getValue(IG_SELBST, '') || '');
+
+  // Alle Profillinks der Seite, nach Handle gebuendelt, mit Anzahl und Text.
+  function igProfilLinks() {
+    const nach = new Map();
+    for (const a of document.querySelectorAll('a[href^="/"]')) {
+      const href = String(a.getAttribute('href') || '');
+      // Mit *und ohne* Schraegstrich am Ende. In Partner-Unterhaltungen laesst
+      // Instagram ihn weg — genau daran ist der Leser bis 7.6 gescheitert und
+      // hat dort nie einen Handle gefunden.
+      if (!/^\/[A-Za-z0-9._]{2,30}\/?$/.test(href)) continue;
+      const name = href.replace(/^\//, '').replace(/\/$/, '').toLowerCase();
+      if (IG_KEIN_PROFIL.has(name) || !HANDLE_MUSTER.test(name)) continue;
+      const alt = nach.get(name) || { anker: 0, titel: '' };
+      alt.anker += 1;
+      if (!alt.titel) {
+        const zeilen = String(a.innerText || '').split('\n').map((z) => z.trim()).filter(Boolean);
+        alt.titel = zeilen[0] || '';
+      }
+      nach.set(name, alt);
+    }
+    return nach;
+  }
+
+  // Auf der Liste selbst steht nur ein Profil: das eigene. Am 15.10.2026
+  // gemessen — auf /direct/inbox/ war `tzampasfood` der einzige Treffer.
+  // Einmal gesehen, ist es dauerhaft bekannt. Bei mehr als einem Treffer wird
+  // nichts gelernt: im Partner-Ordner steht rechts ein Vorschlagskasten mit
+  // fremden Handles, und die gehoeren zu niemandem aus der Liste.
+  function eigenesKontoLernen() {
+    if (!isIG() || /^\/direct\/t\//.test(location.pathname)) return;
+    const nach = igProfilLinks();
+    if (nach.size !== 1) return;
+    const [name] = [...nach.keys()];
+    if (eigenerHandle() !== name) GM_setValue(IG_SELBST, name);
+  }
+
   function igOffeneUnterhaltung() {
     const m = /^\/direct\/t\/([A-Za-z0-9_-]+)\/?$/.exec(location.pathname);
     if (!m) return null;
-    const kandidaten = [...document.querySelectorAll('a[href^="/"]')]
-      .map((a) => ({ a, href: String(a.getAttribute('href') || '') }))
-      .filter((x) => /^\/[A-Za-z0-9._]{2,30}\/$/.test(x.href))
-      .filter((x) => !IG_KEIN_PROFIL.has(x.href.slice(1, -1).toLowerCase()))
-      .filter((x) => String(x.a.innerText || '').trim());
+    const nach = igProfilLinks();
+    const selbst = eigenerHandle();
+    if (selbst) nach.delete(selbst);
+    let kandidaten = [...nach.entries()];
+    // Ist das eigene Konto noch nicht gelernt, entscheidet die Anzahl: das
+    // Gegenueber ist in der Unterhaltung vielfach verlinkt, das eigene Konto
+    // nur einmal in der Navigationsleiste. Am 15.10.2026 in einer
+    // Partner-Unterhaltung gemessen: sieben zu eins. Ohne deutlichen Abstand
+    // wird nichts genommen — lieber kein Handle als der falsche.
+    // Zwei Merkmale, beide an der echten Seite gemessen, und sie greifen in
+    // verschiedenen Faellen:
+    //   Partner-Unterhaltung — keiner der Links traegt Text, aber das
+    //     Gegenueber ist vielfach verlinkt. Am 15.10.2026: sieben zu eins.
+    //   Normale DM — beide einmal verlinkt, aber nur der Link auf das
+    //     Gegenueber traegt den Namen; die Navigationsleiste ist ein Symbol.
+    // Sind beide Merkmale gleich, wird nichts genommen.
+    if (!selbst && kandidaten.length > 1) {
+      kandidaten.sort((a, b) => (b[1].anker - a[1].anker)
+        || ((b[1].titel ? 1 : 0) - (a[1].titel ? 1 : 0)));
+      const [erst, zweit] = kandidaten;
+      if (erst[1].anker === zweit[1].anker && !!erst[1].titel === !!zweit[1].titel) return null;
+      kandidaten = [erst];
+    }
     if (kandidaten.length !== 1) return null;
-    const handle = kandidaten[0].href.slice(1, -1).toLowerCase();
-    if (!HANDLE_MUSTER.test(handle)) return null;
-    const zeilen = String(kandidaten[0].a.innerText || '').split('\n').map((z) => z.trim()).filter(Boolean);
-    return { tid: m[1], handle, titel: zeilen[0] || handle };
+    const [handle, daten] = kandidaten[0];
+    return { tid: m[1], handle, titel: daten.titel || handle };
   }
 
   function karteAuslesen() {
     if (!isInbox()) return;
     if (isIG()) {
+      eigenesKontoLernen();
       const offen = igOffeneUnterhaltung();
       if (!offen) return;
       const vorhanden = handleVon(offen.tid);
@@ -2657,8 +2715,17 @@
       // kostet nichts und ist der verlaesslichste Schluessel, den wir ohne
       // Zutun bekommen. Geprueft wird der unveraenderte Titel — sonst wird aus
       // jedem Vornamen ein Handle.
+      //
+      // Uebernommen wird er aber nur, wenn es ihn in der Liste wirklich gibt.
+      // Sonst ist er geraten: „flo" ist handle-foermig, aber es ist der
+      // Anzeigename von flo.auf.zeit. Einmal als Handle gemerkt, blockierte er
+      // alle besseren Quellen, weil handleBeschaffen() bei bekanntem Handle
+      // sofort zurueckkehrt — und der Task wurde nie gefunden.
       if (isIG() && t.title && HANDLE_MUSTER.test(String(t.title).trim())) {
-        handleMerken(tid, String(t.title).trim().toLowerCase(), 'titel', bild);
+        const ausTitel = String(t.title).trim().toLowerCase();
+        if (alleTasks().some((x) => !x.leiche && handleVonTask(x) === ausTitel)) {
+          handleMerken(tid, ausTitel, 'titel', bild);
+        }
       }
       // Die Meta-API kennt den Handle auch dann, wenn im Vorschautext keiner
       // steht — und das ist bei normalen DMs die Regel.
