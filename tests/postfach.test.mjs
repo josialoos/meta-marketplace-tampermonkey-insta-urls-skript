@@ -1,4 +1,4 @@
-import { starte, warte, chip, klick, knopf, beschreibungMit, macheThread, LISTE, SPACE, TAG, PAGE } from './harness.mjs';
+import { starte, warte, chip, klick, knopf, klickKnopf, beschreibungMit, macheThread, LISTE, SPACE, TAG, PAGE } from './harness.mjs';
 import { readFileSync } from 'node:fs';
 
 let fehlgeschlagen = 0, gelaufen = 0;
@@ -191,7 +191,7 @@ gruppe('Übernahme der lokalen Follow-ups');
     tasks: [{ id: 'vorhanden', name: 'Rosina Bärtl', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T2'), tags: [TAG] }],
   });
-  klick(w, knopf(doc, 'Lokale Follow-ups übernehmen'));
+  await klickKnopf(w, doc, 'Lokale Follow-ups übernehmen');
   await warte(w, 1200);
   pruefe('Nur die zwei fehlenden werden angelegt', angelegte(aufrufe).length === 2,
     JSON.stringify(angelegte(aufrufe).map((a) => a.data.name)));
@@ -203,7 +203,7 @@ gruppe('Übernahme der lokalen Follow-ups');
   pruefe('Notiz wird Kommentar',
     aufrufe.some((a) => /\/comment$/.test(a.pfad) && a.data.comment_text === 'Rate offen'));
   const vorher = angelegte(aufrufe).length;
-  klick(w, knopf(doc, 'Lokale Follow-ups übernehmen'));
+  await klickKnopf(w, doc, 'Lokale Follow-ups übernehmen');
   await warte(w, 1200);
   pruefe('Zweiter Durchlauf legt nichts doppelt an', angelegte(aufrufe).length === vorher,
     vorher + ' → ' + angelegte(aufrufe).length);
@@ -234,7 +234,7 @@ gruppe('Ein Task ohne Tag löscht keine Markierung, die nie übertragen wurde');
               beschreibung: beschreibungMit('T1'), tags: [] }],
   });
   pruefe('Markierung überlebt den ersten Abgleich', !!store.get('igfu:v1').T1);
-  klick(w, knopf(doc, 'Verbindung prüfen'));
+  await klickKnopf(w, doc, 'Verbindung prüfen');
   await warte(w, 700);
   pruefe('Markierung überlebt auch den erzwungenen Abgleich', !!store.get('igfu:v1').T1,
     JSON.stringify(store.get('igfu:v1')));
@@ -261,7 +261,7 @@ gruppe('Ein Klick auf die CRM-Pille lässt das Follow-up in Ruhe');
   klick(w, chip(doc, 0, 'crm'));
   await warte(w, 600);
   pruefe('Task wurde angelegt', serverTasks.length === 1, JSON.stringify(serverTasks.map((t) => t.name)));
-  klick(w, knopf(doc, 'Verbindung prüfen'));
+  await klickKnopf(w, doc, 'Verbindung prüfen');
   await warte(w, 700);
   pruefe('Markierung ist noch da', !!store.get('igfu:v1').T1, JSON.stringify(store.get('igfu:v1')));
 }
@@ -475,7 +475,7 @@ gruppe('UpPromote: bestätigte Affiliates werden ongeboardet');
       { first_name: 'Fremd', last_name: 'Person', email: 'x@y.de', instagram: '@jemand.anders' },
     ],
   });
-  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await klickKnopf(w, doc, 'UpPromote abgleichen');
   await warte(w, 1200);
   pruefe('Der passende Task wird ongeboardet', serverTasks[0].status === 'ongeboardet', serverTasks[0].status);
   pruefe('Der Task ohne Handle bleibt unberührt', serverTasks[1].status === 'angeschrieben', serverTasks[1].status);
@@ -494,7 +494,7 @@ gruppe('UpPromote: Sales heben den Status auf „hat sales"');
     affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de',
                    instagram: 'marakell.runs', approved_amount: '12.50' }],
   });
-  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await klickKnopf(w, doc, 'UpPromote abgleichen');
   await warte(w, 1200);
   pruefe('Status ist „hat sales"', serverTasks[0].status === 'hat sales', serverTasks[0].status);
 }
@@ -508,7 +508,7 @@ gruppe('UpPromote: ohne Umsatz bleibt es bei ongeboardet');
     affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de',
                    instagram: 'marakell.runs', denied_amount: '99.00' }],
   });
-  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await klickKnopf(w, doc, 'UpPromote abgleichen');
   await warte(w, 1200);
   pruefe('Abgelehnte Provision zählt nicht als Sale',
     serverTasks[0].status === 'ongeboardet', serverTasks[0].status);
@@ -529,7 +529,7 @@ gruppe('Die Leiter zieht keinen Task zurück');
       { first_name: 'Rosina', last_name: 'Bösch', email: 'c@b.de', instagram: 'rosina_baertl' },
     ],
   });
-  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await klickKnopf(w, doc, 'UpPromote abgleichen');
   await warte(w, 1200);
   pruefe('„erste ware versendet" bleibt stehen',
     serverTasks[0].status === 'erste ware versendet', serverTasks[0].status);
@@ -548,7 +548,7 @@ gruppe('UpPromote: die E-Mail wird als Brücke zu Shopify nachgetragen');
               beschreibung: beschreibungMit('T1'), tags: [TAG] }],
     affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'Mara@B.de', instagram: 'marakell.runs' }],
   });
-  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await klickKnopf(w, doc, 'UpPromote abgleichen');
   await warte(w, 1500);
   pruefe('Markerzeile steht in der Beschreibung',
     /igfu-mail:\s*mara@b\.de/.test(serverTasks[0].beschreibung || ''),
@@ -563,7 +563,7 @@ gruppe('Die Inhalte-Seite wird mit dem richtigen Konto geöffnet');
     speicher: MIT_CLICKUP,
     pfad: '/latest/inbox/all/?asset_id=2222222222222222&business_id=1111111111111111&partnership_messages=true',
   });
-  klick(w, knopf(doc, 'Inhalte-Seite öffnen'));
+  await klickKnopf(w, doc, 'Inhalte-Seite öffnen');
   const url = (w.__geoeffnet || [])[0] || '';
   pruefe('Business wird mitgegeben', /business_id=1111111111111111/.test(url), url);
   pruefe('Asset wird mitgegeben', /asset_id=2222222222222222/.test(url), url);
@@ -575,7 +575,7 @@ gruppe('Die Inhalte-Seite wird mit dem richtigen Konto geöffnet');
 gruppe('Fehlt das Konto in der Adresse, wird gewarnt');
 {
   const { doc, w } = await starte({ speicher: MIT_CLICKUP, pfad: '/latest/inbox/all/' });
-  klick(w, knopf(doc, 'Inhalte-Seite öffnen'));
+  await klickKnopf(w, doc, 'Inhalte-Seite öffnen');
   await warte(w, 150);
   const url = (w.__geoeffnet || [])[0] || '';
   pruefe('Es wird trotzdem geöffnet', /ad_content/.test(url), url);
@@ -655,7 +655,7 @@ gruppe('UpPromote: Handle wird aus allen Schreibweisen gelesen');
                 beschreibung: beschreibungMit('T1'), tags: [TAG] }],
       affiliates: [{ first_name: 'Mara', last_name: 'K', email: 'a@b.de', instagram: wert }],
     });
-    klick(w, knopf(doc, 'UpPromote abgleichen'));
+    await klickKnopf(w, doc, 'UpPromote abgleichen');
     await warte(w, 1000);
     pruefe('Erkennt ' + name, serverTasks[0].status === 'ongeboardet', serverTasks[0].status);
   }
@@ -670,7 +670,7 @@ gruppe('UpPromote: Handle auch aus einem Anmeldefeld');
     affiliates: [{ first_name: 'Mara', last_name: 'K', email: 'a@b.de', instagram: '',
                    custom_fields: [{ name: 'Dein Instagram-Handle', value: 'marakell.runs' }] }],
   });
-  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await klickKnopf(w, doc, 'UpPromote abgleichen');
   await warte(w, 1000);
   pruefe('Anmeldefeld wird gelesen', serverTasks[0].status === 'ongeboardet', serverTasks[0].status);
 }
@@ -683,7 +683,7 @@ gruppe('UpPromote: bereits ongeboardet wird nicht erneut geschrieben');
               beschreibung: beschreibungMit('T1'), tags: [TAG] }],
     affiliates: [{ first_name: 'Mara', last_name: 'K', email: 'a@b.de', instagram: 'marakell.runs' }],
   });
-  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await klickKnopf(w, doc, 'UpPromote abgleichen');
   await warte(w, 1000);
   pruefe('Kein Statuswechsel', !aufrufe.some((a) => a.methode === 'PUT' && a.data && a.data.status));
 }
@@ -695,7 +695,7 @@ gruppe('UpPromote: ohne Token passiert nichts');
     tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: beschreibungMit('T1'), tags: [TAG] }],
   });
-  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await klickKnopf(w, doc, 'UpPromote abgleichen');
   await warte(w, 700);
   pruefe('Keine Anfrage an UpPromote', !aufrufe.some((a) => a.pfad.startsWith('UP/')));
   pruefe('Hinweis erscheint',
@@ -788,7 +788,7 @@ gruppe('Notizen aus UpPromote landen als Kommentar');
     affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de', instagram: 'marakell.runs',
                    internal_note: 'Will nur Reels machen', personal_detail: 'Läuft Ultratrails' }],
   });
-  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await klickKnopf(w, doc, 'UpPromote abgleichen');
   await warte(w, 2000);
   const kommentare = aufrufe.filter((a) => a.methode === 'POST' && /\/comment$/.test(a.pfad));
   pruefe('Genau ein Kommentar', kommentare.length === 1, String(kommentare.length));
@@ -810,9 +810,9 @@ gruppe('Dieselbe Notiz kommt kein zweites Mal');
     affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de', instagram: 'marakell.runs',
                    internal_note: 'Will nur Reels machen' }],
   });
-  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await klickKnopf(w, doc, 'UpPromote abgleichen');
   await warte(w, 2000);
-  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await klickKnopf(w, doc, 'UpPromote abgleichen');
   await warte(w, 2000);
   const kommentare = aufrufe.filter((a) => a.methode === 'POST' && /\/comment$/.test(a.pfad));
   pruefe('Immer noch nur ein Kommentar', kommentare.length === 1, String(kommentare.length));
@@ -826,7 +826,7 @@ gruppe('Ohne Notiz passiert nichts');
               beschreibung: beschreibungMit('T1'), tags: [] }],
     affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de', instagram: 'marakell.runs' }],
   });
-  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await klickKnopf(w, doc, 'UpPromote abgleichen');
   await warte(w, 2000);
   pruefe('Kein Kommentar',
     !aufrufe.some((a) => a.methode === 'POST' && /\/comment$/.test(a.pfad)));
@@ -866,7 +866,7 @@ gruppe('Import: erster Klick zählt nur');
       { first_name: 'Neu', last_name: 'Zwei', email: 'n2@b.de', instagram: 'neu_zwei', program_name: PROG },
     ],
   });
-  klick(w, knopf(doc, 'Affiliates importieren'));
+  await klickKnopf(w, doc, 'Affiliates importieren');
   await warte(w, 1500);
   pruefe('Noch nichts angelegt', serverTasks.length === 0, String(serverTasks.length));
   const toastEl = doc.querySelector('#igfu-toast');
@@ -885,9 +885,9 @@ gruppe('Import: zweiter Klick legt an');
         program_name: PROG, paid_amount: '42.00' },
     ],
   });
-  klick(w, knopf(doc, 'Affiliates importieren'));
+  await klickKnopf(w, doc, 'Affiliates importieren');
   await warte(w, 1500);
-  klick(w, knopf(doc, 'Affiliates importieren'));
+  await klickKnopf(w, doc, 'Affiliates importieren');
   await warte(w, 2500);
   pruefe('Zwei Tasks angelegt', serverTasks.length === 2, String(serverTasks.length));
   const eins = serverTasks.find((x) => /neu_eins/.test(x.name));
@@ -917,9 +917,9 @@ gruppe('Import: Vorhandene und fremde Programme bleiben aussen vor');
         program_name: 'Zweitprogramm' },
     ],
   });
-  klick(w, knopf(doc, 'Affiliates importieren'));
+  await klickKnopf(w, doc, 'Affiliates importieren');
   await warte(w, 1500);
-  klick(w, knopf(doc, 'Affiliates importieren'));
+  await klickKnopf(w, doc, 'Affiliates importieren');
   await warte(w, 2500);
   pruefe('Nichts Neues angelegt', serverTasks.length === 2, String(serverTasks.length));
 }
@@ -931,9 +931,9 @@ gruppe('Import: ohne Handle gibt es den roten Tag');
     affiliates: [{ first_name: 'Ohne', last_name: 'Handle', email: 'oh@b.de',
                    instagram: '', program_name: PROG }],
   });
-  klick(w, knopf(doc, 'Affiliates importieren'));
+  await klickKnopf(w, doc, 'Affiliates importieren');
   await warte(w, 1500);
-  klick(w, knopf(doc, 'Affiliates importieren'));
+  await klickKnopf(w, doc, 'Affiliates importieren');
   await warte(w, 2500);
   pruefe('Task heißt nach der Person',
     serverTasks[0] && serverTasks[0].name === 'Ohne Handle', serverTasks[0] && serverTasks[0].name);
@@ -1011,7 +1011,7 @@ gruppe('Die Markerzeile schlägt den Namen');
               beschreibung: beschreibungMit('T1') + '\nigfu-handle: marakell.runs', tags: [TAG] }],
     affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de', instagram: 'marakell.runs' }],
   });
-  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await klickKnopf(w, doc, 'UpPromote abgleichen');
   await warte(w, 1500);
   pruefe('Trotz Namen ohne Handle zugeordnet',
     serverTasks[0].status === 'ongeboardet', serverTasks[0].status);
@@ -1272,7 +1272,7 @@ gruppe('Token löschen schaltet ClickUp sauber ab');
 {
   const { doc, w, store } = await starte({ speicher: MIT_CLICKUP });
   pruefe('CRM-Pille ist sichtbar', chip(doc, 0, 'crm').hidden === false);
-  klick(w, knopf(doc, 'Token löschen'));
+  await klickKnopf(w, doc, 'Token löschen');
   await warte(w, 200);
   pruefe('Token ist weg', !store.get('clickup:token:v1'));
   pruefe('CRM-Pille verschwindet', chip(doc, 0, 'crm').hidden === true);
@@ -1311,7 +1311,7 @@ gruppe('Die Karteileiche bleibt beim UpPromote-Abgleich stehen');
               beschreibung: beschreibungMit('T1'), tags: [TAG, 'karteileiche'] }],
     affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de', instagram: 'marakell.runs' }],
   });
-  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await klickKnopf(w, doc, 'UpPromote abgleichen');
   await warte(w, 1200);
   pruefe('Der Status wandert nicht auf ongeboardet',
     serverTasks[0].status === 'angeschrieben', serverTasks[0].status);
@@ -1698,7 +1698,7 @@ gruppe('Fehlende Fristen nachtragen: Warenversand');
     tasks: [{ id: 'a1', name: 'zzz.niemand — Zzz Niemand', status: 'erste ware versendet', farbe: '#b660e0',
               beschreibung: 'aus UpPromote\nigfu-handle: zzz.niemand\nigfu-ware: 2026-09-21' }],
   });
-  klick(w, knopf(doc, 'Fehlende Fristen nachtragen'));
+  await klickKnopf(w, doc, 'Fehlende Fristen nachtragen');
   await warte(w, 1500);
   // 21.09.2026 ist ein Montag. Zehn Wochentage weiter, Wochenenden
   // uebersprungen, ist Montag der 05.10.
@@ -1715,7 +1715,7 @@ gruppe('Fehlende Fristen nachtragen: Onboarding-Datum');
     affiliates: [{ first_name: 'Zzz', last_name: 'Niemand', email: 'a@b.de', instagram: 'zzz.niemand',
                    approved_at: '2026-09-01T10:00:00Z' }],
   });
-  klick(w, knopf(doc, 'Fehlende Fristen nachtragen'));
+  await klickKnopf(w, doc, 'Fehlende Fristen nachtragen');
   await warte(w, 2000);
   const gesetzt = new Date(Number(serverTasks[0].due)).toISOString().slice(0, 10);
   pruefe('Onboarding plus 14 Tage', gesetzt === '2026-09-15', gesetzt);
@@ -1729,7 +1729,7 @@ gruppe('Fehlende Fristen nachtragen: letzte Nachricht');
               beschreibung: 'aus UpPromote\nigfu-handle: zzz.niemand',
               start: new Date(2026, 8, 1, 12, 0, 0).getTime() }],
   });
-  klick(w, knopf(doc, 'Fehlende Fristen nachtragen'));
+  await klickKnopf(w, doc, 'Fehlende Fristen nachtragen');
   await warte(w, 1500);
   const gesetzt = new Date(Number(serverTasks[0].due)).toISOString().slice(0, 10);
   pruefe('Letzte Nachricht plus 14 Tage', gesetzt === '2026-09-15', gesetzt);
@@ -1744,7 +1744,7 @@ gruppe('Fehlende Fristen nachtragen: vorhandene bleiben unangetastet');
               beschreibung: 'aus UpPromote\nigfu-handle: zzz.niemand\nigfu-ware: 2026-09-21',
               due: vorhanden }],
   });
-  klick(w, knopf(doc, 'Fehlende Fristen nachtragen'));
+  await klickKnopf(w, doc, 'Fehlende Fristen nachtragen');
   await warte(w, 1500);
   pruefe('Die Frist ist unverändert', Number(serverTasks[0].due) === vorhanden, String(serverTasks[0].due));
 }
@@ -1758,7 +1758,7 @@ gruppe('Fehlende Fristen nachtragen: Endstatus und Karteileichen bleiben außen 
             { id: 'a2', name: 'yyy.niemand — Yyy Niemand', status: 'erste ware versendet', farbe: '#b660e0',
               beschreibung: 'x\nigfu-handle: yyy.niemand\nigfu-ware: 2026-09-21', tags: ['karteileiche'] }],
   });
-  klick(w, knopf(doc, 'Fehlende Fristen nachtragen'));
+  await klickKnopf(w, doc, 'Fehlende Fristen nachtragen');
   await warte(w, 1500);
   pruefe('Abgesagt bekommt keine Frist', !serverTasks[0].due, String(serverTasks[0].due));
   pruefe('Die Karteileiche bekommt keine Frist', !serverTasks[1].due, String(serverTasks[1].due));
@@ -1774,7 +1774,7 @@ gruppe('Fehlende Fristen nachtragen: nie vor das Startdatum');
               beschreibung: 'x\nigfu-handle: zzz.niemand\nigfu-ware: 2026-05-12',
               start: new Date(2026, 9, 1, 12, 0, 0).getTime() }],
   });
-  klick(w, knopf(doc, 'Fehlende Fristen nachtragen'));
+  await klickKnopf(w, doc, 'Fehlende Fristen nachtragen');
   await warte(w, 1500);
   const gesetzt = new Date(Number(serverTasks[0].due)).toISOString().slice(0, 10);
   pruefe('Es gilt die spätere Regel', gesetzt === '2026-10-15', gesetzt);
@@ -1935,7 +1935,7 @@ gruppe('Die Meta-API liefert den Handle, den das Postfach nicht nennt');
     speicher: MIT_META,
     metaUnterhaltungen: [{ id: 't_111', username: 'rosina_baertl', zeit: T2_ZEIT }],
   });
-  klick(w, knopf(doc, 'Handles über die Meta-API holen'));
+  await klickKnopf(w, doc, 'Handles über die Meta-API holen');
   await warte(w, 1500);
   pruefe('Die Conversations-Abfrage ging raus',
     aufrufe.some((a) => a.pfad.startsWith('META/') && a.pfad.includes('platform=instagram')),
@@ -1962,7 +1962,7 @@ gruppe('Der Meta-Token steht in keiner Adresse');
     speicher: MIT_META,
     metaUnterhaltungen: [{ id: 't_111', username: 'rosina_baertl', zeit: T2_ZEIT }],
   });
-  klick(w, knopf(doc, 'Handles über die Meta-API holen'));
+  await klickKnopf(w, doc, 'Handles über die Meta-API holen');
   await warte(w, 1500);
   pruefe('Kein Token im Pfad',
     !aufrufe.some((a) => String(a.pfad).includes('EAAG_geheim_meta')),
@@ -1981,7 +1981,7 @@ gruppe('Zwei Unterhaltungen zur selben Zeit bleiben unzugeordnet');
       { id: 't_222', username: 'jemand_anders', zeit: T2_ZEIT + 1000 },
     ],
   });
-  klick(w, knopf(doc, 'Handles über die Meta-API holen'));
+  await klickKnopf(w, doc, 'Handles über die Meta-API holen');
   await warte(w, 2000);
   const handles = store.get('clickup:handles:v1') || {};
   pruefe('Kein geratener Handle', !(handles.T2 || {}).handle, JSON.stringify(handles.T2));
@@ -1990,7 +1990,7 @@ gruppe('Zwei Unterhaltungen zur selben Zeit bleiben unzugeordnet');
 gruppe('Ohne Meta-Token passiert nichts');
 {
   const { doc, w, aufrufe } = await starte({ pfad: META_PFAD, speicher: MIT_CLICKUP });
-  klick(w, knopf(doc, 'Handles über die Meta-API holen'));
+  await klickKnopf(w, doc, 'Handles über die Meta-API holen');
   await warte(w, 800);
   pruefe('Keine Anfrage an Meta', !aufrufe.some((a) => String(a.pfad).startsWith('META')),
     JSON.stringify(aufrufe.map((a) => a.pfad)));
@@ -2133,7 +2133,7 @@ gruppe('Der volle Durchlauf hört auf, wenn nur noch Fremdes kommt');
       id: '1784330168407727' + i, titel: 'Fremde Person ' + i, vorschau: 'Hallo', zeit: (i + 1) + 'h',
     })),
   });
-  klick(w, knopf(doc, 'Ganze Liste durchgehen'));
+  await klickKnopf(w, doc, 'Ganze Liste durchgehen');
   await warte(w, 4000);
   const knopfText = (doc.querySelector('#igfu-refresh') || {}).textContent || '';
   pruefe('Der Lauf ist beendet', !/abbrechen/.test(knopfText), knopfText);
@@ -2183,7 +2183,7 @@ gruppe('Alte Postfach-Links werden entfernt, wo ein Instagram-Link da ist');
     speicher: MIT_CLICKUP,
     tasks: [{ id: 'a1', name: 'stadtpedal', status: 'hat sales', farbe: '#e16b16', beschreibung: ALT_UND_NEU }],
   });
-  klick(w, knopf(doc, 'Alte Postfach-Links entfernen'));
+  await klickKnopf(w, doc, 'Alte Postfach-Links entfernen');
   await warte(w, 2000);
   const t = serverTasks[0].beschreibung || '';
   pruefe('Der Link ins alte Postfach ist weg', !/business\.facebook\.com/.test(t), t);
@@ -2211,7 +2211,7 @@ gruppe('Ohne Instagram-Link bleibt der alte stehen');
     speicher: MIT_CLICKUP,
     tasks: [{ id: 'a1', name: 'altperson — Alte Person', status: 'ongeboardet', farbe: '#b660e0', beschreibung: nurAlt }],
   });
-  klick(w, knopf(doc, 'Alte Postfach-Links entfernen'));
+  await klickKnopf(w, doc, 'Alte Postfach-Links entfernen');
   await warte(w, 1500);
   const t = serverTasks[0].beschreibung || '';
   pruefe('Der alte Link bleibt', /business\.facebook\.com/.test(t), t);
@@ -2235,7 +2235,7 @@ gruppe('Zwei Instagram-Unterhaltungen bleiben beide erhalten');
     speicher: MIT_CLICKUP,
     tasks: [{ id: 'a1', name: 'doppelt — Zwei Chats', status: 'ongeboardet', farbe: '#b660e0', beschreibung: zwei }],
   });
-  klick(w, knopf(doc, 'Alte Postfach-Links entfernen'));
+  await klickKnopf(w, doc, 'Alte Postfach-Links entfernen');
   await warte(w, 1500);
   const t = serverTasks[0].beschreibung || '';
   pruefe('Beide Instagram-Kennungen bleiben',
@@ -2254,7 +2254,7 @@ gruppe('Status „ignore" wird nicht mehr angefasst');
     affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de', instagram: 'marakell.runs',
                    approved_amount: '120.00' }],
   });
-  klick(w, knopf(doc, 'UpPromote abgleichen'));
+  await klickKnopf(w, doc, 'UpPromote abgleichen');
   await warte(w, 1500);
   pruefe('Der Status bleibt auf ignore', serverTasks[0].status === 'ignore', serverTasks[0].status);
 }
@@ -2352,7 +2352,7 @@ gruppe('Alle Endstatus bleiben stehen');
       affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de',
                      instagram: 'marakell.runs', approved_amount: '120.00' }],
     });
-    klick(w, knopf(doc, 'UpPromote abgleichen'));
+    await klickKnopf(w, doc, 'UpPromote abgleichen');
     await warte(w, 1200);
     pruefe('„' + status + '" bleibt stehen', serverTasks[0].status === status, serverTasks[0].status);
   }
@@ -2402,7 +2402,7 @@ gruppe('Anschreib-Links aus dem Handle');
         beschreibung: 'x\nigfu-handle: weg.damit' },
     ],
   });
-  klick(w, knopf(doc, 'Anschreib-Links nachtragen'));
+  await klickKnopf(w, doc, 'Anschreib-Links nachtragen');
   await warte(w, 2500);
   pruefe('Der Task ohne Link bekommt einen',
     (serverTasks[0].beschreibung || '').includes('https://ig.me/m/hey.lumi'), serverTasks[0].beschreibung);
@@ -2437,7 +2437,7 @@ gruppe('Kennungen richtigstellen: der Link entscheidet, nicht die Länge');
       { id: 'a2', name: 'clara.kehl — Clara', status: 'ongeboardet', farbe: '#b660e0', beschreibung: vonInstagram },
     ],
   });
-  klick(w, knopf(doc, 'Kennungen richtigstellen'));
+  await klickKnopf(w, doc, 'Kennungen richtigstellen');
   await warte(w, 2000);
   pruefe('Die Postfach-Kennung bleibt igfu-thread',
     /igfu-thread:\s*1100434292377942/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
@@ -2483,7 +2483,7 @@ gruppe('Namen richtigstellen');
         beschreibung: 'x\nigfu-handle: sauber.person' },
     ],
   });
-  klick(w, knopf(doc, 'Namen richtigstellen'));
+  await klickKnopf(w, doc, 'Namen richtigstellen');
   await warte(w, 2500);
   pruefe('Die Vorschau ist aus dem Namen raus',
     serverTasks[0].name === 'beispiel.stkl — Beispiel Person', serverTasks[0].name);
@@ -2515,7 +2515,7 @@ gruppe('Handles gegen UpPromote prüfen');
       { first_name: 'Mara', last_name: 'Kell', email: 'a@b.de', instagram: 'marakell.runs' },
     ],
   });
-  klick(w, knopf(doc, 'Handles gegen UpPromote prüfen'));
+  await klickKnopf(w, doc, 'Handles gegen UpPromote prüfen');
   await warte(w, 2000);
   const d = store.get('clickup:handle-zweifel:v1') || { liste: [] };
   pruefe('Genau eine Abweichung', d.liste.length === 1, JSON.stringify(d.liste));
@@ -2537,7 +2537,7 @@ gruppe('Ohne Abweichung steht im Panel nichts davon');
               beschreibung: 'x\nigfu-handle: marakell.runs\nigfu-mail: a@b.de' }],
     affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de', instagram: 'marakell.runs' }],
   });
-  klick(w, knopf(doc, 'Handles gegen UpPromote prüfen'));
+  await klickKnopf(w, doc, 'Handles gegen UpPromote prüfen');
   await warte(w, 1800);
   klick(w, doc.querySelector('#igfu-launch'));
   await warte(w, 300);
@@ -2732,21 +2732,70 @@ gruppe('Auch in einer Partner-Unterhaltung wird der Handle gelesen');
     /igfu-ig:\s*1600607831797831/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
 }
 
-gruppe('Ein kurzer Anzeigename wird nicht für einen Handle gehalten');
+gruppe('Ein geratener Handle blockiert den richtigen nicht');
 {
-  // „zzz" ist handle-förmig, aber es ist nur der Anzeigename von zzz.auf.zeit.
-  // Würde er als Handle gemerkt, blockierte er jede bessere Quelle, weil
-  // handleBeschaffen() bei bekanntem Handle sofort zurückkehrt.
-  const { w, store } = await starte({
+  // „zzz" ist handle-förmig, aber nur der Anzeigename von zzz.auf.zeit. Er
+  // darf gemerkt werden — er darf nur nicht verhindern, dass die geöffnete
+  // Unterhaltung den echten Handle nachliefert. Bis 7.7 tat er genau das.
+  const { w, store, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
     ig: [{ id: '990000990', titel: 'zzz', vorschau: 'Hallo', zeit: '2h' }],
+    igOffen: { tid: '990000990', handle: 'zzz.auf.zeit', partner: true },
     tasks: [{ id: 'a1', name: 'zzz.auf.zeit — Zzz Aufzeit', status: 'ongeboardet', farbe: '#b660e0',
               beschreibung: 'x\nigfu-handle: zzz.auf.zeit' }],
   });
-  await warte(w, 2500);
+  await warte(w, 4000);
   const handles = store.get('clickup:handles:v1') || {};
-  pruefe('„zzz" wurde nicht als Handle gemerkt',
-    (handles['990000990'] || {}).handle !== 'zzz', JSON.stringify(handles['990000990']));
+  pruefe('Der echte Handle setzt sich durch',
+    (handles['990000990'] || {}).handle === 'zzz.auf.zeit', JSON.stringify(handles['990000990']));
+  pruefe('Und der Task wird verbunden',
+    /igfu-ig:\s*990000990/.test(serverTasks[0].beschreibung || ''), serverTasks[0].beschreibung);
+}
+
+gruppe('Das eigene Konto wird nie für das Gegenüber gehalten');
+{
+  // In manchen Partner-Unterhaltungen ist das Gegenüber gar nicht verlinkt.
+  // Dann bleibt nur die Navigationsleiste übrig — und die gehört dir. In 7.7
+  // galt „bleibt genau einer übrig, nimm ihn", und so bekamen vier
+  // Creator-Tasks „tzampasfood" als Handle eingetragen.
+  const { w, store, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '550000550', titel: 'Jemand', vorschau: 'Hallo', zeit: '2h' }],
+    igOffen: { tid: '550000550', handle: 'egal', nurLeiste: true },
+    tasks: [{ id: 'a1', name: 'zzz.jemand — Zzz Jemand', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: 'x\nigfu-handle: zzz.jemand' }],
+  });
+  await warte(w, 4000);
+  const eintrag = (store.get('clickup:handles:v1') || {})['550000550'] || {};
+  pruefe('Kein Handle gemerkt', !eintrag.handle, JSON.stringify(eintrag));
+  pruefe('Erst recht nicht das eigene Konto',
+    eintrag.handle !== 'tzampasfood', JSON.stringify(eintrag));
+  pruefe('Kein Task wurde umbenannt',
+    serverTasks[0].name === 'zzz.jemand — Zzz Jemand', serverTasks[0].name);
+}
+
+gruppe('Ein früher falsch gelesener Handle wird entgiftet');
+{
+  // Nach dem Fehler aus 7.7 steht in manchen Einträgen das eigene Konto als
+  // Handle, mit Güte „karte". Gleiche Güte überschreibt nicht, also bliebe er
+  // für immer stehen und würde jede bessere Quelle blockieren.
+  const { w, store } = await starte({
+    speicher: {
+      ...MIT_CLICKUP,
+      'ig:selbst:v1': 'tzampasfood',
+      'clickup:handles:v1': {
+        '660000660': { handle: 'tzampasfood', quelle: 'karte', bild: '900000001' },
+        '660000661': { handle: 'echt.person', quelle: 'karte', bild: '900000002' },
+      },
+    },
+    ig: [{ id: '660000660', titel: 'Jemand', vorschau: 'Hallo', zeit: '2h' }],
+  });
+  await warte(w, 3000);
+  const alle = store.get('clickup:handles:v1') || {};
+  pruefe('Das eigene Konto ist aus dem Speicher raus',
+    !(alle['660000660'] || {}).handle, JSON.stringify(alle['660000660']));
+  pruefe('Fremde Handles bleiben unangetastet',
+    (alle['660000661'] || {}).handle === 'echt.person', JSON.stringify(alle['660000661']));
 }
 
 console.log('\n' + (fehlgeschlagen

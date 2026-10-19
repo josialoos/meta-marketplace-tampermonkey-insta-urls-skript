@@ -635,30 +635,56 @@ Die Regel oben wurde an normalen DMs entwickelt und galt dort. In einer
 * Der Schrägstrich am Ende fehlt: `/<handle>` statt `/<handle>/`.
 
 Bis 7.6 fand der Leser dort deshalb grundsätzlich nichts, und Partner ohne
-sprechenden Anzeigenamen blieben dauerhaft unverbunden. Unterschieden wird
-jetzt über zwei Merkmale, beide gemessen:
+sprechenden Anzeigenamen blieben dauerhaft unverbunden.
 
-| Merkmal | Partner-Unterhaltung | normale DM |
-|---|---|---|
-| Anzahl der Verlinkungen | 7 zu 1 | 1 zu 1 |
-| Text am Link | keiner | nur beim Gegenüber |
+Unterschieden wird über die **Navigationsleiste**. Sie enthält auf jeder Seite
+„Entdecken", „Reels" und das eigene Konto. Ein Profillink, der sich mit einem
+davon einen nahen Vorfahren teilt, gehört dir — alle anderen kommen als
+Gegenüber infrage. Am 19.10.2026 gemessen:
 
-Erst die Anzahl, dann der Text. Sind beide gleich, wird **nichts** genommen.
+| Link | nächster Vorfahr mit „Entdecken" |
+|---|---|
+| eigenes Konto | Ebene 4 |
+| Gegenüber | in zwölf Ebenen nicht gefunden |
 
-Zusätzlich lernt das Skript das **eigene Konto** einmal auf der Listenseite —
-auf `/direct/inbox/` ist es dort der einzige Profillink — und schließt es
-danach als Kandidaten aus. Gelernt wird nur bei genau einem Treffer: im
-Partner-Ordner steht rechts ein Vorschlagskasten mit fremden Handles, und die
-gehören zu niemandem aus der Liste.
+Geprüft wird nur bis knapp unter den Seitenkörper. Der enthält die Leiste
+immer, und ohne diese Grenze läge jeder Link „in der Leiste" — ein stiller
+Totalausfall statt eines sichtbaren Fehlers.
 
-##### Der Zeilentitel zählt nur als Handle, wenn es ihn gibt
+**Bleibt kein Kandidat übrig, ist das Ergebnis „kein Handle".** Das klingt
+selbstverständlich, war es aber nicht: In 7.7 stand hier „bleibt genau einer
+übrig, nimm ihn". In Partner-Unterhaltungen, in denen das Gegenüber gar nicht
+verlinkt ist — auch das kommt vor —, blieb nur die Navigationsleiste übrig.
+Sieben Creator-Tasks bekamen dadurch `tzampasfood` als Handle, und weil
+mehrere Unterhaltungen denselben Handle trugen, wurden sie als dieselbe Person
+behandelt und zu einem Task zusammengeführt. Zwei fremde Personen in einem
+Datensatz.
+
+Zusätzlich lernt das Skript das eigene Konto aus der Leiste und merkt es sich.
+Zwei Schranken für dieselbe Sache, mit Absicht: eine davon hat gefehlt.
+
+##### Der Speicher heilt sich selbst
+
+Zwei Vorkehrungen, damit ein einmal falsch gelesener Handle nicht ewig stehen
+bleibt:
+
+* Die geöffnete Unterhaltung darf einen früheren Wert **derselben** Güte
+  ersetzen. Vorher überschrieb nur eine höhere Güte, und ein falscher
+  `karte`-Wert war damit unsterblich — auch nachdem der Lesefehler behoben war.
+* Einmalig je Konto werden alle gespeicherten Handles entfernt, die dem
+  eigenen Konto entsprechen. Sie sind wertlos und blockieren aktiv die Suche
+  nach dem richtigen, weil `handleBeschaffen()` bei bekanntem Handle aufhört.
+
+##### Der Zeilentitel ist eine schwache Quelle
 
 Auf instagram.com steht in der Zeile häufig der Handle selbst. Übernommen wird
-er aber nur, wenn ein Task in der Liste ihn trägt. Sonst ist er geraten:
-„flo" ist handle-förmig, aber es ist der Anzeigename von `flo.auf.zeit`. Einmal
-als Handle gemerkt, blockierte er **jede** bessere Quelle, weil
-`handleBeschaffen()` bei bekanntem Handle sofort zurückkehrt — der Task wurde
-nie gefunden, egal wie oft der Durchlauf lief.
+er, aber nur mit niedriger Güte — er kann geraten sein:
+„flo" ist handle-förmig, aber es ist der Anzeigename von `flo.auf.zeit`.
+
+Schaden richtet das keinen an, solange die geöffnete Unterhaltung ihn
+überschreiben darf — siehe oben. Eine Schranke „nur übernehmen, wenn ein Task
+diesen Handle trägt" stand hier kurzzeitig und war falsch: beim Kaltstart ist
+die Task-Liste noch leer, und dann fielen auch richtige Handles weg.
 
 #### Die Brücke über den Zeitpunkt
 

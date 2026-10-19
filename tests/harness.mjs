@@ -88,14 +88,25 @@ export async function starte({
   // Text — auch der auf das Gegenueber nicht — und der Schraegstrich am Ende
   // fehlt. Unterscheidbar ist das Gegenueber dort nur daran, dass es vielfach
   // verlinkt ist, das eigene Konto dagegen nur in der Navigationsleiste.
-  const igKopf = igOffen
-    ? (igOffen.partner
-      ? '<a href="/tzampasfood/"><i></i></a>'
-        + ('<a href="/' + igOffen.handle + '"><i></i></a>').repeat(3)
-      : '<a href="/tzampasfood/"><i></i></a>'
-        + '<a href="/' + igOffen.handle + '/"><span>' + (igOffen.titel || igOffen.handle) + '</span>'
-        + '<span>' + igOffen.handle + '</span></a>')
-    : '';
+  // Die Navigationsleiste, wie Instagram sie auf jeder Seite hat: „Entdecken",
+  // „Reels" und das eigene Konto, alle drei als reine Symbole in einem
+  // gemeinsamen Behälter. Daran erkennt das Skript das eigene Konto — ohne
+  // diese Leiste im Prüfstand wäre die Regel nicht geprüft, und genau das war
+  // am 19.10.2026 der Grund, warum ein Fehler durchrutschen konnte.
+  const igLeiste = '<nav><a href="/explore/"><i></i></a><a href="/reels/"><i></i></a>'
+    + '<a href="/tzampasfood/"><i></i></a></nav>';
+  // nurLeiste: eine Unterhaltung, in der das Gegenüber überhaupt nicht
+  // verlinkt ist — gemessen am 19.10.2026 in einer echten Partner-Unterhaltung.
+  // Dann bleibt nur das eigene Konto übrig, und genau dieser Fall hat in 7.7
+  // vier Creator-Tasks den Handle „tzampasfood" eingetragen.
+  const igKopf = igOffen && igOffen.nurLeiste
+    ? igLeiste
+    : igOffen
+    ? igLeiste + '<section><div><div>' + (igOffen.partner
+      ? ('<a href="/' + igOffen.handle + '"><i></i></a>').repeat(3)
+      : '<a href="/' + igOffen.handle + '/"><span>' + (igOffen.titel || igOffen.handle) + '</span>'
+        + '<span>' + igOffen.handle + '</span></a>') + '</div></div></section>'
+    : igLeiste;
   const igBody = '<body>' + igKopf + '<div id="igliste">' + (ig || []).map(igZeile).join('') + '</div></body>';
 
   const dom = new JSDOM(ig ? igBody : body, {
@@ -303,8 +314,16 @@ export async function starte({
   // gelegentlich ins Leere und die Suite brach ab. Am 15.10.2026 gemessen: in
   // etwa jedem zweiten Lauf, immer an einer anderen Stelle. Ein Testlauf, der
   // zufaellig rot wird, entwertet jede Mutationspruefung.
-  for (let i = 0; i < 60 && speicher['clickup:token:v1']; i++) {
-    if (doc.querySelector('.igfu-form button')) break;
+  // Nicht nur darauf warten, *dass* Knöpfe da sind, sondern dass das Menü
+  // steht. Es wird neu aufgebaut, sobald die Task-Liste eintrifft — wer in die
+  // Lücke dazwischen greift, findet nichts, und zwar an wechselnder Stelle.
+  // Geprüft wird deshalb auf eine dreimal gleiche Anzahl.
+  let zuletzt = -1;
+  let stabil = 0;
+  for (let i = 0; i < 80 && speicher['clickup:token:v1']; i++) {
+    const n = doc.querySelectorAll('.igfu-form button').length;
+    if (n > 0 && n === zuletzt) { stabil += 1; if (stabil >= 2) break; } else { stabil = 0; }
+    zuletzt = n;
     await warte(w, 50);
   }
   await warte(w, 120);
@@ -332,3 +351,19 @@ export const klick = (w, el) => {
   return el.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true }));
 };
 export const knopf = (doc, text) => [...doc.querySelectorAll('.igfu-form button')].find((b) => b.textContent === text);
+
+// Wartet, bis der Knopf da ist, und klickt dann erst.
+//
+// Das Menü wird neu aufgebaut, sobald die Task-Liste eintrifft. Ein synchroner
+// Zugriff erwischt sonst die Lücke dazwischen — und weil die Klicks über die
+// ganze Suite verteilt sind, an wechselnder Stelle. Am 15.10.2026 brach etwa
+// jeder zweite Lauf ab, mal in Zeile 68, mal 733, mal 2186. Eine Wartebedingung
+// beim Start kann das prinzipiell nicht abfangen.
+export const klickKnopf = async (w, doc, text) => {
+  for (let i = 0; i < 60; i++) {
+    const b = knopf(doc, text);
+    if (b) return klick(w, b);
+    await warte(w, 50);
+  }
+  throw new Error('klickKnopf: „' + text + '" ist auch nach drei Sekunden nicht da');
+};

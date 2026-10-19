@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      7.7
+// @version      7.8
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -251,7 +251,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '7.7';
+  const VERSION = '7.8';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -687,7 +687,15 @@
     // Zeile und nicht aus gelesenem Text — es gibt keine bessere Quelle, die
     // sie spaeter korrigieren koennte.
     if (nutzer && !alt.nutzer) { alt.nutzer = String(nutzer); geaendert = true; }
-    const besser = handle && (!alt.handle || (GUETE[quelle] || 0) > (GUETE[alt.quelle] || 0));
+    // Die geoeffnete Unterhaltung („karte") darf einen frueheren Wert
+    // *derselben* Guete ersetzen. Ohne das bleibt ein einmal falsch gelesener
+    // Handle fuer immer stehen, weil gleiche Guete nicht ueberschreibt — genau
+    // so hielten sich im Oktober 2026 die falschen Werte, auch nachdem der
+    // Lesefehler behoben war. Von Hand gesetzte und ueber die API geholte
+    // Handles bleiben geschuetzt.
+    const g = GUETE[quelle] || 0;
+    const gAlt = GUETE[alt.quelle] || 0;
+    const besser = handle && (!alt.handle || g > gAlt || (quelle === 'karte' && gAlt <= GUETE.karte));
     if (besser && alt.handle !== handle) { alt.handle = handle; alt.quelle = quelle; geaendert = true; }
     else if (besser) { alt.quelle = quelle; geaendert = true; }
     if (!geaendert) return;
@@ -901,6 +909,7 @@
   // Unterhaltung als Profillink auf. Ohne es zu kennen, ist nicht zu
   // entscheiden, welcher der Links das Gegenueber ist.
   const IG_SELBST = 'ig:selbst:v1';
+  const IG_ENTGIFTET = 'ig:entgiftet:v1';
   const eigenerHandle = () => String(GM_getValue(IG_SELBST, '') || '');
 
   // Alle Profillinks der Seite, nach Handle gebuendelt, mit Anzahl und Text.
@@ -914,15 +923,40 @@
       if (!/^\/[A-Za-z0-9._]{2,30}\/?$/.test(href)) continue;
       const name = href.replace(/^\//, '').replace(/\/$/, '').toLowerCase();
       if (IG_KEIN_PROFIL.has(name) || !HANDLE_MUSTER.test(name)) continue;
-      const alt = nach.get(name) || { anker: 0, titel: '' };
+      const alt = nach.get(name) || { anker: 0, titel: '', leiste: false };
       alt.anker += 1;
       if (!alt.titel) {
         const zeilen = String(a.innerText || '').split('\n').map((z) => z.trim()).filter(Boolean);
         alt.titel = zeilen[0] || '';
       }
+      if (!alt.leiste) alt.leiste = inNavigationsleiste(a);
       nach.set(name, alt);
     }
     return nach;
+  }
+
+  // Steckt dieser Profillink in der Navigationsleiste? Dann gehoert er zum
+  // eigenen Konto, nicht zum Gegenueber.
+  //
+  // Erkennbar daran, dass er sich einen *nahen* Vorfahren mit „Entdecken" oder
+  // „Reels" teilt — die stehen in derselben Leiste. Am 19.10.2026 gemessen:
+  // das eigene Konto findet sie ab Ebene 4, der Gegenueber-Link nicht einmal
+  // in zwoelf Ebenen. Strukturell und ohne Sprachabhaengigkeit.
+  //
+  // Das ersetzt die Zaehlheuristik aus 7.7, und zwar nach Schaden: dort galt
+  // „bleibt genau ein Kandidat uebrig, nimm ihn". In Partner-Unterhaltungen
+  // ohne Profillink des Gegenuebers blieb nur die Navigationsleiste uebrig —
+  // und so bekamen vier Creator-Tasks „tzampasfood" als Handle.
+  function inNavigationsleiste(a) {
+    let el = a.parentElement;
+    for (let i = 0; i < 6 && el; i++) {
+      // Nicht bis zum Seitenkoerper hoch: der enthaelt die Leiste immer, und
+      // dann laege jeder Link „in der Leiste".
+      if (el === document.body || el === document.documentElement) return false;
+      if (el.querySelector('a[href="/explore/"], a[href="/reels/"]')) return true;
+      el = el.parentElement;
+    }
+    return false;
   }
 
   // Auf der Liste selbst steht nur ein Profil: das eigene. Am 15.10.2026
@@ -931,39 +965,57 @@
   // nichts gelernt: im Partner-Ordner steht rechts ein Vorschlagskasten mit
   // fremden Handles, und die gehoeren zu niemandem aus der Liste.
   function eigenesKontoLernen() {
-    if (!isIG() || /^\/direct\/t\//.test(location.pathname)) return;
-    const nach = igProfilLinks();
-    if (nach.size !== 1) return;
-    const [name] = [...nach.keys()];
-    if (eigenerHandle() !== name) GM_setValue(IG_SELBST, name);
+    if (!isIG()) return;
+    // Ueber die Navigationsleiste, nicht mehr ueber „auf der Liste steht nur
+    // ein Profil". Das greift auch in einer geoeffneten Unterhaltung und ist
+    // unabhaengig davon, was sonst noch auf der Seite verlinkt ist — im
+    // Partner-Ordner steht rechts ein Vorschlagskasten mit fremden Handles.
+    for (const [name, daten] of igProfilLinks()) {
+      if (!daten.leiste) continue;
+      if (eigenerHandle() !== name) GM_setValue(IG_SELBST, name);
+      handlesEntgiften();
+      return;
+    }
+  }
+
+  // Einmalige Bereinigung nach dem Fehler aus 7.7: Dort konnte das eigene
+  // Konto als Handle eines Gegenuebers gespeichert werden. Solche Eintraege
+  // sind nicht nur wertlos, sie verhindern aktiv, dass der richtige Handle
+  // nachgetragen wird — handleBeschaffen() hoert bei bekanntem Handle auf zu
+  // suchen. Laeuft einmal je Konto, danach nie wieder.
+  function handlesEntgiften() {
+    const selbst = eigenerHandle();
+    if (!selbst || GM_getValue(IG_ENTGIFTET, '') === selbst) return;
+    const alle = handles();
+    let weg = 0;
+    for (const eintrag of Object.values(alle)) {
+      if (eintrag && eintrag.handle === selbst) {
+        delete eintrag.handle;
+        delete eintrag.quelle;
+        weg += 1;
+      }
+    }
+    if (weg) GM_setValue(CU_HANDLES, alle);
+    GM_setValue(IG_ENTGIFTET, selbst);
+    if (weg) toast(weg + ' falsch gelesene Handles entfernt — das war das eigene Konto.');
   }
 
   function igOffeneUnterhaltung() {
     const m = /^\/direct\/t\/([A-Za-z0-9_-]+)\/?$/.exec(location.pathname);
     if (!m) return null;
     const nach = igProfilLinks();
+    // Das eigene Konto faellt zweifach raus: strukturell ueber die
+    // Navigationsleiste und zusaetzlich ueber den gelernten Handle. Zwei
+    // Schranken fuer dieselbe Sache, weil eine davon im Oktober 2026 gefehlt
+    // hat und vier Creator-Tasks „tzampasfood" als Handle bekamen.
     const selbst = eigenerHandle();
     if (selbst) nach.delete(selbst);
-    let kandidaten = [...nach.entries()];
-    // Ist das eigene Konto noch nicht gelernt, entscheidet die Anzahl: das
-    // Gegenueber ist in der Unterhaltung vielfach verlinkt, das eigene Konto
-    // nur einmal in der Navigationsleiste. Am 15.10.2026 in einer
-    // Partner-Unterhaltung gemessen: sieben zu eins. Ohne deutlichen Abstand
-    // wird nichts genommen — lieber kein Handle als der falsche.
-    // Zwei Merkmale, beide an der echten Seite gemessen, und sie greifen in
-    // verschiedenen Faellen:
-    //   Partner-Unterhaltung — keiner der Links traegt Text, aber das
-    //     Gegenueber ist vielfach verlinkt. Am 15.10.2026: sieben zu eins.
-    //   Normale DM — beide einmal verlinkt, aber nur der Link auf das
-    //     Gegenueber traegt den Namen; die Navigationsleiste ist ein Symbol.
-    // Sind beide Merkmale gleich, wird nichts genommen.
-    if (!selbst && kandidaten.length > 1) {
-      kandidaten.sort((a, b) => (b[1].anker - a[1].anker)
-        || ((b[1].titel ? 1 : 0) - (a[1].titel ? 1 : 0)));
-      const [erst, zweit] = kandidaten;
-      if (erst[1].anker === zweit[1].anker && !!erst[1].titel === !!zweit[1].titel) return null;
-      kandidaten = [erst];
-    }
+    for (const [name, daten] of [...nach]) if (daten.leiste) nach.delete(name);
+    const kandidaten = [...nach.entries()];
+    // Bleibt keiner uebrig, war das Gegenueber auf dieser Seite nicht
+    // verlinkt. Das kommt in Partner-Unterhaltungen vor. Dann gibt es hier
+    // nichts zu holen — und *nichts* ist das richtige Ergebnis, nicht das
+    // eigene Konto.
     if (kandidaten.length !== 1) return null;
     const [handle, daten] = kandidaten[0];
     return { tid: m[1], handle, titel: daten.titel || handle };
@@ -975,10 +1027,17 @@
       eigenesKontoLernen();
       const offen = igOffeneUnterhaltung();
       if (!offen) return;
+      // Den Handle nur merken, wenn er neu ist — aber das Verknuepfen *immer*
+      // versuchen. Vorher stand hier ein `return`, sobald der Handle schon
+      // bekannt war. Damit wurde beim ersten Oeffnen zwar der Handle
+      // gespeichert; schlug das Verknuepfen in diesem Moment fehl, etwa weil
+      // die Task-Liste noch nicht geladen war, kam es nie wieder dazu. Die
+      // Unterhaltung blieb dauerhaft unverbunden, und erneutes Oeffnen half
+      // nicht — am 15.10.2026 an flo.auf.zeit aufgefallen.
       const vorhanden = handleVon(offen.tid);
-      if (vorhanden && vorhanden.handle === offen.handle) return;
-      handleMerken(offen.tid, offen.handle, 'karte');
-      // Sofort versuchen zu verbinden, nicht erst beim naechsten Scan.
+      if (!vorhanden || vorhanden.handle !== offen.handle) {
+        handleMerken(offen.tid, offen.handle, 'karte');
+      }
       if (!cuTasks[offen.tid]) {
         const ziel = alleTasks().find((x) => !x.leiche
           && !(x.tids || []).includes(offen.tid) && handleVonTask(x) === offen.handle);
@@ -2716,16 +2775,16 @@
       // Zutun bekommen. Geprueft wird der unveraenderte Titel — sonst wird aus
       // jedem Vornamen ein Handle.
       //
-      // Uebernommen wird er aber nur, wenn es ihn in der Liste wirklich gibt.
-      // Sonst ist er geraten: „flo" ist handle-foermig, aber es ist der
-      // Anzeigename von flo.auf.zeit. Einmal als Handle gemerkt, blockierte er
-      // alle besseren Quellen, weil handleBeschaffen() bei bekanntem Handle
-      // sofort zurueckkehrt — und der Task wurde nie gefunden.
+      // Gespeichert wird er als *schwache* Quelle. Er kann geraten sein — „flo"
+      // ist handle-foermig, aber der Anzeigename von flo.auf.zeit. Schaden
+      // richtet das keinen mehr an: ein schwacher Handle findet keinen Task,
+      // den es nicht gibt, und die geoeffnete Unterhaltung ueberschreibt ihn.
+      //
+      // Eine Schranke „nur uebernehmen, wenn ein Task diesen Handle traegt"
+      // stand hier kurz und war falsch: beim Kaltstart ist die Task-Liste noch
+      // leer, und dann fielen auch richtige Handles weg.
       if (isIG() && t.title && HANDLE_MUSTER.test(String(t.title).trim())) {
-        const ausTitel = String(t.title).trim().toLowerCase();
-        if (alleTasks().some((x) => !x.leiche && handleVonTask(x) === ausTitel)) {
-          handleMerken(tid, ausTitel, 'titel', bild);
-        }
+        handleMerken(tid, String(t.title).trim().toLowerCase(), 'titel', bild);
       }
       // Die Meta-API kennt den Handle auch dann, wenn im Vorschautext keiner
       // steht — und das ist bei normalen DMs die Regel.
@@ -2969,6 +3028,12 @@
     // aber am Anlegen nicht scheitern, nur weil der Handle nicht zu holen war.
     try {
       if (!isInbox() || !cuEingerichtet()) return '';
+      // Ein bekannter Handle beendet die Suche, auch ein schwacher. Das ist
+      // Absicht: diese Funktion laeuft beim *Anlegen* eines Tasks und darf
+      // nicht auf eine Zusatzabfrage warten — sonst entsteht der Task zu spaet
+      // oder gar nicht. Verbessert wird der Handle an anderer Stelle:
+      // karteAuslesen() liest die geoeffnete Unterhaltung aus und ueberschreibt
+      // einen schwachen Wert mit der Quelle „karte".
       const bekannt = handleVon(tid);
       if (bekannt && bekannt.handle) return bekannt.handle;
       // Auf instagram.com steht in der Zeile haeufig der Handle selbst
