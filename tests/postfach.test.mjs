@@ -2798,6 +2798,64 @@ gruppe('Ein früher falsch gelesener Handle wird entgiftet');
     (alle['660000661'] || {}).handle === 'echt.person', JSON.stringify(alle['660000661']));
 }
 
+gruppe('Beim Abgleich entsteht kein Tag ohne Namen');
+{
+  // Zwei Aufrufe von cuTagSichern() hatten das Argument vergessen. Der Tag
+  // hieß dadurch „undefined", ClickUp lehnt das mit Fehler 400 ab — und auf
+  // einem frisch eingerichteten Arbeitsplatz scheiterte jeder Abgleich daran.
+  // Bei Josia fiel es nicht auf, weil in seinem Space irgendwann ein Tag
+  // dieses Namens entstanden war und die Prüfung ihn fand.
+  const { doc, w, spaceTags } = await starte({
+    speicher: MIT_CLICKUP,
+    tags: [],
+    tasks: [],
+  });
+  await klickKnopf(w, doc, 'Lokale Follow-ups übernehmen');
+  await warte(w, 1500);
+  pruefe('Kein Tag „undefined" angelegt',
+    !spaceTags.some((t) => String(t) === 'undefined'), JSON.stringify(spaceTags));
+  pruefe('Der Follow-up-Tag wurde angelegt', spaceTags.includes(TAG), JSON.stringify(spaceTags));
+}
+
+gruppe('Auch „Verbindung prüfen" legt keinen Tag ohne Namen an');
+{
+  const { doc, w, spaceTags } = await starte({ speicher: MIT_CLICKUP, tags: [], tasks: [] });
+  await klickKnopf(w, doc, 'Verbindung prüfen');
+  await warte(w, 1500);
+  pruefe('Kein Tag „undefined" angelegt',
+    !spaceTags.some((t) => String(t) === 'undefined'), JSON.stringify(spaceTags));
+  pruefe('Der Follow-up-Tag wurde angelegt', spaceTags.includes(TAG), JSON.stringify(spaceTags));
+}
+
+gruppe('„Handles nachtragen" steht ganz oben');
+{
+  // Nach jedem „Übernehmen" wird das Panel neu aufgebaut und springt an den
+  // Anfang. Stand der Abschnitt unten, musste man sich nach jedem einzelnen
+  // Handle wieder hinunterscrollen — bei mehreren Dutzend Lücken ist das die
+  // eigentliche Arbeit.
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [
+      { id: 'a1', name: 'Ohne Handle Jemand', status: 'angeschrieben', farbe: '#87909e',
+        beschreibung: 'aus UpPromote', tags: ['handle-fehlt'] },
+      { id: 'a2', name: 'zzz.wer — Zzz Wer', status: 'ongeboardet', farbe: '#b660e0',
+        beschreibung: 'x\nigfu-handle: zzz.wer' },
+    ],
+  });
+  await warte(w, 900);
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const t = doc.querySelector('.igfu-body').textContent || '';
+  const handles = t.indexOf('Handles nachtragen');
+  pruefe('Der Abschnitt ist da', handles >= 0, t.slice(0, 200));
+  for (const spaeter of ['Unterhaltungen ohne Task', 'Tasks ohne Unterhaltung', 'Follow-ups']) {
+    const i = t.indexOf(spaeter);
+    pruefe('Vor „' + spaeter + '"', i < 0 || handles < i, 'Handles bei ' + handles + ', ' + spaeter + ' bei ' + i);
+  }
+  pruefe('Nur die Diagnosezeile steht davor',
+    t.slice(0, handles).includes('Unterhaltungen gerade im Dokument'), t.slice(0, handles).slice(0, 160));
+}
+
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));

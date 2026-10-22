@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      7.8
+// @version      7.9
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -251,7 +251,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '7.8';
+  const VERSION = '7.9';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -2005,6 +2005,12 @@
   // Legt den Tag einmalig im Space an, falls er fehlt. Danach nur noch gelesen.
   const tagGeprueft = new Set();
   async function cuTagSichern(name, farbe) {
+    // Ohne Namen gibt es nichts zu sichern. Ohne diese Schranke entstand aus
+    // einem vergessenen Argument ein Tag namens „undefined" — ClickUp lehnt
+    // das mit 400 ab, und auf einem frisch eingerichteten Konto scheiterte
+    // dadurch jeder Abgleich. Am 22.10.2026 bei der Einrichtung des zweiten
+    // Arbeitsplatzes aufgefallen.
+    if (!name) return;
     if (tagGeprueft.has(name)) return;
     const space = cuSpace() || (await cuSpaceLaden());
     const daten = await cuRequest('GET', '/space/' + space + '/tag');
@@ -3628,7 +3634,7 @@
     try {
       await cuSpaceLaden();
       tagGeprueft.clear();
-      await cuTagSichern();
+      await cuTagSichern(CU_TAG, YELLOW);
       await cuTasksLaden();
       zusammenfuehren();
       scanRows();
@@ -3654,7 +3660,7 @@
       // Immer erst den aktuellen Stand holen. Sonst legt ein zweiter Durchlauf
       // dieselben Unterhaltungen ein zweites Mal an.
       toast('Gleiche mit ClickUp ab …');
-      await cuTagSichern();
+      await cuTagSichern(CU_TAG, YELLOW);
       await cuTasksLaden();
     } catch (e) {
       cuLaeuft = false;
@@ -3995,6 +4001,64 @@
     bodyEl.appendChild(ul);
   }
 
+  // Steht im Panel ganz oben, direkt unter der Diagnosezeile.
+  //
+  // Der Grund ist die Bedienung: Nach jedem „Übernehmen" wird das Panel neu
+  // aufgebaut und springt an den Anfang. Stand der Abschnitt unten, musste
+  // man sich nach jedem einzelnen Handle wieder hinunterscrollen — bei
+  // mehreren Dutzend Lücken ist das die eigentliche Arbeit.
+  function zeigeHandleLuecken() {
+  const luecken = ohneHandle();
+  if (luecken.length) {
+    bodyEl.appendChild(el('h3', 'igfu-section-title', 'Handles nachtragen'));
+    bodyEl.appendChild(el('p', 'igfu-empty',
+      'Ohne Handle greift bei diesen Tasks keine Automatik — weder UpPromote '
+      + 'noch Content noch die Warensendung.'));
+    const ul = el('ol', 'igfu-list');
+    for (const t of luecken) {
+      const tid = t.tid;
+      const li = el('li', 'igfu-item');
+      const top = el('div', 'igfu-item-top');
+      top.append(
+        tid
+          ? button('igfu-name', rohTitel(t.titel), () => reveal(tid), 'In der Liste anzeigen')
+          : el('span', 'igfu-name', rohTitel(t.titel)),
+        // Ohne Unterhaltung gibt es nichts zu zeigen, dafuer den Task selbst
+        tid
+          ? button('igfu-link', 'Unterhaltung öffnen', () => reveal(tid))
+          : button('igfu-link', 'Task öffnen', () => window.open(t.url, '_blank', 'noopener')),
+        button('igfu-link', 'Instagram', () => window.open('https://www.instagram.com/', '_blank', 'noopener'),
+          'Öffnet Instagram in einem neuen Tab. Das Suchen bleibt Handarbeit.'),
+      );
+      const feld = el('input');
+      feld.type = 'text';
+      feld.placeholder = 'Handle';
+      feld.autocomplete = 'off';
+      const uebernehmen = () => {
+        const h = String(feld.value || '').trim().replace(/^@/, '').toLowerCase();
+        if (!h) return;
+        if (!HANDLE_MUSTER.test(h)) { toast('Das sieht nicht nach einem Instagram-Handle aus.'); return; }
+        if (tid) {
+          handleMerken(tid, h, 'hand');
+          vormerken({ art: 'handle', tid, titel: t.titel, wert: h });
+        } else {
+          // Ohne Unterhaltung geht es nicht ueber die Warteschlange, die ist
+          // nach Thread-ID gefuehrt.
+          handleDirektSetzen(t, h);
+        }
+        toast('Handle übernommen: ' + h);
+        renderPanel();
+      };
+      feld.addEventListener('keydown', (e) => { if (e.key === 'Enter') uebernehmen(); });
+      const unten = el('div', 'igfu-item-top');
+      unten.append(feld, button('igfu-done', 'Übernehmen', uebernehmen));
+      li.append(top, unten);
+      ul.appendChild(li);
+    }
+    bodyEl.appendChild(ul);
+  }
+  }
+
   function renderPanel() {
     bodyEl.textContent = '';
     const fEntries = sortedFollow();
@@ -4003,6 +4067,14 @@
       const d = el('p', 'igfu-empty', diagnoseZeile());
       d.id = 'igfu-diagnose';
       bodyEl.appendChild(d);
+    }
+
+    // Vor allem anderen — ausser der Diagnosezeile. Und ausserhalb der
+    // isInbox-Schranke, weil dieser Abschnitt auch im Marketplace gebraucht
+    // wird; dort war er vorher sichtbar und soll es bleiben.
+    zeigeHandleLuecken();
+
+    if (isInbox()) {
       zeigeHandleZweifel();
       zeigeUmzug();
       zeigeOhneTask();
@@ -4012,56 +4084,6 @@
     if (!fEntries.length && !ohneHandle().length) {
       bodyEl.appendChild(el('p', 'igfu-empty', 'Noch nichts markiert. Fahr mit der Maus über eine Unterhaltung und klick auf „Follow-up".'));
       return;
-    }
-
-    const luecken = ohneHandle();
-    if (luecken.length) {
-      bodyEl.appendChild(el('h3', 'igfu-section-title', 'Handles nachtragen'));
-      bodyEl.appendChild(el('p', 'igfu-empty',
-        'Ohne Handle greift bei diesen Tasks keine Automatik — weder UpPromote '
-        + 'noch Content noch die Warensendung.'));
-      const ul = el('ol', 'igfu-list');
-      for (const t of luecken) {
-        const tid = t.tid;
-        const li = el('li', 'igfu-item');
-        const top = el('div', 'igfu-item-top');
-        top.append(
-          tid
-            ? button('igfu-name', rohTitel(t.titel), () => reveal(tid), 'In der Liste anzeigen')
-            : el('span', 'igfu-name', rohTitel(t.titel)),
-          // Ohne Unterhaltung gibt es nichts zu zeigen, dafuer den Task selbst
-          tid
-            ? button('igfu-link', 'Unterhaltung öffnen', () => reveal(tid))
-            : button('igfu-link', 'Task öffnen', () => window.open(t.url, '_blank', 'noopener')),
-          button('igfu-link', 'Instagram', () => window.open('https://www.instagram.com/', '_blank', 'noopener'),
-            'Öffnet Instagram in einem neuen Tab. Das Suchen bleibt Handarbeit.'),
-        );
-        const feld = el('input');
-        feld.type = 'text';
-        feld.placeholder = 'Handle';
-        feld.autocomplete = 'off';
-        const uebernehmen = () => {
-          const h = String(feld.value || '').trim().replace(/^@/, '').toLowerCase();
-          if (!h) return;
-          if (!HANDLE_MUSTER.test(h)) { toast('Das sieht nicht nach einem Instagram-Handle aus.'); return; }
-          if (tid) {
-            handleMerken(tid, h, 'hand');
-            vormerken({ art: 'handle', tid, titel: t.titel, wert: h });
-          } else {
-            // Ohne Unterhaltung geht es nicht ueber die Warteschlange, die ist
-            // nach Thread-ID gefuehrt.
-            handleDirektSetzen(t, h);
-          }
-          toast('Handle übernommen: ' + h);
-          renderPanel();
-        };
-        feld.addEventListener('keydown', (e) => { if (e.key === 'Enter') uebernehmen(); });
-        const unten = el('div', 'igfu-item-top');
-        unten.append(feld, button('igfu-done', 'Übernehmen', uebernehmen));
-        li.append(top, unten);
-        ul.appendChild(li);
-      }
-      bodyEl.appendChild(ul);
     }
 
     if (fEntries.length) {
