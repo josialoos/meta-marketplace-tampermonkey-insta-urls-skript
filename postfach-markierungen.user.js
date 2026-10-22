@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      8.1
+// @version      8.2
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -181,29 +181,46 @@
     .igfu-head-actions { display: flex; align-items: center; gap: 4px; }
     .igfu-body { overflow-y: auto; }
     .igfu-section-title { margin: 0; padding: 12px 16px 4px; font-size: 12px; font-weight: 700; color: #65676b; }
+/* Instagram liefert seine Farben als CSS-Variablen, und zwar als RGB-Tripel
+   („12, 16, 20"), nicht als fertige Farben — deshalb rgb(var(--…)). Im
+   dunklen Modus tragen dieselben Variablen dunkle Werte, das Panel folgt
+   also von allein, auch wenn Instagram in der Oberflaeche umgeschaltet wird.
+   Die Angaben hinter dem Komma sind der Rueckfall, falls Meta die Variablen
+   eines Tages umbenennt.
+
+   Feste Farben standen hier bis 8.1 und waren der Grund, warum der Knopf im
+   dunklen Modus kaum zu sehen war und die Schrift im Formular hell auf hell
+   stand. Das „Reparieren" mit anderen festen Farben hatte den Fehler nur auf
+   die andere Seite verschoben. */
 .igfu-vl-knopf { display: flex; align-items: center; gap: 6px; border: 0; background: transparent;
-  cursor: pointer; padding: 6px 10px; border-radius: 8px; font: inherit; font-size: 14px; color: #262626; }
-.igfu-vl-knopf:hover { background: #efefef; }
+  cursor: pointer; padding: 6px 10px; border-radius: 8px; font: inherit; font-size: 14px;
+  color: rgb(var(--ig-primary-text, 12, 16, 20)); }
+.igfu-vl-knopf:hover { background: rgb(var(--ig-highlight-background, 243, 245, 247)); }
 .igfu-vl-panel { position: fixed; z-index: 2147483000; width: 380px; max-height: 60vh; display: flex;
-  flex-direction: column; background: #fff; border: 1px solid #dbdbdb; border-radius: 12px;
-  box-shadow: 0 8px 28px rgba(0,0,0,.18); font: 14px/1.45 system-ui, -apple-system, sans-serif; color: #262626; }
-.igfu-vl-kopf { display: flex; gap: 8px; align-items: center; padding: 10px; border-bottom: 1px solid #efefef; }
-.igfu-vl-suche { flex: 1; border: 1px solid #dbdbdb; border-radius: 8px; padding: 7px 10px; font: inherit; }
+  flex-direction: column; border-radius: 12px; box-shadow: 0 8px 28px rgba(0,0,0,.28);
+  font: 14px/1.45 system-ui, -apple-system, sans-serif;
+  background: rgb(var(--ig-elevated-background, 255, 255, 255));
+  color: rgb(var(--ig-primary-text, 12, 16, 20));
+  border: 1px solid rgb(var(--ig-separator, 219, 223, 228)); }
+.igfu-vl-kopf { display: flex; gap: 8px; align-items: center; padding: 10px;
+  border-bottom: 1px solid rgb(var(--ig-separator, 219, 223, 228)); }
 .igfu-vl-liste { overflow: auto; padding: 6px; }
 .igfu-vl-eintrag { display: flex; gap: 8px; align-items: flex-start; padding: 9px 10px; border-radius: 8px; cursor: pointer; }
-.igfu-vl-eintrag:hover { background: #fafafa; }
+.igfu-vl-eintrag:hover { background: rgb(var(--ig-highlight-background, 243, 245, 247)); }
 .igfu-vl-text { flex: 1; min-width: 0; }
 .igfu-vl-titel { font-weight: 600; margin-bottom: 2px; }
-.igfu-vl-vorschau { color: #8e8e8e; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.igfu-vl-fuss { display: flex; gap: 8px; padding: 8px 10px; border-top: 1px solid #efefef; align-items: center; }
+.igfu-vl-vorschau { color: rgb(var(--ig-secondary-text, 106, 113, 122)); font-size: 13px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.igfu-vl-fuss { display: flex; gap: 8px; padding: 8px 10px; align-items: center;
+  border-top: 1px solid rgb(var(--ig-separator, 219, 223, 228)); }
 .igfu-vl-form { padding: 10px; overflow: auto; }
-.igfu-vl-feld { width: 100%; box-sizing: border-box; border: 1px solid #dbdbdb; border-radius: 8px;
+.igfu-vl-feld, .igfu-vl-suche { width: 100%; box-sizing: border-box; border-radius: 8px;
   padding: 8px; font: inherit; margin-bottom: 8px;
-  /* Farbe und Hintergrund ausdruecklich. Ohne das erbt das Feld Instagrams
-     helles Grau und der Text steht hell auf hell — am 22.10.2026 gemeldet. */
-  color: #262626; background: #fff; }
-.igfu-vl-feld::placeholder { color: #8e8e8e; }
-.igfu-vl-suche { color: #262626; background: #fff; }
+  border: 1px solid rgb(var(--ig-separator, 219, 223, 228));
+  background: rgb(var(--ig-primary-background, 255, 255, 255));
+  color: rgb(var(--ig-primary-text, 12, 16, 20)); }
+.igfu-vl-suche { flex: 1; width: auto; margin-bottom: 0; }
+.igfu-vl-feld::placeholder, .igfu-vl-suche::placeholder { color: rgb(var(--ig-secondary-text, 106, 113, 122)); }
 .igfu-vl-gross { min-height: 160px; resize: vertical; }
     .igfu-list { list-style: none; margin: 0; padding: 0 0 4px; }
     .igfu-empty { padding: 20px 16px; color: #65676b; line-height: 1.45; }
@@ -275,7 +292,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '8.1';
+  const VERSION = '8.2';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -4612,6 +4629,19 @@
     return String(id);
   }
 
+  // Kuerzel aus dem ClickUp-Namen: „Josia Loos" wird zu „JL". Bei einem
+  // einzelnen Wort die ersten zwei Zeichen. Steht statt eines Namens eine
+  // Mailadresse da, zaehlt nur der Teil davor — aus „josia@…" wird sonst „JP".
+  function initialen(name) {
+    const roh = String(name || '').trim();
+    if (!roh) return '';
+    const basis = roh.includes('@') ? roh.split('@')[0] : roh;
+    const teile = basis.split(/[\s._-]+/).filter(Boolean);
+    if (!teile.length) return '';
+    if (teile.length === 1) return teile[0].slice(0, 2).toUpperCase();
+    return (teile[0][0] + teile[1][0]).toUpperCase();
+  }
+
   const vorlagenAusCache = () => {
     const roh = GM_getValue(VL_CACHE, []);
     return Array.isArray(roh) ? roh : [];
@@ -4638,11 +4668,18 @@
   async function vorlagenLaden() {
     const liste = await vorlagenListeFinden();
     const daten = await cuRequest('GET', '/list/' + liste + '/task?include_closed=false&subtasks=false');
-    const vorlagen = (daten.tasks || []).map((t) => ({
-      id: String(t.id),
-      titel: String(t.name || '').trim(),
-      text: String(t.text_content || t.description || ''),
-    })).filter((v) => v.titel || v.text.trim());
+    const vorlagen = (daten.tasks || []).map((t) => {
+      // ClickUp liefert den Urheber als creator. Fehlt er, bleibt das Kuerzel
+      // leer — dann steht eben keines da, statt dass etwas Falsches steht.
+      const wer = String((t.creator && (t.creator.username || t.creator.email)) || '').trim();
+      return {
+        id: String(t.id),
+        titel: String(t.name || '').trim(),
+        text: String(t.text_content || t.description || ''),
+        wer,
+        kuerzel: initialen(wer),
+      };
+    }).filter((v) => v.titel || v.text.trim());
     GM_setValue(VL_CACHE, vorlagen);
     return vorlagen;
   }
@@ -4665,10 +4702,11 @@
     return vorlagenLaden();
   }
 
-  function vorlagenSuchen(liste, wort) {
+  function vorlagenSuchen(liste, wort, wer) {
     const w = String(wort || '').trim().toLowerCase();
-    if (!w) return liste;
-    return liste.filter((v) => (v.titel + ' ' + v.text).toLowerCase().includes(w));
+    let treffer = wer ? liste.filter((v) => v.wer === wer) : liste;
+    if (w) treffer = treffer.filter((v) => (v.titel + ' ' + v.text).toLowerCase().includes(w));
+    return treffer;
   }
 
   // ---- Text ins Eingabefeld ----

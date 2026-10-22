@@ -2960,6 +2960,36 @@ gruppe('Vorlagen: „In ClickUp öffnen" trifft die richtige Adresse');
     /\/v\/l\/li\/900000000002$/.test(geoeffnet), geoeffnet || '(nichts geöffnet)');
 }
 
+gruppe('Vorlagen: die Farben folgen Instagram, nicht festen Werten');
+{
+  // Bis 8.1 standen hier feste Farben. Im dunklen Modus war der Knopf dadurch
+  // kaum zu sehen und die Schrift im Formular hell auf hell. Instagram liefert
+  // seine Farben als CSS-Variablen; wer die benutzt, folgt dem Modus von
+  // allein — auch wenn in der Oberfläche umgeschaltet wird.
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '17843301684077111', titel: 'Jemand', vorschau: 'Hallo', zeit: '2h' }],
+    vorlagen: [{ id: 'v1', titel: 'Eins', text: 'Text' }],
+  });
+  await warte(w, 1500);
+  const stil = doc.getElementById('igfu-style');
+  pruefe('Der Stilblock ist da', !!stil);
+  const css = (stil && stil.textContent) || '';
+  // Nur der Vorlagen-Teil, sonst erwischt die Prüfung fremde Regeln, die
+  // feste Farben haben dürfen.
+  const vonHier = css.indexOf('.igfu-vl-knopf');
+  const bisHier = css.indexOf('.igfu-vl-gross');
+  const vlTeil = css.slice(vonHier, bisHier >= 0 ? css.indexOf('}', bisHier) + 1 : undefined);
+  pruefe('Die Schriftfarbe kommt von Instagram',
+    /color:\s*rgb\(var\(--ig-primary-text/.test(vlTeil), vlTeil.slice(0, 200));
+  pruefe('Der Hintergrund des Panels auch',
+    /background:\s*rgb\(var\(--ig-elevated-background/.test(vlTeil), vlTeil.slice(0, 400));
+  pruefe('Die Eingabefelder auch',
+    /\.igfu-vl-feld[^}]*color:\s*rgb\(var\(--ig-primary-text/.test(vlTeil), vlTeil.slice(-500));
+  pruefe('Keine festen Hex-Farben mehr im Vorlagen-Teil',
+    !/#[0-9a-fA-F]{3,6}/.test(vlTeil), (vlTeil.match(/#[0-9a-fA-F]{3,6}/g) || []).join(' '));
+}
+
 gruppe('Vorlagen: fehlende Liste erklärt sich');
 {
   // Ohne die Liste darf es keine stumme Fehlfunktion geben — die Meldung muss
