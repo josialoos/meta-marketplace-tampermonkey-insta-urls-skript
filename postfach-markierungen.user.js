@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      8.0
+// @version      8.1
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -198,7 +198,12 @@
 .igfu-vl-fuss { display: flex; gap: 8px; padding: 8px 10px; border-top: 1px solid #efefef; align-items: center; }
 .igfu-vl-form { padding: 10px; overflow: auto; }
 .igfu-vl-feld { width: 100%; box-sizing: border-box; border: 1px solid #dbdbdb; border-radius: 8px;
-  padding: 8px; font: inherit; margin-bottom: 8px; }
+  padding: 8px; font: inherit; margin-bottom: 8px;
+  /* Farbe und Hintergrund ausdruecklich. Ohne das erbt das Feld Instagrams
+     helles Grau und der Text steht hell auf hell — am 22.10.2026 gemeldet. */
+  color: #262626; background: #fff; }
+.igfu-vl-feld::placeholder { color: #8e8e8e; }
+.igfu-vl-suche { color: #262626; background: #fff; }
 .igfu-vl-gross { min-height: 160px; resize: vertical; }
     .igfu-list { list-style: none; margin: 0; padding: 0 0 4px; }
     .igfu-empty { padding: 20px 16px; color: #65676b; line-height: 1.45; }
@@ -270,7 +275,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '8.0';
+  const VERSION = '8.1';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -4590,6 +4595,22 @@
   const VORLAGEN_LISTE = 'Standardnachrichten';
   const VL_LISTE_ID = 'clickup:vorlagen-liste:v1';
   const VL_CACHE = 'clickup:vorlagen:v1';
+  const CU_TEAM = 'clickup:team:v1';
+
+  // Die Adresse einer Liste in ClickUp braucht die Workspace-Kennung:
+  //   https://app.clickup.com/<workspace>/v/l/li/<liste>
+  // Ohne sie antwortet ClickUp mit 404. Die Kennung wird hier zur Laufzeit
+  // geholt und gemerkt — fest eingebaut hat sie im oeffentlichen Repo nichts
+  // zu suchen.
+  async function cuWorkspace() {
+    const gemerkt = String(GM_getValue(CU_TEAM, '') || '');
+    if (gemerkt) return gemerkt;
+    const daten = await cuRequest('GET', '/team');
+    const id = ((daten.teams || [])[0] || {}).id;
+    if (!id) throw new Error('Zu diesem Token liess sich kein Workspace ermitteln.');
+    GM_setValue(CU_TEAM, String(id));
+    return String(id);
+  }
 
   const vorlagenAusCache = () => {
     const roh = GM_getValue(VL_CACHE, []);
@@ -4778,7 +4799,8 @@
       button('igfu-link', 'In ClickUp öffnen', async () => {
         try {
           const id = await vorlagenListeFinden();
-          window.open('https://app.clickup.com/v/l/li/' + id, '_blank', 'noopener');
+          const ws = await cuWorkspace();
+          window.open('https://app.clickup.com/' + ws + '/v/l/li/' + id, '_blank', 'noopener');
         } catch (e) { toast('Vorlagen: ' + e.message); }
       }, 'Dort lassen sich die Vorlagen genauso bearbeiten'),
     );

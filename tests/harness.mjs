@@ -215,6 +215,7 @@ export async function starte({
   const aufrufe = [];
   const spaceTags = [...tags];
   const VLISTE = '900000000002';
+  const WORKSPACE = '900000009';
   const vorlagenTasks = (vorlagen || []).map((v, i) => ({ id: v.id || ('vl' + i), titel: v.titel, text: v.text }));
   const serverTasks = tasks.map((t) => ({ tags: [], ...t }));
   let naechste = 100;
@@ -275,6 +276,7 @@ export async function starte({
 
     const ok = (o) => ({ status: 200, responseText: JSON.stringify(o || {}) });
 
+    if (methode === 'GET' && pf === '/team') return ok({ teams: [{ id: WORKSPACE, name: 'Workspace' }] });
     // --- Vorlagenliste. Muss vor den allgemeinen Regeln stehen, sonst
     // greift die Task-Abfrage fuer *jede* Liste. ---
     if (methode === 'GET' && /^\/space\/[^/]+\/list/.test(pf)) {

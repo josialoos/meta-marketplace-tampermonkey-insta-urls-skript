@@ -2935,6 +2935,31 @@ gruppe('Vorlagen: Neuanlegen schreibt nach ClickUp');
     JSON.stringify(vorlagenTasks[0]));
 }
 
+gruppe('Vorlagen: „In ClickUp öffnen" trifft die richtige Adresse');
+{
+  // Die Adresse braucht die Workspace-Kennung. Ohne sie antwortet ClickUp mit
+  // 404 — am 22.10.2026 gemeldet, nachdem ich die Kennung entfernt hatte, um
+  // sie nicht ins öffentliche Repo zu schreiben. Sie wird jetzt zur Laufzeit
+  // geholt.
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '17843301684077111', titel: 'Jemand', vorschau: 'Hallo', zeit: '2h' }],
+    vorlagen: [{ id: 'v1', titel: 'Eins', text: 'Text' }],
+  });
+  await warte(w, 2000);
+  let geoeffnet = '';
+  w.open = (u) => { geoeffnet = String(u); return null; };
+  klick(w, doc.querySelector('.igfu-vl-knopf'));
+  await warte(w, 1200);
+  const knopf = [...doc.querySelectorAll('.igfu-link')].find((b) => b.textContent === 'In ClickUp öffnen');
+  pruefe('Der Knopf ist da', !!knopf);
+  if (knopf) { klick(w, knopf); await warte(w, 1200); }
+  pruefe('Die Workspace-Kennung steht in der Adresse',
+    /app\.clickup\.com\/900000009\//.test(geoeffnet), geoeffnet || '(nichts geöffnet)');
+  pruefe('Und die Listen-Kennung',
+    /\/v\/l\/li\/900000000002$/.test(geoeffnet), geoeffnet || '(nichts geöffnet)');
+}
+
 gruppe('Vorlagen: fehlende Liste erklärt sich');
 {
   // Ohne die Liste darf es keine stumme Fehlfunktion geben — die Meldung muss
