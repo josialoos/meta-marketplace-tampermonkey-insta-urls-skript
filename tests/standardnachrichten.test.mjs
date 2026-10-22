@@ -65,15 +65,41 @@ function starte({ gespeichert = [] } = {}) {
   // Die Marke, hinter der das Skript seinen Prüfzugang freigibt.
   w.__IGSN_PRUEFSTAND__ = true;
 
-  // jsdom kennt execCommand nicht. Nachgebaut wird nur, was gebraucht wird:
-  // Text an der Einfügestelle ergänzen.
+  // jsdom kennt execCommand nicht. Nachgebaut wird nur, was gebraucht wird —
+  // und zwar mit dem Verhalten des echten Feldes: insertText **verliert die
+  // Zeilenumbrüche**. Würde der Prüfstand sie behalten, sähe der alte,
+  // kaputte Weg hier richtig aus.
   w.document.execCommand = (befehl, _ui, wert) => {
     if (befehl !== 'insertText') return false;
     const feld = w.document.querySelector('div[role="textbox"]');
     if (!feld) return false;
-    feld.textContent += wert;
+    feld.textContent += String(wert).replace(/\n/g, '');
     return true;
   };
+
+  // jsdom kennt weder DataTransfer noch ClipboardEvent. Nachgebaut wird nur,
+  // was gebraucht wird.
+  if (!w.DataTransfer) {
+    w.DataTransfer = class {
+      constructor() { this._d = {}; }
+      setData(typ, wert) { this._d[typ] = String(wert); }
+      getData(typ) { return this._d[typ] || ''; }
+    };
+  }
+  if (!w.ClipboardEvent) {
+    w.ClipboardEvent = class extends w.Event {
+      constructor(typ, init = {}) { super(typ, init); this.clipboardData = init.clipboardData || null; }
+    };
+  }
+  // Das Feld verhält sich wie Lexical: Es fängt das Einfüge-Ereignis ab und
+  // übernimmt den Text **samt** Umbrüchen.
+  const feldFuerPaste = w.document.querySelector('div[role="textbox"]');
+  if (feldFuerPaste) {
+    feldFuerPaste.addEventListener('paste', (e) => {
+      e.preventDefault();
+      feldFuerPaste.textContent += (e.clipboardData && e.clipboardData.getData('text/plain')) || '';
+    });
+  }
 
   w.eval(readFileSync(SKRIPT, 'utf8'));
   return { w, doc: w.document, api: w.__igsn, speicher };
@@ -167,6 +193,21 @@ gruppe('Ein Klick setzt den Text ins Eingabefeld');
     doc.querySelector('div[role="textbox"]').textContent === 'Hier die Anleitung:\nhttps://example.invalid',
     JSON.stringify(doc.querySelector('div[role="textbox"]').textContent));
   pruefe('Das Panel ist wieder zu', !doc.querySelector('.igsn-panel'));
+}
+
+gruppe('Mehrzeilige Vorlagen behalten ihre Umbrüche');
+{
+  // Am 22.10.2026 am echten Feld gemessen: execCommand('insertText') lässt
+  // die Umbrüche weg und klebt die Zeilen aneinander. Nur das
+  // Einfüge-Ereignis erhält sie.
+  const text = 'Hi,\n\nschau dir das an:\nhttps://example.invalid\n\nGruß\nJosia';
+  const { w, doc } = await starte({ gespeichert: [{ id: 'a', titel: 'Lang', text }] });
+  klick(w, doc.querySelector('.igsn-knopf'));
+  klick(w, doc.querySelector('.igsn-eintrag-text'));
+  const drin = doc.querySelector('div[role="textbox"]').textContent;
+  pruefe('Der Text steht vollständig da', drin === text, JSON.stringify(drin));
+  pruefe('Die Leerzeilen sind erhalten', /\n\n/.test(drin), JSON.stringify(drin));
+  pruefe('Nichts klebt aneinander', !/anschau|invalidGruß/.test(drin), JSON.stringify(drin));
 }
 
 gruppe('Vorhandener Text wird ergänzt, nicht ersetzt');

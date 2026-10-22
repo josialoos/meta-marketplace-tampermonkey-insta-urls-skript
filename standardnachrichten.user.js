@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Standardnachrichten für Instagram
 // @namespace    tzampas.standardnachrichten
-// @version      0.1
+// @version      0.2
 // @description  Gespeicherte Antworten im Instagram-Postfach: anlegen, bearbeiten, mit einem Klick ins Eingabefeld setzen.
 // @author       Josia Loos
 // @match        https://www.instagram.com/direct/*
@@ -34,7 +34,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '0.1';
+  const VERSION = '0.2';
   const SPEICHER = 'sn:vorlagen:v1';
 
   // ---------- Speicher ----------
@@ -100,10 +100,22 @@
 
   // Text ins Eingabefeld setzen.
   //
-  // `execCommand('insertText')` statt `textContent = …`: Instagram hoert auf
-  // Eingabe-Ereignisse, und nur dieser Weg loest sie so aus, wie es beim
-  // Tippen geschieht. Direkt gesetzter Text bleibt stehen, verschwindet aber
-  // beim Absenden, weil die Oberflaeche ihn nie mitbekommen hat.
+  // Ueber ein Einfuege-Ereignis, nicht ueber `execCommand('insertText')` und
+  // erst recht nicht ueber `textContent`.
+  //
+  // Instagram setzt im Nachrichtenfeld den Lexical-Editor ein. Am 22.10.2026
+  // am echten Feld gemessen:
+  //
+  //   textContent = …        bleibt stehen, verschwindet aber beim Absenden —
+  //                          die Oberflaeche bekommt die Eingabe nie mit
+  //   insertText mit \n      der Text kommt an, die Umbrueche fallen weg und
+  //                          die Zeilen kleben aneinander
+  //   insertLineBreak        danach landet gar nichts mehr
+  //   Einfuege-Ereignis      Umbrueche bleiben erhalten
+  //
+  // Lexical verarbeitet das Ereignis **asynchron**. Direkt nach dem Absetzen
+  // steht im Feld noch der alte Stand — wer dort sofort nachliest, haelt den
+  // Weg faelschlich fuer kaputt. Genau darauf bin ich erst hereingefallen.
   function einsetzen(text) {
     const feld = eingabefeld();
     if (!feld) return false;
@@ -116,6 +128,16 @@
       sel.removeAllRanges();
       sel.addRange(r);
     }
+    try {
+      const dt = new DataTransfer();
+      dt.setData('text/plain', text);
+      const ereignis = new ClipboardEvent('paste', {
+        clipboardData: dt, bubbles: true, cancelable: true,
+      });
+      // false heisst: jemand hat es abgefangen und verarbeitet — also Lexical.
+      if (!feld.dispatchEvent(ereignis)) return true;
+    } catch { /* aelterer Browser ohne DataTransfer, dann der Rueckfall */ }
+    // Rueckfall: einzeilig eingefuegt ist besser als gar nicht.
     return document.execCommand('insertText', false, text);
   }
 

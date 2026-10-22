@@ -67,10 +67,19 @@ Zeilen schreibt.
 
 ## Technisches
 
-Der Text wird mit `document.execCommand('insertText')` eingesetzt, nicht über
-`textContent`. Instagram hört auf Eingabe-Ereignisse; direkt gesetzter Text
-steht zwar da, verschwindet aber beim Absenden, weil die Oberfläche ihn nie
-mitbekommen hat.
+Der Text wird über ein **Einfüge-Ereignis** gesetzt. Instagram benutzt im
+Nachrichtenfeld den Lexical-Editor; am 22.10.2026 am echten Feld gemessen:
+
+| Weg | Ergebnis |
+|---|---|
+| `textContent = …` | steht da, verschwindet beim Absenden |
+| `insertText` mit `\n` | Text kommt an, **Umbrüche fallen weg**, Zeilen kleben aneinander |
+| `insertLineBreak` dazwischen | danach landet gar nichts mehr |
+| Einfüge-Ereignis | Umbrüche bleiben erhalten ✓ |
+
+Lexical verarbeitet das Ereignis **asynchron**: Direkt danach steht im Feld
+noch der alte Stand. Wer dort sofort nachliest, hält den Weg fälschlich für
+kaputt — genau darauf bin ich beim Messen erst hereingefallen.
 
 Die Verfassen-Zeile wird vom Eingabefeld aus nach oben gesucht, bis ein
 Vorfahr mindestens zwei Knöpfe trägt und **unter 120 Pixel hoch** ist. Ohne
