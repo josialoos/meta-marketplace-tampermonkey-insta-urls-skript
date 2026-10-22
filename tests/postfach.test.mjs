@@ -2856,6 +2856,103 @@ gruppe('„Handles nachtragen" steht ganz oben');
     t.slice(0, handles).includes('Unterhaltungen gerade im Dokument'), t.slice(0, handles).slice(0, 160));
 }
 
+gruppe('Vorlagen: der Knopf sitzt in der Verfassen-Zeile');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '17843301684077111', titel: 'Jemand', vorschau: 'Hallo', zeit: '2h' }],
+    vorlagen: [{ id: 'v1', titel: 'Ad-Codes', text: 'So geht das.' }],
+  });
+  await warte(w, 2000);
+  pruefe('Der Knopf ist da', !!doc.querySelector('.igfu-vl-knopf'));
+  pruefe('Und zwar in der Verfassen-Zeile',
+    !!doc.getElementById('vzeile') && !!doc.getElementById('vzeile').querySelector('.igfu-vl-knopf'));
+  pruefe('Nicht doppelt', doc.querySelectorAll('.igfu-vl-knopf').length === 1,
+    String(doc.querySelectorAll('.igfu-vl-knopf').length));
+}
+
+gruppe('Vorlagen kommen aus ClickUp, nicht aus dem lokalen Speicher');
+{
+  // Der Grund für den Umbau: Josia arbeitet an zwei Rechnern, Cosima an einem
+  // dritten. Der GM-Speicher liegt pro Browser — ClickUp haben alle.
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '17843301684077111', titel: 'Jemand', vorschau: 'Hallo', zeit: '2h' }],
+    vorlagen: [
+      { id: 'v1', titel: 'Ad-Codes', text: 'Schau dir die Anleitung an.' },
+      { id: 'v2', titel: 'Versand', text: 'Die Box ist raus.' },
+    ],
+  });
+  await warte(w, 2000);
+  klick(w, doc.querySelector('.igfu-vl-knopf'));
+  await warte(w, 1200);
+  const t = doc.querySelector('.igfu-vl-panel').textContent || '';
+  pruefe('Beide Vorlagen stehen im Panel', /Ad-Codes/.test(t) && /Versand/.test(t), t.slice(0, 200));
+}
+
+gruppe('Vorlagen: Klick setzt den Text mehrzeilig ein');
+{
+  const text = 'Hi,\n\nschau mal hier:\nhttps://example.invalid\n\nGruß\nJosia';
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '17843301684077111', titel: 'Jemand', vorschau: 'Hallo', zeit: '2h' }],
+    vorlagen: [{ id: 'v1', titel: 'Lang', text }],
+  });
+  await warte(w, 2000);
+  klick(w, doc.querySelector('.igfu-vl-knopf'));
+  await warte(w, 1200);
+  // Nicht blind klicken: Fehlt der Eintrag, soll die Prüfung rot werden und
+  // nicht die ganze Suite abbrechen — sonst ist jeder Folgefehler unlesbar.
+  const eintrag = doc.querySelector('.igfu-vl-text');
+  pruefe('Die Vorlage steht im Panel', !!eintrag,
+    (doc.querySelector('.igfu-vl-panel') || {}).textContent);
+  if (eintrag) { klick(w, eintrag); await warte(w, 300); }
+  const drin = doc.querySelector('div[role="textbox"]').textContent;
+  pruefe('Der Text steht vollständig im Feld', drin === text, JSON.stringify(drin));
+  pruefe('Die Leerzeilen sind erhalten', /\n\n/.test(drin), JSON.stringify(drin));
+  pruefe('Das Panel ist zu', !doc.querySelector('.igfu-vl-panel'));
+}
+
+gruppe('Vorlagen: Neuanlegen schreibt nach ClickUp');
+{
+  const { doc, w, vorlagenTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '17843301684077111', titel: 'Jemand', vorschau: 'Hallo', zeit: '2h' }],
+    vorlagen: [],
+  });
+  await warte(w, 2000);
+  klick(w, doc.querySelector('.igfu-vl-knopf'));
+  await warte(w, 1200);
+  klick(w, [...doc.querySelectorAll('.igfu-done')].find((b) => b.textContent === 'Neu'));
+  const felder = doc.querySelectorAll('.igfu-vl-form .igfu-vl-feld');
+  felder[0].value = 'Begrüßung';
+  felder[1].value = 'Hallo und willkommen!';
+  klick(w, [...doc.querySelectorAll('.igfu-done')].find((b) => b.textContent === 'Sichern'));
+  await warte(w, 1500);
+  pruefe('Die Vorlage liegt in ClickUp', vorlagenTasks.length === 1, JSON.stringify(vorlagenTasks));
+  pruefe('Mit Titel und Text',
+    (vorlagenTasks[0] || {}).titel === 'Begrüßung' && (vorlagenTasks[0] || {}).text === 'Hallo und willkommen!',
+    JSON.stringify(vorlagenTasks[0]));
+}
+
+gruppe('Vorlagen: fehlende Liste erklärt sich');
+{
+  // Ohne die Liste darf es keine stumme Fehlfunktion geben — die Meldung muss
+  // sagen, was zu tun ist.
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '17843301684077111', titel: 'Jemand', vorschau: 'Hallo', zeit: '2h' }],
+    vorlagen: null,
+  });
+  await warte(w, 2000);
+  pruefe('Der Knopf ist trotzdem da', !!doc.querySelector('.igfu-vl-knopf'));
+  klick(w, doc.querySelector('.igfu-vl-knopf'));
+  await warte(w, 1500);
+  const meldung = doc.body.textContent || '';
+  pruefe('Es gibt einen Hinweis auf die fehlende Liste',
+    /Standardnachrichten/.test(meldung), meldung.slice(-300));
+}
+
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));

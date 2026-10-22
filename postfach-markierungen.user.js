@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      7.9
+// @version      8.0
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
 // @run-at       document-idle
-// @updateURL    https://raw.githubusercontent.com/josialoos/meta-marketplace-tampermonkey-insta-urls-skript/main/postfach-markierungen.user.js
-// @downloadURL  https://raw.githubusercontent.com/josialoos/meta-marketplace-tampermonkey-insta-urls-skript/main/postfach-markierungen.user.js
+// @updateURL    https://raw.githubusercontent.com/josialoos/meta-marketplace-tampermonkey-insta-urls-skript/vorlagen-im-hauptskript/postfach-markierungen.user.js
+// @downloadURL  https://raw.githubusercontent.com/josialoos/meta-marketplace-tampermonkey-insta-urls-skript/vorlagen-im-hauptskript/postfach-markierungen.user.js
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_addValueChangeListener
@@ -181,6 +181,25 @@
     .igfu-head-actions { display: flex; align-items: center; gap: 4px; }
     .igfu-body { overflow-y: auto; }
     .igfu-section-title { margin: 0; padding: 12px 16px 4px; font-size: 12px; font-weight: 700; color: #65676b; }
+.igfu-vl-knopf { display: flex; align-items: center; gap: 6px; border: 0; background: transparent;
+  cursor: pointer; padding: 6px 10px; border-radius: 8px; font: inherit; font-size: 14px; color: #262626; }
+.igfu-vl-knopf:hover { background: #efefef; }
+.igfu-vl-panel { position: fixed; z-index: 2147483000; width: 380px; max-height: 60vh; display: flex;
+  flex-direction: column; background: #fff; border: 1px solid #dbdbdb; border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(0,0,0,.18); font: 14px/1.45 system-ui, -apple-system, sans-serif; color: #262626; }
+.igfu-vl-kopf { display: flex; gap: 8px; align-items: center; padding: 10px; border-bottom: 1px solid #efefef; }
+.igfu-vl-suche { flex: 1; border: 1px solid #dbdbdb; border-radius: 8px; padding: 7px 10px; font: inherit; }
+.igfu-vl-liste { overflow: auto; padding: 6px; }
+.igfu-vl-eintrag { display: flex; gap: 8px; align-items: flex-start; padding: 9px 10px; border-radius: 8px; cursor: pointer; }
+.igfu-vl-eintrag:hover { background: #fafafa; }
+.igfu-vl-text { flex: 1; min-width: 0; }
+.igfu-vl-titel { font-weight: 600; margin-bottom: 2px; }
+.igfu-vl-vorschau { color: #8e8e8e; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.igfu-vl-fuss { display: flex; gap: 8px; padding: 8px 10px; border-top: 1px solid #efefef; align-items: center; }
+.igfu-vl-form { padding: 10px; overflow: auto; }
+.igfu-vl-feld { width: 100%; box-sizing: border-box; border: 1px solid #dbdbdb; border-radius: 8px;
+  padding: 8px; font: inherit; margin-bottom: 8px; }
+.igfu-vl-gross { min-height: 160px; resize: vertical; }
     .igfu-list { list-style: none; margin: 0; padding: 0 0 4px; }
     .igfu-empty { padding: 20px 16px; color: #65676b; line-height: 1.45; }
     .igfu-item { padding: 10px 16px 12px; border-bottom: 1px solid #f0f2f5; }
@@ -251,7 +270,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '7.9';
+  const VERSION = '8.0';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -4551,6 +4570,283 @@
     if (isMarkt()) { stilEinspielen(); cuAktualisieren(false); scanMarkt(); scanInhalte(); }
   }
 
+
+  // ======================= Standardnachrichten =========================
+  //
+  // Gespeicherte Antworten, abgelegt in einer eigenen ClickUp-Liste — ein
+  // Task je Vorlage, Name = Titel, Beschreibung = Text.
+  //
+  // Warum ClickUp und nicht der lokale Speicher: Josia arbeitet an zwei
+  // Rechnern, Cosima an einem dritten, und alle brauchen dieselben Texte. Der
+  // GM-Speicher liegt pro Browser *und* pro Skript. ClickUp haben ohnehin
+  // alle, die Berechtigungen stimmen damit von allein, und Vorlagen lassen
+  // sich dort auch ohne das Skript bearbeiten.
+  //
+  // Die Liste wird am Namen gefunden, nicht ueber eine eingetragene Kennung.
+  // Sonst muesste sie jeder auf jedem Rechner nachtragen, und genau solche
+  // Einrichtungsschritte gehen schief — siehe der Tag „undefined", ueber den
+  // der zweite Arbeitsplatz gestolpert ist.
+
+  const VORLAGEN_LISTE = 'Standardnachrichten';
+  const VL_LISTE_ID = 'clickup:vorlagen-liste:v1';
+  const VL_CACHE = 'clickup:vorlagen:v1';
+
+  const vorlagenAusCache = () => {
+    const roh = GM_getValue(VL_CACHE, []);
+    return Array.isArray(roh) ? roh : [];
+  };
+
+  async function vorlagenListeFinden() {
+    const gemerkt = String(GM_getValue(VL_LISTE_ID, '') || '');
+    if (gemerkt) return gemerkt;
+    const space = cuSpace() || (await cuSpaceLaden());
+    const daten = await cuRequest('GET', '/space/' + space + '/list?archived=false');
+    const treffer = (daten.lists || []).find(
+      (l) => String(l.name || '').trim().toLowerCase() === VORLAGEN_LISTE.toLowerCase(),
+    );
+    if (!treffer) {
+      throw new Error('Im Space gibt es keine Liste „' + VORLAGEN_LISTE + '". '
+        + 'Bitte einmal anlegen — ein Task je Vorlage, Name ist der Titel, '
+        + 'die Beschreibung der Text.');
+    }
+    GM_setValue(VL_LISTE_ID, String(treffer.id));
+    return String(treffer.id);
+  }
+
+  // Geschlossene Tasks gelten als stillgelegt und erscheinen nicht im Postfach.
+  async function vorlagenLaden() {
+    const liste = await vorlagenListeFinden();
+    const daten = await cuRequest('GET', '/list/' + liste + '/task?include_closed=false&subtasks=false');
+    const vorlagen = (daten.tasks || []).map((t) => ({
+      id: String(t.id),
+      titel: String(t.name || '').trim(),
+      text: String(t.text_content || t.description || ''),
+    })).filter((v) => v.titel || v.text.trim());
+    GM_setValue(VL_CACHE, vorlagen);
+    return vorlagen;
+  }
+
+  async function vorlageAnlegen(titel, text) {
+    const liste = await vorlagenListeFinden();
+    await cuRequest('POST', '/list/' + liste + '/task', { name: titel, description: text });
+    return vorlagenLaden();
+  }
+
+  async function vorlageAendern(id, titel, text) {
+    await cuRequest('PUT', '/task/' + id, { name: titel, description: text });
+    return vorlagenLaden();
+  }
+
+  // Stilllegen statt loeschen: In ClickUp bleibt der Text auffindbar, falls
+  // sich jemand vertut. Dieselbe Haltung wie bei den Karteileichen.
+  async function vorlageStilllegen(id) {
+    await cuRequest('PUT', '/task/' + id, { status: 'closed' });
+    return vorlagenLaden();
+  }
+
+  function vorlagenSuchen(liste, wort) {
+    const w = String(wort || '').trim().toLowerCase();
+    if (!w) return liste;
+    return liste.filter((v) => (v.titel + ' ' + v.text).toLowerCase().includes(w));
+  }
+
+  // ---- Text ins Eingabefeld ----
+
+  const vlFeld = () => document.querySelector('div[role="textbox"][contenteditable="true"]');
+
+  // Die Verfassen-Zeile: vom Feld nach oben, bis ein Vorfahr die Symbole
+  // traegt und niedrig genug ist. Ohne die Hoehenschranke landet der Knopf im
+  // ganzen Fensterbereich. Am 20.10.2026 gemessen: zwei Ebenen darueber, 44
+  // Pixel hoch.
+  function vlZeile() {
+    let el = vlFeld();
+    for (let i = 0; i < 8 && el; i++) {
+      const hoch = el.getBoundingClientRect().height;
+      if (el.querySelectorAll('[role="button"]').length >= 2 && hoch > 0 && hoch < 120) return el;
+      el = el.parentElement;
+    }
+    return null;
+  }
+
+  // Ueber ein Einfuege-Ereignis, nicht ueber execCommand('insertText').
+  //
+  // Instagram setzt im Nachrichtenfeld Lexical ein. Am 22.10.2026 am echten
+  // Feld gemessen: insertText laesst Zeilenumbrueche weg und klebt die Zeilen
+  // aneinander, insertLineBreak blockiert alles Weitere, und nur das
+  // Einfuege-Ereignis erhaelt die Umbrueche.
+  //
+  // Lexical verarbeitet es **asynchron** — direkt danach steht im Feld noch
+  // der alte Stand. Wer dort sofort nachliest, haelt den Weg faelschlich fuer
+  // kaputt; genau darauf bin ich beim Messen hereingefallen.
+  function vlEinsetzen(text) {
+    const feld = vlFeld();
+    if (!feld) return false;
+    feld.focus();
+    const sel = window.getSelection();
+    if (sel && !feld.contains(sel.anchorNode)) {
+      const r = document.createRange();
+      r.selectNodeContents(feld);
+      r.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(r);
+    }
+    try {
+      const dt = new DataTransfer();
+      dt.setData('text/plain', text);
+      const ereignis = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });
+      if (!feld.dispatchEvent(ereignis)) return true;
+    } catch { /* ohne DataTransfer eben der Rueckfall */ }
+    return document.execCommand('insertText', false, text);
+  }
+
+  // ---- Oberflaeche ----
+
+  let vlOffen = null;
+
+  function vlSchliessen() {
+    if (vlOffen) { vlOffen.remove(); vlOffen = null; }
+    document.removeEventListener('keydown', vlEscape, true);
+    document.removeEventListener('mousedown', vlDaneben, true);
+  }
+  function vlEscape(e) { if (e.key === 'Escape') { e.stopPropagation(); vlSchliessen(); } }
+  function vlDaneben(e) {
+    if (vlOffen && !vlOffen.contains(e.target) && !e.target.closest('.igfu-vl-knopf')) vlSchliessen();
+  }
+
+  function vlOeffnen(anker) {
+    if (vlOffen) { vlSchliessen(); return; }
+    const panel = el('div', 'igfu-vl-panel');
+    vlOffen = panel;
+    vlListe(panel, '');
+    document.body.appendChild(panel);
+    const r = anker.getBoundingClientRect();
+    panel.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 396)) + 'px';
+    panel.style.bottom = (window.innerHeight - r.top + 8) + 'px';
+    document.addEventListener('keydown', vlEscape, true);
+    document.addEventListener('mousedown', vlDaneben, true);
+    const suche = panel.querySelector('.igfu-vl-suche');
+    if (suche) suche.focus();
+    // Im Hintergrund frisch holen. Das Panel steht sofort aus dem Zwischen-
+    // speicher, damit es sich nicht traege anfuehlt.
+    vorlagenLaden()
+      .then(() => { if (vlOffen === panel) vlListe(panel, suche ? suche.value : ''); })
+      .catch((e) => toast('Vorlagen: ' + e.message));
+  }
+
+  function vlListe(panel, filter) {
+    panel.textContent = '';
+    const kopf = el('div', 'igfu-vl-kopf');
+    const suche = el('input', 'igfu-vl-suche');
+    suche.type = 'search';
+    suche.placeholder = 'Vorlagen durchsuchen';
+    suche.value = filter || '';
+    suche.addEventListener('input', () => {
+      const pos = suche.selectionStart;
+      vlListe(panel, suche.value);
+      const neu = panel.querySelector('.igfu-vl-suche');
+      if (neu) { neu.focus(); try { neu.setSelectionRange(pos, pos); } catch { /* egal */ } }
+    });
+    const neuKnopf = el('button', 'igfu-done', 'Neu');
+    neuKnopf.addEventListener('click', () => vlForm(panel, null));
+    kopf.append(suche, neuKnopf);
+
+    const liste = el('div', 'igfu-vl-liste');
+    const alle = vorlagenAusCache();
+    const treffer = vorlagenSuchen(alle, filter);
+    if (!treffer.length) {
+      liste.appendChild(el('p', 'igfu-empty', alle.length
+        ? 'Nichts gefunden.'
+        : 'Noch keine Vorlage. Mit „Neu" die erste anlegen — sie landet in der '
+          + 'ClickUp-Liste „' + VORLAGEN_LISTE + '" und steht damit allen zur Verfügung.'));
+    }
+    for (const v of treffer) {
+      const zeile = el('div', 'igfu-vl-eintrag');
+      const mitte = el('div', 'igfu-vl-text');
+      mitte.append(
+        el('div', 'igfu-vl-titel', v.titel || '(ohne Titel)'),
+        el('div', 'igfu-vl-vorschau', v.text.split('\n').find((z) => z.trim()) || ''),
+      );
+      mitte.addEventListener('click', () => { vlSchliessen(); vlEinsetzen(v.text); });
+      const bearbeiten = el('button', 'igfu-link', 'Bearbeiten');
+      bearbeiten.addEventListener('click', (e) => { e.stopPropagation(); vlForm(panel, v); });
+      zeile.append(mitte, bearbeiten);
+      liste.appendChild(zeile);
+    }
+
+    const fuss = el('div', 'igfu-vl-fuss');
+    fuss.append(
+      button('igfu-link', 'In ClickUp öffnen', async () => {
+        try {
+          const id = await vorlagenListeFinden();
+          window.open('https://app.clickup.com/v/l/li/' + id, '_blank', 'noopener');
+        } catch (e) { toast('Vorlagen: ' + e.message); }
+      }, 'Dort lassen sich die Vorlagen genauso bearbeiten'),
+    );
+    panel.append(kopf, liste, fuss);
+  }
+
+  function vlForm(panel, vorhanden) {
+    panel.textContent = '';
+    const form = el('div', 'igfu-vl-form');
+    const titel = el('input', 'igfu-vl-feld');
+    titel.placeholder = 'Kurzer Titel, z. B. „Ad-Codes erklären"';
+    titel.value = vorhanden ? vorhanden.titel : '';
+    const text = el('textarea', 'igfu-vl-feld igfu-vl-gross');
+    text.placeholder = 'Der Nachrichtentext …';
+    text.value = vorhanden ? vorhanden.text : '';
+    form.append(titel, text);
+
+    const fuss = el('div', 'igfu-vl-fuss');
+    const sichern = el('button', 'igfu-done', 'Sichern');
+    sichern.addEventListener('click', async () => {
+      const t = titel.value.trim();
+      const inhalt = text.value;
+      if (!t && !inhalt.trim()) { vlListe(panel, ''); return; }
+      const name = t || inhalt.trim().split('\n')[0].slice(0, 40);
+      sichern.disabled = true;
+      try {
+        if (vorhanden) await vorlageAendern(vorhanden.id, name, inhalt);
+        else await vorlageAnlegen(name, inhalt);
+        toast('Vorlage gesichert.');
+        vlListe(panel, '');
+      } catch (e) {
+        sichern.disabled = false;
+        toast('Vorlagen: ' + e.message);
+      }
+    });
+    const zurueck = el('button', 'igfu-link', 'Zurück');
+    zurueck.addEventListener('click', () => vlListe(panel, ''));
+    fuss.append(sichern, zurueck);
+
+    if (vorhanden) {
+      const weg = el('button', 'igfu-link', 'Stilllegen');
+      let sicher = false;
+      weg.addEventListener('click', async () => {
+        if (!sicher) { sicher = true; weg.textContent = 'Wirklich stilllegen?'; return; }
+        try { await vorlageStilllegen(vorhanden.id); toast('Stillgelegt.'); vlListe(panel, ''); }
+        catch (e) { toast('Vorlagen: ' + e.message); }
+      });
+      fuss.appendChild(weg);
+    }
+    panel.append(form, fuss);
+    titel.focus();
+  }
+
+  // Instagram baut die Verfassen-Zeile bei jedem Gespraechswechsel neu auf,
+  // deshalb regelmaessig nachsetzen statt einmalig beim Laden.
+  function vlKnopfSetzen() {
+    if (!isIG() || !cuEingerichtet()) return;
+    const zeile = vlZeile();
+    if (!zeile || zeile.querySelector('.igfu-vl-knopf')) return;
+    const knopf = el('button', 'igfu-vl-knopf');
+    knopf.type = 'button';
+    knopf.title = 'Standardnachrichten';
+    knopf.setAttribute('aria-label', 'Standardnachrichten');
+    knopf.textContent = '⚡︎ Vorlagen';
+    knopf.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); vlOeffnen(knopf); });
+    zeile.appendChild(knopf);
+  }
+
   let scheduled = null;
   const observer = new MutationObserver(() => {
     if (scheduled) return;
@@ -4569,5 +4865,7 @@
   // Die Kontaktkarte der geoeffneten Unterhaltung nebenbei auslesen. Kostet nichts
   // und fuellt die fehlenden Handles waehrend der normalen Arbeit nach.
   setInterval(karteAuslesen, 3000);
+  // Der Vorlagen-Knopf in der Verfassen-Zeile.
+  setInterval(vlKnopfSetzen, 1500);
   syncActive();
 })();

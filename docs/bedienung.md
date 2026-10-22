@@ -560,6 +560,41 @@ Aktualisieren verschwindet der Tag von selbst, und das Skript schreibt den
 Handle zusätzlich als Zeile `igfu-handle:` in die Beschreibung — die ist dann
 die maßgebliche Stelle, eine spätere Umbenennung schadet nicht mehr.
 
+## Standardnachrichten
+
+In jeder Unterhaltung steht rechts in der Verfassen-Zeile ein Knopf
+**„⚡︎ Vorlagen"**. Sobald du tippst, weichen Instagrams Symbole dem
+Senden-Knopf, und der Vorlagen-Knopf steht direkt daneben.
+
+| | |
+|---|---|
+| Knopf anklicken | Liste öffnet sich über der Verfassen-Zeile |
+| Auf eine Vorlage klicken | Text landet an der Schreibmarke, mehrzeilig |
+| Suchfeld | durchsucht Titel **und** Text |
+| „Neu" | Titel und Text eingeben, „Sichern" |
+| „Bearbeiten" → „Stilllegen" | verschwindet aus dem Postfach, bleibt in ClickUp |
+| „In ClickUp öffnen" | führt direkt in die Liste |
+
+Der Text wird **ergänzt, nicht ersetzt** — ein angefangener Satz bleibt
+stehen. Abgeschickt wird nichts; du drückst Enter.
+
+### Wo die Vorlagen liegen
+
+In der ClickUp-Liste **„Standardnachrichten"** im Space Marketing. Ein Task je
+Vorlage: Name ist der Titel, Beschreibung ist der Text.
+
+Das ist Absicht und der Grund für den Umbau: Vorher lagen sie im Speicher des
+Browsers, also auf jedem Rechner andere. Über ClickUp haben Josia an zwei
+Rechnern und Cosima an ihrem dieselben Texte, die Berechtigungen stimmen von
+allein, und bearbeiten lässt sich alles auch direkt in ClickUp.
+
+Die Liste wird **am Namen gefunden**, nicht über eine eingetragene Kennung —
+sonst müsste sie jeder auf jedem Rechner nachtragen. Wird sie umbenannt,
+meldet das Panel das und sagt, was zu tun ist.
+
+Bei drei Leuten auf denselben Vorlagen gewinnt die zuletzt gespeicherte
+Fassung. Bei einer Handvoll selten geänderter Texte ist das unproblematisch.
+
 **Ein Task-Titel sieht falsch aus**
 Der Titel ist seit Version 7.5 reine Beschriftung. Zugeordnet wird über die
 Zeile `igfu-iguser:` in der Beschreibung — die Instagram-Benutzer-ID des

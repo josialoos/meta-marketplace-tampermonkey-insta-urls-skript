@@ -54,6 +54,7 @@ export async function starte({
   metaUnterhaltungen = null, // [{ id, username, zeit }] fuer die Conversations-API
   ig = null,               // [{ id, titel, vorschau, zeit, ungelesen, bild }] baut die Instagram-Liste
   igOffen = null,          // { tid, handle, titel } simuliert eine geoeffnete Unterhaltung
+  vorlagen = null,         // [{ id, titel, text }] legt die Liste „Standardnachrichten" an
 } = {}) {
   // Die vier festen Threads bleiben unangetastet, damit bestehende Pruefungen
   // ihre Zeilenzahl behalten. Wer eine fuenfte Unterhaltung braucht — etwa um
@@ -107,7 +108,15 @@ export async function starte({
       : '<a href="/' + igOffen.handle + '/"><span>' + (igOffen.titel || igOffen.handle) + '</span>'
         + '<span>' + igOffen.handle + '</span></a>') + '</div></div></section>'
     : igLeiste;
-  const igBody = '<body>' + igKopf + '<div id="igliste">' + (ig || []).map(igZeile).join('') + '</div></body>';
+  // Die Verfassen-Zeile, wie sie am 20.10.2026 aussah: das Eingabefeld zwei
+  // Ebenen unter einer niedrigen Zeile, die mehrere Symbole traegt.
+  const igVerfassen = '<div id="vzeile">'
+    + '<div role="button" aria-label="Emoji"></div>'
+    + '<div><div role="textbox" contenteditable="true"></div></div>'
+    + '<div role="button" aria-label="Foto"></div>'
+    + '<div role="button" aria-label="Sticker"></div></div>';
+  const igBody = '<body>' + igKopf + '<div id="igliste">' + (ig || []).map(igZeile).join('') + '</div>'
+    + igVerfassen + '</body>';
 
   const dom = new JSDOM(ig ? igBody : body, {
     url: ig
@@ -118,6 +127,48 @@ export async function starte({
   });
   const w = dom.window;
   const doc = w.document;
+
+  // jsdom misst nichts und liefert ueberall Hoehe 0. Die Verfassen-Zeile
+  // braucht aber eine Hoehe unter 120, sonst findet vlZeile() sie nicht —
+  // genau diese Schranke verhindert im Browser, dass der Knopf im ganzen
+  // Fensterbereich landet.
+  const echteMasse = w.Element.prototype.getBoundingClientRect;
+  w.Element.prototype.getBoundingClientRect = function () {
+    const r = echteMasse.call(this);
+    if (this.id === 'vzeile') return { ...r, height: 44, width: 1377, top: 800, left: 500, bottom: 844, right: 1877 };
+    return r;
+  };
+
+  // Weder DataTransfer noch ClipboardEvent kennt jsdom. Das Feld verhaelt
+  // sich wie Lexical: Es faengt das Einfuege-Ereignis ab und uebernimmt den
+  // Text **samt** Umbruechen. execCommand('insertText') dagegen verliert sie,
+  // so wie am echten Feld gemessen — sonst saehe der alte, kaputte Weg hier
+  // richtig aus.
+  if (!w.DataTransfer) {
+    w.DataTransfer = class {
+      constructor() { this._d = {}; }
+      setData(typ, wert) { this._d[typ] = String(wert); }
+      getData(typ) { return this._d[typ] || ''; }
+    };
+  }
+  if (!w.ClipboardEvent) {
+    w.ClipboardEvent = class extends w.Event {
+      constructor(typ, init = {}) { super(typ, init); this.clipboardData = init.clipboardData || null; }
+    };
+  }
+  w.document.addEventListener('paste', (e) => {
+    const f = w.document.querySelector('div[role="textbox"]');
+    if (!f) return;
+    e.preventDefault();
+    f.textContent += (e.clipboardData && e.clipboardData.getData('text/plain')) || '';
+  }, true);
+  w.document.execCommand = (befehl, _ui, wert) => {
+    if (befehl !== 'insertText') return false;
+    const f = w.document.querySelector('div[role="textbox"]');
+    if (!f) return false;
+    f.textContent += String(wert).replace(/\n/g, '');
+    return true;
+  };
 
   [...doc.querySelectorAll('.row')].forEach((r, i) => {
     r['__reactFiber$test'] = { memoizedProps: { thread: threads[i] }, return: null, alternate: null };
@@ -163,6 +214,8 @@ export async function starte({
 
   const aufrufe = [];
   const spaceTags = [...tags];
+  const VLISTE = '900000000002';
+  const vorlagenTasks = (vorlagen || []).map((v, i) => ({ id: v.id || ('vl' + i), titel: v.titel, text: v.text }));
   const serverTasks = tasks.map((t) => ({ tags: [], ...t }));
   let naechste = 100;
 
@@ -222,6 +275,20 @@ export async function starte({
 
     const ok = (o) => ({ status: 200, responseText: JSON.stringify(o || {}) });
 
+    // --- Vorlagenliste. Muss vor den allgemeinen Regeln stehen, sonst
+    // greift die Task-Abfrage fuer *jede* Liste. ---
+    if (methode === 'GET' && /^\/space\/[^/]+\/list/.test(pf)) {
+      return ok({ lists: vorlagen ? [{ id: VLISTE, name: 'Standardnachrichten' }] : [] });
+    }
+    if (methode === 'GET' && pf.startsWith('/list/' + VLISTE + '/task')) {
+      return ok({ tasks: vorlagenTasks.filter((v) => !v.zu).map((v) => ({ id: v.id, name: v.titel, text_content: v.text })) });
+    }
+    if (methode === 'POST' && pf === '/list/' + VLISTE + '/task') {
+      const k = JSON.parse(data);
+      const neu = { id: 'vl' + (naechste++), titel: k.name, text: k.description || '' };
+      vorlagenTasks.push(neu);
+      return ok({ id: neu.id });
+    }
     if (methode === 'GET' && /^\/list\/[^/]+$/.test(pf)) return ok({ id: LISTE, space: { id: SPACE } });
     if (methode === 'GET' && /^\/task\/[^/?]+/.test(pf)) {
       const id = pf.split('/')[2].split('?')[0];
@@ -255,6 +322,15 @@ export async function starte({
         t.tags = t.tags.filter((x) => x !== name);
         return ok();
       }
+    }
+    if (methode === 'PUT' && /^\/task\/vl[0-9]+$/.test(pf)) {
+      const v = vorlagenTasks.find((x) => x.id === pf.split('/')[2]);
+      if (!v) return { status: 404, responseText: '' };
+      const k = JSON.parse(data);
+      if (k.name !== undefined) v.titel = k.name;
+      if (k.description !== undefined) v.text = k.description;
+      if (k.status === 'closed') v.zu = true;
+      return ok();
     }
     if (methode === 'PUT' && /^\/task\/[^/]+$/.test(pf)) {
       const t = serverTasks.find((x) => x.id === pf.split('/')[2]);
@@ -327,7 +403,7 @@ export async function starte({
     await warte(w, 50);
   }
   await warte(w, 120);
-  return { dom, w, doc, store, aufrufe, serverTasks, spaceTags };
+  return { dom, w, doc, store, aufrufe, serverTasks, spaceTags, vorlagenTasks };
 }
 
 // Bausteine fuer eigene Unterhaltungen in einzelnen Pruefungen.
