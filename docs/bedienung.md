@@ -560,6 +560,55 @@ Aktualisieren verschwindet der Tag von selbst, und das Skript schreibt den
 Handle zusätzlich als Zeile `igfu-handle:` in die Beschreibung — die ist dann
 die maßgebliche Stelle, eine spätere Umbenennung schadet nicht mehr.
 
+## In der geöffneten Unterhaltung
+
+Neben dem Namen des Gegenübers steht eine Leiste mit drei Knöpfen. Es sind
+dieselben wie an den Zeilen der Liste — nur dort, wo du gerade hinsiehst, wenn
+du antwortest.
+
+| | |
+|---|---|
+| Status-Pille | derselbe Status und dieselbe Farbe wie in der Liste; Klick öffnet den Task in ClickUp |
+| „CRM +" | gibt es noch keinen Datensatz, legt der Klick ihn an |
+| Follow-up | setzt und entfernt die Markierung |
+| Postfach-Knopf | **grün**: dieselbe Person gibt es auch im anderen Postfach, Klick öffnet sie in einem neuen Tab. **Rot**: gibt es nicht, der Knopf tut nichts. |
+
+### Der Postfach-Knopf
+
+Partner-Nachrichten und normale DMs sind **verschiedene Unterhaltungen mit
+verschiedenen Kennungen**, auch wenn es dieselbe Person ist. Der Knopf sagt,
+ob es die zweite gibt, und bringt dich hin.
+
+Damit er das weiß, muss das Skript **beide Listen einmal gesehen haben** —
+den normalen Posteingang und `instagram.com/direct/partnerships/`. Woher eine
+Unterhaltung stammt, ist ihrer Kennung nämlich nicht anzusehen. Das merkt sich
+**dein Browser**, nicht ClickUp: auf einem frischen Rechner steht der Knopf
+deshalb anfangs auf „Postfach?" und wird grau, bis du beide Listen einmal
+offen hattest. Danach stimmt er.
+
+Steht „Nur normal" oder „Nur Partner", ist zu dieser Person im anderen
+Postfach nichts bekannt.
+
+## Notizen zu einer Person
+
+Rechts am Fensterrand hängt eine schmale Leiste. Darin stehen die
+**ClickUp-Kommentare** des Datensatzes — unsere Notizen zu diesem Affiliate —
+und du kannst neue schreiben.
+
+| | |
+|---|---|
+| Es gibt Notizen | die Leiste steht **offen** |
+| Es gibt keine | sie ist zu, ein Klick auf den Streifen öffnet sie |
+| Es gibt keinen Datensatz | die Leiste erscheint gar nicht |
+| „In ClickUp" | öffnet den Task |
+
+Geschrieben wird mit „Notiz sichern". Die Notiz landet als Kommentar am Task,
+unter dem Namen, zu dem dein ClickUp-Token gehört — Cosima sieht sie also als
+ihre, wenn sie ihren eigenen Token benutzt.
+
+Ein angefangener Text bleibt stehen, solange du in der Unterhaltung bist.
+Wechselst du die Unterhaltung, ist er weg.
+
 ## Standardnachrichten
 
 In jeder Unterhaltung steht rechts in der Verfassen-Zeile ein Knopf

@@ -1002,6 +1002,114 @@ bewusste Speicherübernahme.
 
 ---
 
+## 9a. Die geöffnete Unterhaltung
+
+Drei Dinge hängen an ihr: die Leiste neben dem Namen, der Postfach-Knopf und
+die Notizen am rechten Rand. Alle drei im Takt von 1500 ms, nicht einmalig —
+Instagram baut den Kopf beim Wechsel der Unterhaltung neu auf.
+
+### Der Anker: die Überschrift im Kopf
+
+Am 23.10.2026 an der echten Seite gemessen. Der Kopf ist ein
+`a[role="link"]` auf `/<handle>/`, darin Bild, ein `h2` mit dem Anzeigenamen
+und der Handle:
+
+```
+DIV  (Kopfbalken, 1401 px)
+└── A[role=link]  href="/reichert_florian/"   (178 px)
+    └── DIV
+        ├── DIV > H2 > SPAN   „Florian Reichert"
+        └── DIV > SPAN        „reichert_florian"
+```
+
+Die Leiste wird **hinter dem `a`** eingehängt, nicht im Balken.
+
+Auf der Seite stehen **drei** `h2`: das eigene Konto links, das Gegenüber im
+Kopf, und eines aus unserem eigenen Panel. Die beiden Störer werden benannt —
+das eigene Konto am gelernten Handle, das Panel an seiner Kennung. Bleibt
+nicht genau eines übrig, wird **nichts** eingehängt. Dieselbe Haltung wie bei
+`igOffeneUnterhaltung()`: lieber keine Leiste als eine an der falschen Stelle.
+
+**Keine Pixelbreiten.** Der erste Entwurf stieg vom `h2` nach oben, bis ein
+Vorfahr einen Teil der Fensterbreite einnahm. Das war nicht prüfbar — jsdom
+gibt jedem Element die Größe null, der Mutationstest wäre grün durchgelaufen.
+Jetzt macht `kopfBlock()` am `a` fest, und das lässt sich nachbauen.
+
+### Welches Postfach
+
+Partner-Nachrichten liegen seit Oktober 2026 unter
+`instagram.com/direct/partnerships/` — eine **eigene Adresse**, anders als im
+Creator Hub. Geöffnet läuft eine Partner-Unterhaltung trotzdem unter
+`/direct/t/<id>/`, die bestehende Erkennung greift also unverändert.
+
+Unterschieden wird am `thread_subtype` der Zeile:
+
+| Untertyp | | |
+|---|---|---|
+| `IGD_BC_PARTNERSHIP` | Partner-Nachricht | `is_group: true` |
+| `IG_BUSINESS_ACCOUNT_ONE_TO_ONE` | normale DM | |
+
+Ein **unbekannter** Untertyp ergibt den Leerstring, nicht „normal". Eine neue
+Sorte Unterhaltung soll nicht stillschweigend als DM durchgehen.
+
+**An der Kennung ist die Herkunft nicht abzulesen.** Am 23.10.2026
+nachgemessen: normale DMs tragen 15- bis 17-stellige Kennungen,
+Partner-Unterhaltungen 16- bis 17-stellige. Die Bereiche überlappen. Das ist
+derselbe Irrtum, der bis 6.8 an der Länge die Business Suite erkennen wollte.
+
+Die Zuordnung steht in `igfu:postfachart:v1` im **Browser**, nicht in der
+Task-Beschreibung. Dort stünde sie für alle drei Rechner, kostete aber beim
+ersten Lauf eine Schreibanfrage je Task — und die Beschreibungen werden
+ohnehin gerade umgebaut. Der Preis: auf einem frischen Rechner ist der Knopf
+grau, bis beide Listen einmal offen waren.
+
+`andereUnterhaltung()` verlangt, dass die Art **beider** Kennungen bekannt ist.
+Ist die der zweiten unbekannt, gilt sie nicht als Treffer: ein falsches Grün
+wäre schlimmer als ein Grau.
+
+### Notizen
+
+Die ClickUp-Kommentare des Tasks, über `GET` und `POST` auf
+`/task/<id>/comment`. ClickUp liefert sie **neueste zuerst**; gelesen wird von
+oben nach unten, also dreht `koSortiert()` um.
+
+Die Leiste öffnet sich **von selbst, sobald es Kommentare gibt** — das ist
+ihr Zweck, eine Notiz, die man aufklappen müsste, wird nicht gelesen. Klappt
+der Benutzer selbst, setzt `koManuell` die Automatik für diese Unterhaltung
+ab. Ohne Task gibt es die Leiste gar nicht.
+
+**Gezeichnet wird nur bei echter Änderung** (`koSignatur()`). Ohne diesen
+Kurzschluss baut der Takt alle anderthalb Sekunden das Textfeld neu, und dabei
+gehen **Fokus, Schreibmarke und Scrollstand** verloren — beim Tippen
+unbrauchbar. Der *Text* allein hängt nicht daran: den schreibt `koEntwurf`
+ohnehin zurück.
+
+Genau das hat ein Mutationstest am 23.10.2026 gezeigt. Die erste Fassung der
+Prüfung las nur den Text zurück und lief grün durch, obwohl der Kurzschluss
+entfernt war. Sie prüft jetzt, ob es **dasselbe Element** geblieben ist.
+
+### Die Benutzer-ID kam in neuer Verpackung
+
+Bis Oktober 2026 stand sie als `users[0].id` an der Zeile. Seit einem Umbau
+liefert Instagram dort nur noch eine Relay-Referenz:
+
+```js
+{ __fragments: {…}, __id: 'XDTUserDict:334549785', __fragmentOwner: {…} }
+```
+
+`id` ist **weg**, und `userID` lief still auf den Leerstring. Folge: seit etwa
+dem 22.10.2026 bekam kein neuer Task mehr eine `igfu-iguser:`-Zeile. Zu sehen
+an `iroma_n72`, dessen Unterhaltung das Skript vor sich hatte.
+
+**Dieselbe ID-Welt wie vorher.** Gegengehalten an `reichert_florian`: in
+ClickUp steht `igfu-iguser: 334549785`, im DOM `XDTUserDict:334549785`. Der
+Bestand bleibt gültig, nur der Zugriffsweg war weg. `nutzerIDVon()` liest
+weiter zuerst `id`, damit ein Rückbau bei Instagram nichts kostet.
+
+Daraus die Lehre fürs nächste Mal: ein Feld, das still leer werden kann, fällt
+nicht auf. Ein Test, der die **neue** Form nachstellt, hätte das gefangen —
+der Prüfstand kennt jetzt beide.
+
 ## 9b. Standardnachrichten
 
 Seit 8.0 im Hauptskript, nicht mehr in einem eigenen. Vorher lagen die Texte im

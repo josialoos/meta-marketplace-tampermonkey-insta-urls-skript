@@ -54,6 +54,7 @@ export async function starte({
   metaUnterhaltungen = null, // [{ id, username, zeit }] fuer die Conversations-API
   ig = null,               // [{ id, titel, vorschau, zeit, ungelesen, bild }] baut die Instagram-Liste
   igOffen = null,          // { tid, handle, titel } simuliert eine geoeffnete Unterhaltung
+  kommentare = null,       // { '<taskId>': [{ text, wer, wann }] } Notizen an Tasks
   vorlagen = null,         // [{ id, titel, text, wer }] legt die Liste „Standardnachrichten" an
 } = {}) {
   // Die vier festen Threads bleiben unangetastet, damit bestehende Pruefungen
@@ -95,7 +96,8 @@ export async function starte({
   // diese Leiste im Prüfstand wäre die Regel nicht geprüft, und genau das war
   // am 19.10.2026 der Grund, warum ein Fehler durchrutschen konnte.
   const igLeiste = '<nav><a href="/explore/"><i></i></a><a href="/reels/"><i></i></a>'
-    + '<a href="/tzampasfood/"><i></i></a></nav>';
+    + '<a href="/tzampasfood/"><i></i></a></nav>'
+    + '<header><h2>tzampasfood</h2></header>';
   // nurLeiste: eine Unterhaltung, in der das Gegenüber überhaupt nicht
   // verlinkt ist — gemessen am 19.10.2026 in einer echten Partner-Unterhaltung.
   // Dann bleibt nur das eigene Konto übrig, und genau dieser Fall hat in 7.7
@@ -105,8 +107,9 @@ export async function starte({
     : igOffen
     ? igLeiste + '<section><div><div>' + (igOffen.partner
       ? ('<a href="/' + igOffen.handle + '"><i></i></a>').repeat(3)
-      : '<a href="/' + igOffen.handle + '/"><span>' + (igOffen.titel || igOffen.handle) + '</span>'
-        + '<span>' + igOffen.handle + '</span></a>') + '</div></div></section>'
+      : '<a href="/' + igOffen.handle + '/" role="link"><div><div><h2><span>'
+        + (igOffen.titel || igOffen.handle) + '</span></h2></div>'
+        + '<div><span>' + igOffen.handle + '</span></div></div></a>') + '</div></div></section>'
     : igLeiste;
   // Die Verfassen-Zeile, wie sie am 20.10.2026 aussah: das Eingabefeld zwei
   // Ebenen unter einer niedrigen Zeile, die mehrere Symbole traegt.
@@ -181,7 +184,17 @@ export async function starte({
     // Fehlt die Angabe im Test, bleibt sie weg — dann muss das Skript ohne ID
     // zurechtkommen, so wie bei alten Unterhaltungen.
     const ref = { thread_key: String(c.id || ''), thread_fbid: 'fb' + i };
+    // Zwei Formen desselben Eintrags. Bis Oktober 2026 stand die ID als `id`
+    // am Objekt; seit einem Umbau liefert Instagram nur noch eine
+    // Relay-Referenz mit `__id: 'XDTUserDict:<id>'` und *ohne* `id`. Beide
+    // muessen gelesen werden, damit ein Rueckbau bei Instagram nichts kostet.
     if (c.nutzer) ref.users = [{ id: String(c.nutzer) }];
+    else if (c.nutzerRef) ref.users = [{ __id: 'XDTUserDict:' + c.nutzerRef, __fragments: {} }];
+    if (c.postfach) {
+      ref.thread_subtype = c.postfach === 'partner'
+        ? 'IGD_BC_PARTNERSHIP' : 'IG_BUSINESS_ACCOUNT_ONE_TO_ONE';
+      if (c.postfach === 'partner') ref.is_group = true;
+    }
     r['__reactFiber$test'] = {
       memoizedProps: { threadRef: ref },
       stateNode: r, child: null, return: null, alternate: null,
@@ -219,6 +232,17 @@ export async function starte({
   const vorlagenTasks = (vorlagen || []).map((v, i) => (
     { id: v.id || ('vl' + i), titel: v.titel, text: v.text, wer: v.wer || '' }));
   const serverTasks = tasks.map((t) => ({ tags: [], ...t }));
+  // Notizen je Task. ClickUp liefert sie neueste zuerst — genau so gibt der
+  // Pruefstand sie auch heraus, sonst waere das Sortieren im Skript ungeprueft.
+  const kommentarListen = {};
+  for (const [id, liste] of Object.entries(kommentare || {})) {
+    kommentarListen[id] = liste.map((k, i) => ({
+      id: k.id || (id + '-k' + i),
+      comment_text: k.text,
+      user: k.wer ? { username: k.wer } : undefined,
+      date: String(k.wann || (1700000000000 + i * 60000)),
+    }));
+  }
   let naechste = 100;
 
   const alsApiTask = (t) => ({
@@ -297,6 +321,25 @@ export async function starte({
       const neu = { id: 'vl' + (naechste++), titel: k.name, text: k.description || '', wer: '' };
       vorlagenTasks.push(neu);
       return ok({ id: neu.id });
+    }
+    // --- Notizen. Muss vor der allgemeinen Task-Abfrage stehen, sonst
+    // schluckt die /task/<id>/comment mit. ---
+    if (/^\/task\/[^/]+\/comment$/.test(pf)) {
+      const id = pf.split('/')[2];
+      if (methode === 'GET') {
+        return ok({ comments: [...(kommentarListen[id] || [])].reverse() });
+      }
+      if (methode === 'POST') {
+        const k = JSON.parse(data);
+        if (!kommentarListen[id]) kommentarListen[id] = [];
+        kommentarListen[id].push({
+          id: id + '-k' + kommentarListen[id].length,
+          comment_text: k.comment_text,
+          user: { username: 'Josia Loos' },
+          date: String(Date.now()),
+        });
+        return ok({ id: 'neu' });
+      }
     }
     if (methode === 'GET' && /^\/list\/[^/]+$/.test(pf)) return ok({ id: LISTE, space: { id: SPACE } });
     if (methode === 'GET' && /^\/task\/[^/?]+/.test(pf)) {
@@ -412,7 +455,7 @@ export async function starte({
     await warte(w, 50);
   }
   await warte(w, 120);
-  return { dom, w, doc, store, aufrufe, serverTasks, spaceTags, vorlagenTasks };
+  return { dom, w, doc, store, aufrufe, serverTasks, spaceTags, vorlagenTasks, kommentarListen };
 }
 
 // Bausteine fuer eigene Unterhaltungen in einzelnen Pruefungen.

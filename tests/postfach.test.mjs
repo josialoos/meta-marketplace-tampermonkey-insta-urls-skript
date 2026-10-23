@@ -3155,6 +3155,291 @@ gruppe('Vorlagen: ohne Urheber bleibt das Kuerzel weg');
     !doc.querySelector('.igfu-vl-leiste'));
 }
 
+gruppe('Benutzer-ID: auch als Relay-Referenz lesbar');
+{
+  // Bis Oktober 2026 stand die ID als `id` am Nutzerobjekt. Seit einem Umbau
+  // liefert Instagram dort nur noch { __id: 'XDTUserDict:<id>' } und kein `id`
+  // mehr — gemessen am 23.10.2026. Dadurch lief die ID still auf den
+  // Leerstring, und neue Tasks bekamen keine `igfu-iguser:`-Zeile mehr.
+  // Dieselbe ID-Welt wie vorher: in ClickUp steht bei reichert_florian
+  // `igfu-iguser: 334549785`, im DOM `XDTUserDict:334549785`.
+  const { w, store } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '101925914541472', titel: 'Florian Reichert', vorschau: 'Hallo', zeit: '2h',
+           nutzerRef: '334549785' }],
+  });
+  await warte(w, 2500);
+  const h = (store.get('clickup:handles:v1') || {})['101925914541472'] || {};
+  pruefe('Die ID wurde gelesen', h.nutzer === '334549785', JSON.stringify(h));
+}
+
+gruppe('Benutzer-ID: die alte Form zaehlt weiter');
+{
+  const { w, store } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'Hallo', zeit: '2h', nutzer: '334549785' }],
+  });
+  await warte(w, 2500);
+  const h = (store.get('clickup:handles:v1') || {})['101925914541472'] || {};
+  pruefe('Auch mit id am Objekt', h.nutzer === '334549785', JSON.stringify(h));
+}
+
+gruppe('Postfach-Art wird gemerkt, nicht geraten');
+{
+  // An der Kennung ist die Herkunft nicht abzulesen: am 23.10.2026 gemessen
+  // tragen normale DMs 15- bis 17-stellige Kennungen, Partner-Unterhaltungen
+  // 16- bis 17-stellige. Deshalb kommt die Art aus thread_subtype.
+  const { w, store } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [
+      { id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h', postfach: 'normal' },
+      { id: '1636057484698926', titel: 'Bella', vorschau: 'b', zeit: '3h', postfach: 'partner' },
+      { id: '999000999', titel: 'Ohne', vorschau: 'c', zeit: '4h' },
+    ],
+  });
+  await warte(w, 2500);
+  const arten = store.get('igfu:postfachart:v1') || {};
+  pruefe('Normale DM erkannt', arten['101925914541472'] === 'normal', JSON.stringify(arten));
+  pruefe('Partner-Unterhaltung erkannt', arten['1636057484698926'] === 'partner', JSON.stringify(arten));
+  pruefe('Ohne Untertyp wird nichts eingetragen', !arten['999000999'], JSON.stringify(arten));
+}
+
+gruppe('Kopfleiste: Status und Follow-up neben dem Namen');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '101925914541472', titel: 'Florian Reichert', vorschau: 'a', zeit: '2h', postfach: 'normal' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian Reichert' },
+    tasks: [{ id: 'a1', name: 'reichert_florian — Florian Reichert', status: 'erster content',
+              farbe: '#008844', beschreibung: 'x\nigfu-ig: 101925914541472' }],
+  });
+  await warte(w, 3000);
+  const leiste = doc.querySelector('.igfu-kopf');
+  pruefe('Die Leiste ist da', !!leiste);
+  pruefe('Sie haengt an der Unterhaltung', leiste && leiste.dataset.tid === '101925914541472',
+    leiste && leiste.dataset.tid);
+  pruefe('Sie steht neben dem Namensblock, nicht irgendwo',
+    !!(leiste && leiste.previousElementSibling && leiste.previousElementSibling.querySelector('h2')),
+    leiste && leiste.previousElementSibling && leiste.previousElementSibling.tagName);
+  const crm = leiste && leiste.querySelector('[data-kind="crm"]');
+  pruefe('Der Status steht dran', crm && crm.textContent === 'erster content', crm && crm.textContent);
+  pruefe('In der Farbe des Status',
+    crm && /(#008844|rgb\(0,\s*136,\s*68\))/i.test(crm.style.background || ''),
+    crm && crm.style.background);
+  pruefe('Der Follow-up-Knopf ist auch da', !!(leiste && leiste.querySelector('[data-kind="followup"]')));
+}
+
+gruppe('Kopfleiste: ohne Task steht dort CRM +');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '101925914541472', titel: 'Florian Reichert', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian Reichert' },
+  });
+  await warte(w, 3000);
+  const crm = doc.querySelector('.igfu-kopf [data-kind="crm"]');
+  pruefe('Der Anlegen-Knopf steht da', crm && crm.textContent === 'CRM +', crm && crm.textContent);
+}
+
+gruppe('Kopfleiste: das eigene Konto wird nicht fuer das Gegenueber gehalten');
+{
+  // Auf der Seite stehen mehrere h2: das eigene Konto links, das Gegenueber im
+  // Kopf, dazu das eigene Panel. Bleibt nicht genau eines uebrig, wird nichts
+  // eingehaengt — lieber keine Leiste als eine an der falschen Stelle.
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian Reichert' },
+  });
+  await warte(w, 3000);
+  const leiste = doc.querySelector('.igfu-kopf');
+  pruefe('Genau eine Leiste', doc.querySelectorAll('.igfu-kopf').length === 1,
+    String(doc.querySelectorAll('.igfu-kopf').length));
+  pruefe('Nicht am eigenen Konto',
+    !!(leiste && !/tzampasfood/.test(leiste.previousElementSibling.textContent || '')),
+    leiste && leiste.previousElementSibling.textContent);
+}
+
+gruppe('Postfach-Knopf: gruen und klickbar, wenn es die Person zweimal gibt');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [
+      { id: '101925914541472', titel: 'Bella', vorschau: 'a', zeit: '2h', postfach: 'normal' },
+      { id: '1636057484698926', titel: 'Bella', vorschau: 'b', zeit: '3h', postfach: 'partner' },
+    ],
+    igOffen: { tid: '101925914541472', handle: 'bellaa_sophie', titel: 'Bella' },
+    tasks: [{ id: 'a1', name: 'bellaa_sophie — BELLA', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: 'x\nigfu-ig: 101925914541472\nigfu-ig: 1636057484698926' }],
+  });
+  await warte(w, 3500);
+  const k = doc.querySelector('.igfu-kopf [data-kind="postfach"]');
+  pruefe('Der Knopf ist da', !!k);
+  pruefe('Er steht auf gruen', k && k.classList.contains('on'), k && k.className);
+  pruefe('Er ist klickbar', k && !k.disabled);
+  pruefe('Er nennt das andere Postfach', k && k.textContent === 'Partner-Postfach', k && k.textContent);
+  pruefe('Und kennt die Gegenstelle', k && k.dataset.ziel === '1636057484698926', k && k.dataset.ziel);
+}
+
+gruppe('Postfach-Knopf: rot und tot, wenn es die Person nur einmal gibt');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h', postfach: 'normal' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian' },
+    tasks: [{ id: 'a1', name: 'reichert_florian — Florian', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: 'x\nigfu-ig: 101925914541472' }],
+  });
+  await warte(w, 3500);
+  const k = doc.querySelector('.igfu-kopf [data-kind="postfach"]');
+  pruefe('Nicht gruen', k && !k.classList.contains('on'), k && k.className);
+  pruefe('Nicht klickbar', k && k.disabled === true);
+  pruefe('Und sagt, dass es nur eines gibt', k && k.textContent === 'Nur normal', k && k.textContent);
+}
+
+gruppe('Postfach-Knopf: unbekannte Art ergibt kein falsches Gruen');
+{
+  // Die zweite Unterhaltung des Tasks hat dieses Geraet noch nie gesehen.
+  // Dann ist nicht entscheidbar, ob sie im anderen Postfach liegt — und ein
+  // falsches Gruen waere schlimmer als ein Grau.
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '101925914541472', titel: 'Bella', vorschau: 'a', zeit: '2h', postfach: 'normal' }],
+    igOffen: { tid: '101925914541472', handle: 'bellaa_sophie', titel: 'Bella' },
+    tasks: [{ id: 'a1', name: 'bellaa_sophie — BELLA', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: 'x\nigfu-ig: 101925914541472\nigfu-ig: 1636057484698926' }],
+  });
+  await warte(w, 3500);
+  const k = doc.querySelector('.igfu-kopf [data-kind="postfach"]');
+  pruefe('Bleibt rot', k && !k.classList.contains('on'), k && k.className);
+  pruefe('Ohne Ziel', k && !k.dataset.ziel, k && k.dataset.ziel);
+}
+
+gruppe('Notizen: offen, wenn es welche gibt');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian' },
+    tasks: [{ id: 'a1', name: 'reichert_florian — Florian', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: 'x\nigfu-ig: 101925914541472' }],
+    kommentare: { a1: [
+      { text: 'Hat Ware bekommen, wartet auf Content.', wer: 'Josia Loos', wann: 1700000000000 },
+      { text: 'Nachgefasst am Montag.', wer: 'Cosima Werr', wann: 1700086400000 },
+    ] },
+  });
+  await warte(w, 3500);
+  const leiste = doc.querySelector('.igfu-ko');
+  pruefe('Die Leiste ist da', !!leiste);
+  pruefe('Und aufgeklappt', leiste && leiste.classList.contains('auf'), leiste && leiste.className);
+  const texte = [...doc.querySelectorAll('.igfu-ko-text')].map((e) => e.textContent);
+  pruefe('Beide Notizen stehen da', texte.length === 2, JSON.stringify(texte));
+  pruefe('Die aelteste zuerst', texte[0] === 'Hat Ware bekommen, wartet auf Content.', JSON.stringify(texte));
+  const wer = [...doc.querySelectorAll('.igfu-ko-wer')].map((e) => e.textContent);
+  pruefe('Mit Urheber', wer.includes('Cosima Werr'), JSON.stringify(wer));
+}
+
+gruppe('Notizen: zu, wenn es keine gibt');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian' },
+    tasks: [{ id: 'a1', name: 'reichert_florian — Florian', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: 'x\nigfu-ig: 101925914541472' }],
+    kommentare: { a1: [] },
+  });
+  await warte(w, 3500);
+  const leiste = doc.querySelector('.igfu-ko');
+  pruefe('Die Leiste ist da', !!leiste);
+  pruefe('Aber zugeklappt', leiste && !leiste.classList.contains('auf'), leiste && leiste.className);
+  pruefe('Kein Textfeld', !doc.querySelector('.igfu-ko-feld'));
+  const griff = doc.querySelector('.igfu-ko-griff');
+  pruefe('Der Griff laedt zum Schreiben ein',
+    griff && /Notiz schreiben/.test(griff.textContent || ''), griff && griff.textContent);
+  if (griff) { klick(w, griff); await warte(w, 300); }
+  pruefe('Nach dem Klick offen',
+    !!doc.querySelector('.igfu-ko.auf') && !!doc.querySelector('.igfu-ko-feld'));
+}
+
+gruppe('Notizen: ohne Task gibt es die Leiste nicht');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian' },
+  });
+  await warte(w, 3500);
+  pruefe('Keine Leiste', !doc.querySelector('.igfu-ko'));
+}
+
+gruppe('Notizen: schreiben landet in ClickUp');
+{
+  const { doc, w, kommentarListen } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian' },
+    tasks: [{ id: 'a1', name: 'reichert_florian — Florian', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: 'x\nigfu-ig: 101925914541472' }],
+    kommentare: { a1: [{ text: 'Erste Notiz.', wer: 'Josia Loos', wann: 1700000000000 }] },
+  });
+  await warte(w, 3500);
+  const feld = doc.querySelector('.igfu-ko-feld');
+  pruefe('Das Textfeld ist da', !!feld);
+  if (feld) {
+    feld.value = 'Hat heute geantwortet.';
+    feld.dispatchEvent(new w.Event('input', { bubbles: true }));
+  }
+  const sichern = [...doc.querySelectorAll('.igfu-ko-fuss button')]
+    .find((b) => b.textContent === 'Notiz sichern');
+  pruefe('Der Sichern-Knopf ist da', !!sichern);
+  if (sichern) klick(w, sichern);
+  await warte(w, 1500);
+  const liste = kommentarListen.a1 || [];
+  pruefe('Die Notiz liegt in ClickUp', liste.length === 2, JSON.stringify(liste.map((k) => k.comment_text)));
+  pruefe('Mit dem geschriebenen Text',
+    liste.some((k) => k.comment_text === 'Hat heute geantwortet.'),
+    JSON.stringify(liste.map((k) => k.comment_text)));
+  pruefe('Und steht danach in der Leiste',
+    [...doc.querySelectorAll('.igfu-ko-text')].some((e) => e.textContent === 'Hat heute geantwortet.'),
+    JSON.stringify([...doc.querySelectorAll('.igfu-ko-text')].map((e) => e.textContent)));
+  const feld2 = doc.querySelector('.igfu-ko-feld');
+  pruefe('Das Feld ist wieder leer', feld2 && feld2.value === '', feld2 && feld2.value);
+}
+
+gruppe('Notizen: das Textfeld wird beim Takt nicht neu gebaut');
+{
+  // Der Takt zeichnet alle anderthalb Sekunden. Wuerde dabei das Textfeld neu
+  // entstehen, waeren Fokus, Schreibmarke und Scrollstand jedes Mal weg —
+  // beim Tippen unbrauchbar. Der Text allein beweist das nicht: den schreibt
+  // koEntwurf ohnehin zurueck. Gemessen wird deshalb, ob es *dasselbe*
+  // Element ist. Ein Mutationstest ohne diese Pruefung lief gruen durch.
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian' },
+    tasks: [{ id: 'a1', name: 'reichert_florian — Florian', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: 'x\nigfu-ig: 101925914541472' }],
+    kommentare: { a1: [{ text: 'Erste Notiz.', wer: 'Josia Loos', wann: 1700000000000 }] },
+  });
+  await warte(w, 3500);
+  const feld = doc.querySelector('.igfu-ko-feld');
+  pruefe('Das Textfeld ist da', !!feld);
+  if (feld) {
+    feld.value = 'Halb getippt';
+    feld.dispatchEvent(new w.Event('input', { bubbles: true }));
+  }
+  if (feld) { feld.focus(); feld.selectionStart = 4; feld.selectionEnd = 4; }
+  await warte(w, 4000);
+  const spaeter = doc.querySelector('.igfu-ko-feld');
+  pruefe('Es ist dasselbe Feld geblieben', spaeter === feld);
+  pruefe('Der Text steht noch da', spaeter && spaeter.value === 'Halb getippt', spaeter && spaeter.value);
+  pruefe('Die Schreibmarke steht noch, wo sie stand',
+    spaeter && spaeter.selectionStart === 4, spaeter && String(spaeter.selectionStart));
+  pruefe('Und der Fokus ist noch drin', doc.activeElement === feld,
+    doc.activeElement && doc.activeElement.className);
+}
+
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));

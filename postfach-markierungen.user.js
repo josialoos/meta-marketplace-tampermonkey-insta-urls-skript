@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      8.3
+// @version      8.4
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -234,6 +234,53 @@
 .igfu-vl-suche { flex: 1; width: auto; margin-bottom: 0; }
 .igfu-vl-feld::placeholder, .igfu-vl-suche::placeholder { color: rgb(var(--ig-secondary-text, 106, 113, 122)); }
 .igfu-vl-gross { min-height: 160px; resize: vertical; }
+
+/* Die Leiste neben dem Namen in der geoeffneten Unterhaltung. Dieselben
+   Knoepfe wie an den Zeilen, nur sitzen sie fest statt absolut und sind
+   immer sichtbar — hier gibt es kein Ueberfahren der Zeile. */
+.igfu-kopf { position: static; bottom: auto; z-index: auto;
+  margin-left: 10px; align-self: center; pointer-events: auto; }
+.igfu-kopf > .igfu-tag { opacity: 1; pointer-events: auto; }
+.igfu-tag[data-kind="postfach"]::before {
+  content: ""; width: 8px; height: 8px; border-radius: 50%;
+  background: #d93025; box-sizing: border-box; }
+.igfu-tag[data-kind="postfach"].on::before { background: #0b8043; }
+.igfu-tag[data-kind="postfach"][disabled] { cursor: default; opacity: .7; }
+
+/* Notizen am rechten Rand */
+.igfu-ko { position: fixed; right: 0; top: 84px; z-index: 2147483000;
+  display: flex; align-items: stretch; max-height: calc(100vh - 168px);
+  font: 13px/1.45 system-ui, -apple-system, sans-serif; }
+.igfu-ko-griff { display: flex; flex-direction: column; align-items: center; gap: 8px;
+  width: 30px; padding: 10px 0; cursor: pointer; font: inherit;
+  border: 1px solid rgb(var(--ig-separator, 219, 223, 228)); border-right: none; border-radius: 10px 0 0 10px;
+  background: rgb(var(--ig-elevated-background, 255, 255, 255));
+  color: rgb(var(--ig-secondary-text, 106, 113, 122)); }
+.igfu-ko-griff:hover { background: rgb(var(--ig-highlight-background, 243, 245, 247)); }
+.igfu-ko-schrift { writing-mode: vertical-rl; text-orientation: mixed;
+  font-size: 11px; font-weight: 600; letter-spacing: .02em; }
+.igfu-ko-koerper { width: 300px; display: flex; flex-direction: column; min-height: 0;
+  border: 1px solid rgb(var(--ig-separator, 219, 223, 228)); border-right: none;
+  background: rgb(var(--ig-elevated-background, 255, 255, 255));
+  color: rgb(var(--ig-primary-text, 12, 16, 20));
+  box-shadow: -8px 0 28px rgba(0,0,0,.18); }
+.igfu-ko-kopf { display: flex; justify-content: space-between; align-items: center;
+  padding: 10px; border-bottom: 1px solid rgb(var(--ig-separator, 219, 223, 228)); }
+.igfu-ko-verlauf { flex: 1; min-height: 0; overflow: auto; padding: 4px 10px; }
+.igfu-ko-eintrag { padding: 8px 0; border-bottom: 1px solid rgb(var(--ig-separator, 219, 223, 228)); }
+.igfu-ko-eintrag:last-child { border-bottom: none; }
+.igfu-ko-zeile { display: flex; gap: 8px; justify-content: space-between;
+  font-size: 11px; margin-bottom: 3px;
+  color: rgb(var(--ig-secondary-text, 106, 113, 122)); }
+.igfu-ko-wer { font-weight: 600; }
+.igfu-ko-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.igfu-ko-fuss { display: flex; flex-direction: column; gap: 6px;
+  padding: 8px 10px; border-top: 1px solid rgb(var(--ig-separator, 219, 223, 228)); }
+.igfu-ko-feld { width: 100%; box-sizing: border-box; min-height: 64px; resize: vertical;
+  border-radius: 8px; padding: 8px; font: inherit; border: 1px solid rgb(var(--ig-separator, 219, 223, 228));
+  background: rgb(var(--ig-primary-background, 255, 255, 255));
+  color: rgb(var(--ig-primary-text, 12, 16, 20)); }
+.igfu-ko-feld::placeholder { color: rgb(var(--ig-secondary-text, 106, 113, 122)); }
     .igfu-list { list-style: none; margin: 0; padding: 0 0 4px; }
     .igfu-empty { padding: 20px 16px; color: #65676b; line-height: 1.45; }
     .igfu-item { padding: 10px 16px 12px; border-bottom: 1px solid #f0f2f5; }
@@ -304,7 +351,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '8.3';
+  const VERSION = '8.4';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -2656,6 +2703,61 @@
     return igHostUnter(fiber.child, (tiefe || 0) + 1);
   }
 
+  // Die Benutzer-ID des Gegenuebers aus einem Eintrag in `users`.
+  //
+  // Bis Oktober 2026 stand sie schlicht als `id` am Objekt. Seit einem Umbau
+  // liefert Instagram dort nur noch eine Relay-Referenz:
+  //
+  //     { __fragments: {...}, __id: 'XDTUserDict:334549785', __fragmentOwner: {...} }
+  //
+  // `id` ist weg, und damit lief `userID` still auf den Leerstring. Am
+  // 23.10.2026 an der echten Liste gemessen: kein einziger Eintrag hatte noch
+  // ein `id`, und seit etwa dem 22.10. bekam kein neuer Task mehr eine
+  // `igfu-iguser:`-Zeile — zu sehen an iroma_n72, dessen Unterhaltung das
+  // Skript vor sich hatte.
+  //
+  // **Dieselbe ID-Welt wie vorher.** Gegengehalten an reichert_florian: in
+  // ClickUp steht `igfu-iguser: 334549785`, im DOM `XDTUserDict:334549785`.
+  // Der Bestand bleibt also gueltig, nur der Zugriffsweg war weg.
+  //
+  // `id` wird weiter zuerst gelesen, damit ein Rueckbau bei Instagram nichts
+  // kostet.
+  function nutzerIDVon(u) {
+    if (!u) return '';
+    if (u.id) return String(u.id);
+    const m = /([0-9]{3,})\s*$/.exec(String(u.__id || ''));
+    return m ? m[1] : '';
+  }
+
+  // Welches der beiden Postfaecher. Nur die beiden bekannten Werte werden
+  // zugeordnet; ein unbekannter Untertyp ergibt den Leerstring, damit eine
+  // neue Sorte Unterhaltung nicht stillschweigend als normale DM gilt.
+  const POSTFACH = { IGD_BC_PARTNERSHIP: 'partner', IG_BUSINESS_ACCOUNT_ONE_TO_ONE: 'normal' };
+  const postfachArt = (untertyp) => POSTFACH[String(untertyp || '')] || '';
+
+  // Welche Unterhaltung in welchem Postfach liegt, haelt der Browser fest.
+  //
+  // Bewusst *nicht* in der Task-Beschreibung: dort stuende es fuer alle drei
+  // Rechner, kostete aber beim ersten Lauf eine Schreibanfrage je Task, und
+  // die Beschreibung wird ohnehin gerade umgebaut. Der Preis dafuer: auf einem
+  // frischen Rechner ist der Postfach-Knopf grau, bis beide Listen einmal
+  // offen waren. Das erledigt sich im normalen Arbeiten von selbst.
+  //
+  // Raten verbietet sich: an der Kennung ist die Herkunft nicht abzulesen. Am
+  // 23.10.2026 nachgemessen — normale DMs tragen 15- bis 17-stellige
+  // Kennungen, Partner-Unterhaltungen 16- bis 17-stellige, die Bereiche
+  // ueberlappen.
+  const KEY_POSTFACH = 'igfu:postfachart:v1';
+  const postfaecher = () => GM_getValue(KEY_POSTFACH, {}) || {};
+  function postfachMerken(tid, art) {
+    if (!tid || !art) return;
+    const alle = postfaecher();
+    if (alle[tid] === art) return;
+    alle[tid] = art;
+    GM_setValue(KEY_POSTFACH, alle);
+  }
+  const postfachVon = (tid) => postfaecher()[tid] || '';
+
   function igRows() {
     // Je Unterhaltung der Knoten, an dem React den threadRef haengen hat, dazu
     // die Benutzer-ID des Gegenuebers.
@@ -2683,7 +2785,8 @@
           const nutzer = Array.isArray(r.users) ? r.users : [];
           traeger.set(String(r.thread_key), {
             fiber: f,
-            userID: nutzer.length === 1 && nutzer[0] && nutzer[0].id ? String(nutzer[0].id) : '',
+            userID: nutzer.length === 1 ? nutzerIDVon(nutzer[0]) : '',
+            art: postfachArt(r.thread_subtype),
           });
         }
         f = f.return;
@@ -2730,6 +2833,7 @@
       out.push([el, {
         threadID: tid,
         userID: t.userID,
+        postfach: t.art,
         title: titel,
         timestamp: zeit,
         // Bei ungelesenen ersetzt Instagram die Vorschau durch „N new messages".
@@ -2829,6 +2933,7 @@
       // Angabe hier, die nicht aus gelesenem Seitentext stammt.
       const nutzerID = t.userID || '';
       if (vorschau || bild || nutzerID) handleMerken(tid, vorschau, 'vorschau', bild, null, nutzerID);
+      if (t.postfach) postfachMerken(tid, t.postfach);
       // Auf instagram.com steht in der Zeile haeufig der Handle selbst. Das
       // kostet nichts und ist der verlaesslichste Schluessel, den wir ohne
       // Zutun bekommen. Geprueft wird der unveraenderte Titel — sonst wird aus
@@ -3174,7 +3279,13 @@
         const wrap = chip.closest('.igfu-tags');
         if (!wrap) return;
         if (chip.dataset.kind === 'crm') crmKlick(wrap.dataset.tid, wrap.dataset.title);
-        else toggle(chip.dataset.kind, wrap.dataset.tid, wrap.dataset.title);
+        // Der Postfach-Knopf schaltet nichts um, er fuehrt woandershin.
+        else if (chip.dataset.kind === 'postfach') {
+          if (chip.dataset.ziel) {
+            window.open('https://www.instagram.com/direct/t/'
+              + encodeURIComponent(chip.dataset.ziel) + '/', '_blank', 'noopener');
+          }
+        } else toggle(chip.dataset.kind, wrap.dataset.tid, wrap.dataset.title);
       }
     }, true);
   }
@@ -4958,6 +5069,311 @@
 
   // Instagram baut die Verfassen-Zeile bei jedem Gespraechswechsel neu auf,
   // deshalb regelmaessig nachsetzen statt einmalig beim Laden.
+  // ---------- Die geoeffnete Unterhaltung ----------
+
+  const igOffenerThread = () =>
+    (/^\/direct\/t\/([A-Za-z0-9_-]+)\/?$/.exec(location.pathname) || [])[1] || '';
+
+  // Die Ueberschrift mit dem Namen des Gegenuebers im Kopf der Unterhaltung.
+  //
+  // Am 23.10.2026 an der echten Seite gemessen: es gibt drei `h2`. Das eigene
+  // Konto links in der Leiste, das Gegenueber im Kopf, und eines aus dem
+  // eigenen Panel. Die beiden Stoerer lassen sich benennen — das eigene Konto
+  // am gelernten Handle, das Panel an seiner Kennung. Bleibt danach nicht
+  // genau eines uebrig, wird nichts eingehaengt: lieber keine Leiste als eine
+  // an der falschen Stelle. Dieselbe Haltung wie bei igOffeneUnterhaltung.
+  const KOPF_FREMD = '#igfu-panel, #igfu-frage, .igfu-vl-panel, .igfu-ko, .igfu-kopf';
+
+  function kopfUeberschrift() {
+    const selbst = eigenerHandle();
+    const treffer = [];
+    for (const h of document.querySelectorAll('h2')) {
+      if (h.closest(KOPF_FREMD)) continue;
+      const t = String(h.textContent || '').trim();
+      if (!t) continue;
+      if (selbst && t.toLowerCase() === selbst.toLowerCase()) continue;
+      treffer.push(h);
+    }
+    return treffer.length === 1 ? treffer[0] : null;
+  }
+
+  // Der Block, neben den die Leiste gehoert.
+  //
+  // Am 23.10.2026 gemessen: Bild, Name und Handle stecken gemeinsam in einem
+  // a[role="link"] auf das Profil des Gegenuebers; der Kopfbalken darueber ist
+  // fast fensterbreit. Also an diesem Link festmachen — und nicht an
+  // Pixelbreiten. Eine Schranke aus gemessenen Breiten liesse sich im
+  // Pruefstand gar nicht pruefen, weil jsdom jedem Element die Groesse null
+  // gibt; genau diese Sorte ungepruefter Annahme hat hier schon zweimal
+  // Schaden angerichtet.
+  //
+  // In Partner-Unterhaltungen ist das Gegenueber nicht immer verlinkt. Dann
+  // bleibt der Block direkt ueber der Ueberschrift.
+  const kopfBlock = (h2) => h2.closest('a') || h2.parentElement || h2;
+
+  // Die Gegenstelle derselben Person im jeweils anderen Postfach.
+  //
+  // Beide Postfaecher liegen auf instagram.com und oeffnen unter derselben
+  // Adressform, aber eine Person hat in jedem eine *andere* Kennung. Welche
+  // Kennung wohin gehoert, steht in postfaecher() — gefuellt, sobald die
+  // jeweilige Liste einmal offen war. Ist die Art einer der beiden Kennungen
+  // unbekannt, gilt sie nicht als Treffer: ein falsches Gruen waere schlimmer
+  // als ein Grau.
+  function andereUnterhaltung(tid) {
+    const art = postfachVon(tid);
+    if (!art) return null;
+    const task = cuTasks[tid];
+    if (!task) return null;
+    for (const fremd of task.tids || []) {
+      if (fremd === tid) continue;
+      const fremdArt = postfachVon(fremd);
+      if (fremdArt && fremdArt !== art) return { tid: fremd, art: fremdArt };
+    }
+    return null;
+  }
+
+  function setzePostfachChip(chip, tid) {
+    if (!chip) return;
+    const art = postfachVon(tid);
+    const andere = andereUnterhaltung(tid);
+    chip.dataset.ziel = andere ? andere.tid : '';
+    chip.classList.toggle('on', !!andere);
+    chip.disabled = !andere;
+    if (andere) {
+      chip.textContent = andere.art === 'partner' ? 'Partner-Postfach' : 'Normales Postfach';
+      chip.title = 'Dieselbe Person im anderen Postfach — öffnet einen neuen Tab';
+      return;
+    }
+    if (!art) {
+      chip.textContent = 'Postfach?';
+      chip.title = 'Noch unbekannt, in welchem Postfach diese Unterhaltung liegt. '
+        + 'Beide Listen einmal öffnen, dann weiß das Skript es.';
+      return;
+    }
+    chip.textContent = art === 'partner' ? 'Nur Partner' : 'Nur normal';
+    chip.title = 'Zu dieser Person ist im anderen Postfach keine Unterhaltung bekannt';
+  }
+
+  // Die Leiste neben dem Namen: Status, Follow-up, anderes Postfach. Die
+  // Knöpfe sind dieselben wie an den Zeilen der Liste, samt Klick-Weiche —
+  // sie hängen nur an einem anderen Ort.
+  function kopfLeisteSetzen() {
+    const alt = document.querySelector('.igfu-kopf');
+    if (!isIG() || !cuEingerichtet()) { if (alt) alt.remove(); return; }
+    const tid = igOffenerThread();
+    if (!tid) { if (alt) alt.remove(); return; }
+    const h2 = kopfUeberschrift();
+    if (!h2) { if (alt) alt.remove(); return; }
+
+    const block = kopfBlock(h2);
+    let wrap = alt;
+    if (!wrap || wrap.previousElementSibling !== block) {
+      if (wrap) wrap.remove();
+      wrap = el('div', 'igfu-tags igfu-kopf');
+      wrap.append(makeChip('crm', 'CRM'), makeChip('followup', 'Follow-up'), makeChip('postfach', 'Postfach'));
+      block.insertAdjacentElement('afterend', wrap);
+    }
+    wrap.dataset.tid = tid;
+    wrap.dataset.title = String(h2.textContent || '').trim();
+    setzeCrmChip(wrap.querySelector('[data-kind="crm"]'), tid);
+    setChip(wrap.querySelector('[data-kind="followup"]'), !!follow[tid],
+      'Follow-up entfernen', 'Als Follow-up markieren');
+    setzePostfachChip(wrap.querySelector('[data-kind="postfach"]'), tid);
+  }
+
+  // ---------- Notizen: die Kommentare aus ClickUp ----------
+  //
+  // Die Kommentare eines Tasks sind unsere Notizen zu einem Affiliate. Sie
+  // standen bisher nur in ClickUp — also genau dort nicht, wo gearbeitet wird.
+  //
+  // Die Leiste hängt rechts am Fensterrand. Gibt es Notizen, steht sie offen;
+  // eine Notiz, die man erst aufklappen muss, wird nicht gelesen. Gibt es
+  // keine, bleibt sie zu, laesst sich aber jederzeit oeffnen, um eine zu
+  // schreiben. Ohne Task gibt es sie gar nicht — so entschieden, weil eine
+  // Leiste ohne Inhalt nur Platz kostet.
+
+  let koTid = '';        // Unterhaltung, zu der der Stand gehoert
+  let koTaskId = '';
+  let koListe = null;    // null = noch nicht geladen
+  let koOffen = false;
+  let koManuell = false; // von Hand geklappt? Dann nicht mehr von selbst
+  let koLaedt = false;
+  let koFehler = '';
+  let koSendet = false;
+  let koEntwurf = '';    // angefangene Notiz, ueberlebt das Neuzeichnen
+  let koStand = '';      // woran erkannt wird, dass sich wirklich etwas geaendert hat
+
+  async function koKommentareLaden(taskId) {
+    const daten = await cuRequest('GET', '/task/' + taskId + '/comment');
+    return (daten.comments || []).map((c) => ({
+      id: String(c.id || ''),
+      text: String(c.comment_text || '').trim(),
+      wer: String((c.user && (c.user.username || c.user.email)) || '').trim(),
+      wann: Number(c.date) || 0,
+    })).filter((c) => c.text);
+  }
+
+  // ClickUp sortiert die Kommentare neueste zuerst. Gelesen wird von oben nach
+  // unten, also wird umgedreht — der jüngste steht dann unten, wie in jedem
+  // Nachrichtenverlauf.
+  const koSortiert = (liste) => [...(liste || [])].sort((a, b) => a.wann - b.wann);
+
+  function koZeitpunkt(ms) {
+    if (!ms) return '';
+    const d = new Date(ms);
+    const heute = new Date();
+    const gleich = d.toDateString() === heute.toDateString();
+    return gleich
+      ? d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+      : d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })
+        + ' ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function koZustandSetzen(tid) {
+    koTid = tid;
+    koTaskId = '';
+    koListe = null;
+    koOffen = false;
+    koManuell = false;
+    koFehler = '';
+    koLaedt = false;
+    koEntwurf = '';
+  }
+
+  async function koHolen(taskId) {
+    if (koLaedt) return;
+    koLaedt = true;
+    const fuer = koTid;
+    try {
+      const liste = await koKommentareLaden(taskId);
+      if (koTid !== fuer) return;
+      koListe = liste;
+      koFehler = '';
+      // Der eine Moment, in dem sich die Leiste von selbst oeffnet.
+      if (!koManuell && liste.length) koOffen = true;
+    } catch (e) {
+      if (koTid !== fuer) return;
+      koListe = [];
+      koFehler = e.message;
+    } finally {
+      koLaedt = false;
+      koZeichnen();
+    }
+  }
+
+  function koLeisteSetzen() {
+    const vorhanden = document.querySelector('.igfu-ko');
+    if (!isIG() || !cuEingerichtet()) { if (vorhanden) vorhanden.remove(); return; }
+    const tid = igOffenerThread();
+    const task = tid ? cuTasks[tid] : null;
+    // Ohne Task keine Leiste.
+    if (!tid || !task) {
+      if (vorhanden) vorhanden.remove();
+      if (koTid) koZustandSetzen('');
+      return;
+    }
+    if (tid !== koTid) koZustandSetzen(tid);
+    if (koTaskId !== task.taskId) { koTaskId = task.taskId; koListe = null; }
+    if (koListe === null && !koLaedt) koHolen(task.taskId);
+    koZeichnen();
+  }
+
+  // Das Textfeld darf nicht unter den Fingern neu gebaut werden. Deshalb
+  // zeichnet der Takt nur, wenn sich wirklich etwas geaendert hat — sonst
+  // waere eine angefangene Notiz nach anderthalb Sekunden weg.
+  function koSignatur() {
+    return [koTid, koTaskId, koOffen, koLaedt, koSendet, koFehler,
+      koListe === null ? 'x' : koListe.length + ':' + koListe.map((k) => k.id).join(','),
+    ].join('|');
+  }
+
+  function koZeichnen() {
+    const tid = igOffenerThread();
+    if (!tid || tid !== koTid) return;
+    const sig = koSignatur();
+    const schonDa = document.querySelector('.igfu-ko');
+    if (schonDa && sig === koStand) return;
+    koStand = sig;
+    let huelle = schonDa;
+    if (!huelle) {
+      huelle = el('div', 'igfu-ko');
+      document.body.appendChild(huelle);
+    }
+    huelle.textContent = '';
+    huelle.classList.toggle('auf', koOffen);
+
+    const anzahl = koListe ? koListe.length : 0;
+    const griff = button('igfu-ko-griff', '', () => {
+      koOffen = !koOffen;
+      koManuell = true;
+      koZeichnen();
+    }, koOffen ? 'Notizen zuklappen' : 'Notizen aufklappen');
+    griff.append(el('span', 'igfu-ko-pfeil', koOffen ? '›' : '‹'));
+    griff.append(el('span', 'igfu-ko-schrift',
+      koListe === null ? 'Notizen …' : (anzahl ? 'Notizen ' + anzahl : 'Notiz schreiben')));
+    huelle.appendChild(griff);
+    if (!koOffen) return;
+
+    const koerper = el('div', 'igfu-ko-koerper');
+    const kopf = el('div', 'igfu-ko-kopf');
+    kopf.appendChild(el('strong', '', 'Notizen'));
+    if (koTaskId) {
+      kopf.appendChild(button('igfu-link', 'In ClickUp', () => {
+        const t = cuTasks[koTid];
+        if (t && t.url) window.open(t.url, '_blank', 'noopener');
+      }, 'Den Task in ClickUp öffnen'));
+    }
+    koerper.appendChild(kopf);
+
+    const verlauf = el('div', 'igfu-ko-verlauf');
+    if (koFehler) verlauf.appendChild(el('p', 'igfu-empty', 'ClickUp: ' + koFehler));
+    else if (koListe === null) verlauf.appendChild(el('p', 'igfu-empty', 'Wird geladen …'));
+    else if (!koListe.length) verlauf.appendChild(el('p', 'igfu-empty', 'Noch keine Notiz zu dieser Person.'));
+    else {
+      for (const k of koSortiert(koListe)) {
+        const e = el('div', 'igfu-ko-eintrag');
+        const z = el('div', 'igfu-ko-zeile');
+        z.append(el('span', 'igfu-ko-wer', k.wer || 'Unbekannt'),
+          el('span', 'igfu-ko-wann', koZeitpunkt(k.wann)));
+        // textContent, nicht innerHTML: der Text kommt von aussen.
+        e.append(z, el('div', 'igfu-ko-text', k.text));
+        verlauf.appendChild(e);
+      }
+    }
+    koerper.appendChild(verlauf);
+
+    const feld = el('textarea', 'igfu-ko-feld');
+    feld.placeholder = 'Notiz schreiben …';
+    feld.value = koEntwurf;
+    feld.disabled = koSendet;
+    feld.addEventListener('input', () => { koEntwurf = feld.value; });
+    const senden = button('igfu-done', koSendet ? 'Sendet …' : 'Notiz sichern', async () => {
+      const text = feld.value.trim();
+      if (!text || koSendet) return;
+      koSendet = true;
+      const fuer = koTid;
+      const taskId = koTaskId;
+      koZeichnen();
+      try {
+        await cuRequest('POST', '/task/' + taskId + '/comment', { comment_text: text, notify_all: false });
+        if (koTid === fuer) { koEntwurf = ''; koListe = await koKommentareLaden(taskId); koOffen = true; }
+        toast('Notiz gesichert.');
+      } catch (e) {
+        toast('ClickUp: ' + e.message);
+      } finally {
+        koSendet = false;
+        koZeichnen();
+      }
+    });
+    const fuss = el('div', 'igfu-ko-fuss');
+    fuss.append(feld, senden);
+    koerper.appendChild(fuss);
+    huelle.appendChild(koerper);
+
+    // Nach dem Neuzeichnen dorthin, wo zuletzt gelesen wurde.
+    verlauf.scrollTop = verlauf.scrollHeight;
+  }
+
   function vlKnopfSetzen() {
     if (!isIG() || !cuEingerichtet()) return;
     const zeile = vlZeile();
@@ -4991,5 +5407,9 @@
   setInterval(karteAuslesen, 3000);
   // Der Vorlagen-Knopf in der Verfassen-Zeile.
   setInterval(vlKnopfSetzen, 1500);
+  // Die Leiste neben dem Namen und die Notizen am rechten Rand. Beide haengen
+  // an der geoeffneten Unterhaltung; Instagram baut deren Kopf beim Wechsel
+  // neu, deshalb im Takt statt einmalig.
+  setInterval(() => { kopfLeisteSetzen(); koLeisteSetzen(); }, 1500);
   syncActive();
 })();
