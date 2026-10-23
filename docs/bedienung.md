@@ -595,6 +595,18 @@ meldet das Panel das und sagt, was zu tun ist.
 Bei drei Leuten auf denselben Vorlagen gewinnt die zuletzt gespeicherte
 Fassung. Bei einer Handvoll selten geänderter Texte ist das unproblematisch.
 
+Das Panel holt die Liste **bei jedem Öffnen** frisch von ClickUp; es zeigt
+zuerst den letzten Stand, damit es nicht träge wirkt. Eine Vorlage,
+die gerade in ClickUp angelegt wurde, erscheint also beim nächsten Öffnen —
+Instagram muss nicht neu geladen werden.
+
+**Aufzählungen mit Bindestrich**
+Wird eine Beschreibung in ClickUps Oberfläche oder über `markdown_description`
+geschrieben, macht ClickUp aus einer Zeile, die mit `- ` beginnt, eine echte
+Liste — und der Klartext, den das Panel einsetzt, verliert die Bindestriche
+dann ganz. Abhilfe: den Bindestrich maskieren (`\- …`). Im Klartext steht
+danach wieder `- …`.
+
 **Ein Task-Titel sieht falsch aus**
 Der Titel ist seit Version 7.5 reine Beschriftung. Zugeordnet wird über die
 Zeile `igfu-iguser:` in der Beschreibung — die Instagram-Benutzer-ID des
