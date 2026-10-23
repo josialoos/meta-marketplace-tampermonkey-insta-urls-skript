@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      8.2
+// @version      8.3
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -209,6 +209,18 @@
 .igfu-vl-eintrag:hover { background: rgb(var(--ig-highlight-background, 243, 245, 247)); }
 .igfu-vl-text { flex: 1; min-width: 0; }
 .igfu-vl-titel { font-weight: 600; margin-bottom: 2px; }
+.igfu-vl-kuerzel { margin-left: 6px; font-weight: 400; font-size: 11px;
+  color: rgb(var(--ig-secondary-text, 106, 113, 122)); }
+.igfu-vl-leiste { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 10px;
+  border-bottom: 1px solid rgb(var(--ig-separator, 219, 223, 228)); }
+.igfu-vl-wer { border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 12px;
+  cursor: pointer; background: transparent;
+  border: 1px solid rgb(var(--ig-separator, 219, 223, 228));
+  color: rgb(var(--ig-secondary-text, 106, 113, 122)); }
+.igfu-vl-wer:hover { background: rgb(var(--ig-highlight-background, 243, 245, 247)); }
+.igfu-vl-wer-an { background: rgb(var(--ig-primary-text, 12, 16, 20));
+  border-color: rgb(var(--ig-primary-text, 12, 16, 20));
+  color: rgb(var(--ig-elevated-background, 255, 255, 255)); }
 .igfu-vl-vorschau { color: rgb(var(--ig-secondary-text, 106, 113, 122)); font-size: 13px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .igfu-vl-fuss { display: flex; gap: 8px; padding: 8px 10px; align-items: center;
@@ -292,7 +304,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '8.2';
+  const VERSION = '8.3';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -4647,6 +4659,26 @@
     return Array.isArray(roh) ? roh : [];
   };
 
+  // Wer hat Vorlagen angelegt? Einmal je Person, mit Anzahl fuer den Hinweis
+  // am Knopf. Vorlagen ohne Urheber — ClickUp liefert ihn nicht immer —
+  // tauchen hier nicht auf und bleiben darum nur unter „Alle" sichtbar.
+  function vlUrheber(liste) {
+    const nach = new Map();
+    for (const v of liste) {
+      if (!v.wer) continue;
+      if (!nach.has(v.wer)) {
+        nach.set(v.wer, { wer: v.wer, kuerzel: v.kuerzel || initialen(v.wer), anzahl: 0 });
+      }
+      nach.get(v.wer).anzahl += 1;
+    }
+    return [...nach.values()].sort((a, b) => a.wer.localeCompare(b.wer, 'de'));
+  }
+
+  // Die Vorschauzeile ist einzeilig. Steht in der Vorlage eine Anrede auf
+  // eigener Zeile — bei uns fast immer „Hi," —, zeigte die erste Zeile allein
+  // genau das und sonst nichts. Darum alle Umbrueche zu Leerzeichen.
+  const vlVorschau = (text) => String(text || '').replace(/\s+/g, ' ').trim();
+
   async function vorlagenListeFinden() {
     const gemerkt = String(GM_getValue(VL_LISTE_ID, '') || '');
     if (gemerkt) return gemerkt;
@@ -4772,10 +4804,16 @@
     if (vlOffen && !vlOffen.contains(e.target) && !e.target.closest('.igfu-vl-knopf')) vlSchliessen();
   }
 
+  // Der Urheber-Filter gilt nur, solange das Panel offen ist. Beim naechsten
+  // Oeffnen stehen wieder alle Vorlagen da: ein Filter, der still
+  // weiterwirkt, laesst einen Text vermissen, den es sehr wohl gibt.
+  let vlWer = '';
+
   function vlOeffnen(anker) {
     if (vlOffen) { vlSchliessen(); return; }
     const panel = el('div', 'igfu-vl-panel');
     vlOffen = panel;
+    vlWer = '';
     vlListe(panel, '');
     document.body.appendChild(panel);
     const r = anker.getBoundingClientRect();
@@ -4811,20 +4849,44 @@
 
     const liste = el('div', 'igfu-vl-liste');
     const alle = vorlagenAusCache();
-    const treffer = vorlagenSuchen(alle, filter);
+    const urheber = vlUrheber(alle);
+    // Ist die gefilterte Person weg - nachgeladen, umbenannt, Vorlage
+    // stillgelegt -, zeigt das Panel wieder alles statt einer leeren Liste.
+    if (vlWer && !urheber.some((u) => u.wer === vlWer)) vlWer = '';
+
+    // Bei nur einem Urheber waere die Leiste eine Zeile, die nichts auswaehlt.
+    const leiste = urheber.length > 1 ? el('div', 'igfu-vl-leiste') : null;
+    if (leiste) {
+      const knopf = (text, wert, hinweis) => button(
+        'igfu-vl-wer' + (vlWer === wert ? ' igfu-vl-wer-an' : ''), text,
+        () => { vlWer = wert; vlListe(panel, filter); }, hinweis,
+      );
+      leiste.appendChild(knopf('Alle', '', 'Vorlagen von allen anzeigen'));
+      for (const u of urheber) {
+        leiste.appendChild(knopf(
+          u.kuerzel || u.wer, u.wer,
+          u.wer + ' - ' + u.anzahl + (u.anzahl === 1 ? ' Vorlage' : ' Vorlagen'),
+        ));
+      }
+    }
+
+    const treffer = vorlagenSuchen(alle, filter, vlWer);
     if (!treffer.length) {
       liste.appendChild(el('p', 'igfu-empty', alle.length
-        ? 'Nichts gefunden.'
+        ? 'Nichts gefunden.' + (vlWer ? ' Der Urheber-Filter steht auf ' + vlWer + '.' : '')
         : 'Noch keine Vorlage. Mit „Neu" die erste anlegen — sie landet in der '
           + 'ClickUp-Liste „' + VORLAGEN_LISTE + '" und steht damit allen zur Verfügung.'));
     }
     for (const v of treffer) {
       const zeile = el('div', 'igfu-vl-eintrag');
       const mitte = el('div', 'igfu-vl-text');
-      mitte.append(
-        el('div', 'igfu-vl-titel', v.titel || '(ohne Titel)'),
-        el('div', 'igfu-vl-vorschau', v.text.split('\n').find((z) => z.trim()) || ''),
-      );
+      const kopfzeile = el('div', 'igfu-vl-titel', v.titel || '(ohne Titel)');
+      if (v.kuerzel) {
+        const k = el('span', 'igfu-vl-kuerzel', v.kuerzel);
+        k.title = 'Angelegt von ' + v.wer;
+        kopfzeile.appendChild(k);
+      }
+      mitte.append(kopfzeile, el('div', 'igfu-vl-vorschau', vlVorschau(v.text)));
       mitte.addEventListener('click', () => { vlSchliessen(); vlEinsetzen(v.text); });
       const bearbeiten = el('button', 'igfu-link', 'Bearbeiten');
       bearbeiten.addEventListener('click', (e) => { e.stopPropagation(); vlForm(panel, v); });
@@ -4842,7 +4904,9 @@
         } catch (e) { toast('Vorlagen: ' + e.message); }
       }, 'Dort lassen sich die Vorlagen genauso bearbeiten'),
     );
-    panel.append(kopf, liste, fuss);
+    panel.append(kopf);
+    if (leiste) panel.appendChild(leiste);
+    panel.append(liste, fuss);
   }
 
   function vlForm(panel, vorhanden) {

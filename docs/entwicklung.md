@@ -1002,6 +1002,70 @@ bewusste Speicherübernahme.
 
 ---
 
+## 9b. Standardnachrichten
+
+Seit 8.0 im Hauptskript, nicht mehr in einem eigenen. Vorher lagen die Texte im
+GM-Speicher, also auf jedem Rechner andere — bei zwei Rechnern und Cosima
+unbrauchbar.
+
+**Quelle ist die ClickUp-Liste „Standardnachrichten"** im Space Marketing, ein
+Task je Vorlage: Name ist der Titel, Beschreibung der Text. Die Liste wird
+**am Namen gefunden** (`vorlagenListeFinden`), nicht über eine eingetragene
+Kennung — sonst müsste sie jeder auf jedem Rechner nachtragen. Die gefundene
+Kennung landet in `GM_setValue`, damit nicht jedes Öffnen den Space durchsucht.
+
+**Gelesen wird `text_content`**, nicht `markdown_description`:
+
+```js
+text: String(t.text_content || t.description || '')
+```
+
+Das ist wichtiger, als es aussieht. ClickUp führt die Beschreibung intern als
+Dokument. Was in der Oberfläche oder über `markdown_description` geschrieben
+wird, wird als Markdown gelesen — aus einer Zeile, die mit `- ` beginnt, macht
+ClickUp eine echte Liste, und in `text_content` fehlen die Bindestriche danach
+**ganz**. Eine URL wird zu `[url](url)`; in `text_content` steht sie wieder
+nackt, deshalb ist dieses Feld das richtige. Wer eine Aufzählung braucht,
+maskiert den Bindestrich (`\- …`).
+
+**Das Panel zeigt zuerst den Zwischenspeicher** (`VL_CACHE`) und lädt bei
+jedem Öffnen im Hintergrund nach. Eine Vorlage, die gerade in ClickUp angelegt
+wurde, erscheint also beim nächsten Öffnen — Instagram muss nicht neu geladen
+werden.
+
+**Eingesetzt wird per Zwischenablage-Ereignis.** Instagrams Verfassen-Feld
+läuft auf Lexical. `execCommand('insertText')` wirft `\n` weg,
+`insertLineBreak` blockiert die weitere Eingabe — ein `ClipboardEvent` mit
+`text/plain` kommt mehrzeilig an. Lexical verarbeitet es **asynchron**; eine
+Prüfung direkt danach sieht das Feld noch leer. Als Rettung bleibt
+`insertText`, falls das Ereignis nicht ankommt.
+
+### Urheber und Filter
+
+ClickUp liefert `creator.username`. Daraus bildet `initialen()` das Kürzel
+hinter dem Titel: „Josia Loos" wird zu `JL`, ein einzelnes Wort zu den ersten
+zwei Zeichen, und bei einer Mailadresse zählt nur der Teil vor dem `@` — sonst
+würde aus „josia@…" ein `JP`. Fehlt der Urheber, bleibt das Kürzel **leer**;
+lieber nichts als etwas Erfundenes.
+
+Die Filterleiste erscheint erst ab **zwei** Urhebern — bei einem wählt sie
+nichts aus und kostet nur Platz. Der gewählte Urheber steht in `vlWer` und wird
+beim Öffnen auf „Alle" zurückgesetzt: ein Filter, der still weiterwirkt, lässt
+einen Text vermissen, den es sehr wohl gibt. Verschwindet die gefilterte Person
+beim Nachladen, fällt der Filter ebenfalls auf „Alle".
+
+**Die Vorschauzeile ist einzeilig** (`vlVorschau`) und ersetzt alle Umbrüche
+durch Leerzeichen. Vorher nahm sie die erste nicht leere Zeile — und weil
+unsere Vorlagen fast alle mit „Hi," auf eigener Zeile beginnen, hießen alle
+Einträge gleich.
+
+**Die Farben kommen aus Instagrams CSS-Variablen**, als RGB-Dreier:
+`rgb(var(--ig-primary-text, 12, 16, 20))` und entsprechend
+`--ig-secondary-text`, `--ig-elevated-background`, `--ig-primary-background`,
+`--ig-separator`, `--ig-highlight-background`. Feste Werte waren im Dark Mode
+hell auf hell; eine Prüfung verbietet Hex-Farben in diesem Teil des
+Stylesheets.
+
 ## 10. Tests
 
 ```bash

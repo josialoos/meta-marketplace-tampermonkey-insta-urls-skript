@@ -54,7 +54,7 @@ export async function starte({
   metaUnterhaltungen = null, // [{ id, username, zeit }] fuer die Conversations-API
   ig = null,               // [{ id, titel, vorschau, zeit, ungelesen, bild }] baut die Instagram-Liste
   igOffen = null,          // { tid, handle, titel } simuliert eine geoeffnete Unterhaltung
-  vorlagen = null,         // [{ id, titel, text }] legt die Liste „Standardnachrichten" an
+  vorlagen = null,         // [{ id, titel, text, wer }] legt die Liste „Standardnachrichten" an
 } = {}) {
   // Die vier festen Threads bleiben unangetastet, damit bestehende Pruefungen
   // ihre Zeilenzahl behalten. Wer eine fuenfte Unterhaltung braucht — etwa um
@@ -216,7 +216,8 @@ export async function starte({
   const spaceTags = [...tags];
   const VLISTE = '900000000002';
   const WORKSPACE = '900000009';
-  const vorlagenTasks = (vorlagen || []).map((v, i) => ({ id: v.id || ('vl' + i), titel: v.titel, text: v.text }));
+  const vorlagenTasks = (vorlagen || []).map((v, i) => (
+    { id: v.id || ('vl' + i), titel: v.titel, text: v.text, wer: v.wer || '' }));
   const serverTasks = tasks.map((t) => ({ tags: [], ...t }));
   let naechste = 100;
 
@@ -283,11 +284,17 @@ export async function starte({
       return ok({ lists: vorlagen ? [{ id: VLISTE, name: 'Standardnachrichten' }] : [] });
     }
     if (methode === 'GET' && pf.startsWith('/list/' + VLISTE + '/task')) {
-      return ok({ tasks: vorlagenTasks.filter((v) => !v.zu).map((v) => ({ id: v.id, name: v.titel, text_content: v.text })) });
+      // ClickUp liefert den Urheber als creator.username. Fehlt er, fehlt das
+      // Feld ganz — genau so stellt es der Pruefstand nach.
+      return ok({ tasks: vorlagenTasks.filter((v) => !v.zu).map((v) => {
+        const t = { id: v.id, name: v.titel, text_content: v.text };
+        if (v.wer) t.creator = { username: v.wer };
+        return t;
+      }) });
     }
     if (methode === 'POST' && pf === '/list/' + VLISTE + '/task') {
       const k = JSON.parse(data);
-      const neu = { id: 'vl' + (naechste++), titel: k.name, text: k.description || '' };
+      const neu = { id: 'vl' + (naechste++), titel: k.name, text: k.description || '', wer: '' };
       vorlagenTasks.push(neu);
       return ok({ id: neu.id });
     }

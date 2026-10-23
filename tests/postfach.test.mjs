@@ -3008,6 +3008,153 @@ gruppe('Vorlagen: fehlende Liste erklärt sich');
     /Standardnachrichten/.test(meldung), meldung.slice(-300));
 }
 
+gruppe('Vorlagen: die Vorschauzeile zeigt nicht nur die Anrede');
+{
+  // Vorher nahm die Vorschau die erste nicht leere Zeile. Unsere Vorlagen
+  // beginnen fast alle mit „Hi," auf eigener Zeile — es stand also bei jeder
+  // Vorlage dasselbe da und man musste raten. Jetzt werden die Umbrueche zu
+  // Leerzeichen, abgeschnitten wird per CSS.
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '17843301684077111', titel: 'Jemand', vorschau: 'Hallo', zeit: '2h' }],
+    vorlagen: [
+      { id: 'v1', titel: 'Probeware', text: 'Hi,\nklar! Probieren kommt zuerst.\n\nGruß\nJosia' },
+      { id: 'v2', titel: 'Bedingungen', text: 'Hi,\ngibt keine Bedingungen.' },
+    ],
+  });
+  await warte(w, 2000);
+  klick(w, doc.querySelector('.igfu-vl-knopf'));
+  await warte(w, 1200);
+  const vorschauen = [...doc.querySelectorAll('.igfu-vl-vorschau')].map((e) => e.textContent);
+  pruefe('Zwei Vorschauzeilen', vorschauen.length === 2, JSON.stringify(vorschauen));
+  pruefe('Keine steht nur auf der Anrede',
+    vorschauen.every((t) => t !== 'Hi,'), JSON.stringify(vorschauen));
+  pruefe('Die erste zeigt den Satz dahinter',
+    (vorschauen[0] || '').startsWith('Hi, klar! Probieren kommt zuerst.'), JSON.stringify(vorschauen[0]));
+  pruefe('Kein Umbruch mehr drin',
+    vorschauen.every((t) => !/\n/.test(t)), JSON.stringify(vorschauen));
+  pruefe('Die beiden sind unterscheidbar', vorschauen[0] !== vorschauen[1], JSON.stringify(vorschauen));
+}
+
+gruppe('Vorlagen: Kuerzel des Urhebers und Filter danach');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '17843301684077111', titel: 'Jemand', vorschau: 'Hallo', zeit: '2h' }],
+    vorlagen: [
+      { id: 'v1', titel: 'Probeware', text: 'Von Josia.', wer: 'Josia Loos' },
+      { id: 'v2', titel: 'Bedingungen', text: 'Auch von Josia.', wer: 'Josia Loos' },
+      { id: 'v3', titel: 'Versand', text: 'Von Cosima.', wer: 'Cosima Werr' },
+    ],
+  });
+  await warte(w, 2000);
+  klick(w, doc.querySelector('.igfu-vl-knopf'));
+  await warte(w, 1200);
+
+  const kuerzel = [...doc.querySelectorAll('.igfu-vl-kuerzel')].map((e) => e.textContent);
+  pruefe('Jede Vorlage traegt ein Kuerzel', kuerzel.length === 3, JSON.stringify(kuerzel));
+  pruefe('Die Kuerzel sind richtig gebildet',
+    kuerzel.filter((k) => k === 'JL').length === 2 && kuerzel.includes('CW'), JSON.stringify(kuerzel));
+  const hinweis = [...doc.querySelectorAll('.igfu-vl-kuerzel')].map((e) => e.title);
+  pruefe('Der vollstaendige Name steht im Hinweis',
+    hinweis.some((h) => h === 'Angelegt von Cosima Werr'), JSON.stringify(hinweis));
+
+  const knoepfe = [...doc.querySelectorAll('.igfu-vl-wer')];
+  pruefe('Die Filterleiste hat Alle plus zwei Personen', knoepfe.length === 3,
+    JSON.stringify(knoepfe.map((b) => b.textContent)));
+  pruefe('Zu Beginn steht sie auf Alle',
+    (knoepfe[0] || {}).className && knoepfe[0].className.includes('igfu-vl-wer-an'),
+    (knoepfe[0] || {}).className);
+
+  const cw = knoepfe.find((b) => b.textContent === 'CW');
+  pruefe('Cosimas Knopf ist da', !!cw);
+  if (cw) { klick(w, cw); await warte(w, 300); }
+  let titel = [...doc.querySelectorAll('.igfu-vl-titel')].map((e) => e.textContent);
+  pruefe('Jetzt steht nur Cosimas Vorlage da',
+    titel.length === 1 && /Versand/.test(titel[0]), JSON.stringify(titel));
+
+  const jl = [...doc.querySelectorAll('.igfu-vl-wer')].find((b) => b.textContent === 'JL');
+  if (jl) { klick(w, jl); await warte(w, 300); }
+  titel = [...doc.querySelectorAll('.igfu-vl-titel')].map((e) => e.textContent);
+  pruefe('Und auf JL gestellt die beiden von Josia', titel.length === 2, JSON.stringify(titel));
+
+  const alle = [...doc.querySelectorAll('.igfu-vl-wer')].find((b) => b.textContent === 'Alle');
+  if (alle) { klick(w, alle); await warte(w, 300); }
+  pruefe('Zurueck auf Alle sind wieder drei da',
+    doc.querySelectorAll('.igfu-vl-titel').length === 3);
+}
+
+gruppe('Vorlagen: der Filter wirkt nicht still weiter');
+{
+  // Ein Filter, der das naechste Oeffnen ueberlebt, laesst einen Text
+  // vermissen, den es sehr wohl gibt. Darum: beim Oeffnen immer alles.
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '17843301684077111', titel: 'Jemand', vorschau: 'Hallo', zeit: '2h' }],
+    vorlagen: [
+      { id: 'v1', titel: 'Probeware', text: 'Von Josia.', wer: 'Josia Loos' },
+      { id: 'v3', titel: 'Versand', text: 'Von Cosima.', wer: 'Cosima Werr' },
+    ],
+  });
+  await warte(w, 2000);
+  klick(w, doc.querySelector('.igfu-vl-knopf'));
+  await warte(w, 1200);
+  const cw = [...doc.querySelectorAll('.igfu-vl-wer')].find((b) => b.textContent === 'CW');
+  pruefe('Cosimas Knopf ist da', !!cw);
+  if (cw) { klick(w, cw); await warte(w, 300); }
+  pruefe('Gefiltert ist es eine', doc.querySelectorAll('.igfu-vl-titel').length === 1);
+  klick(w, doc.querySelector('.igfu-vl-knopf'));
+  await warte(w, 300);
+  pruefe('Das Panel ist zu', !doc.querySelector('.igfu-vl-panel'));
+  klick(w, doc.querySelector('.igfu-vl-knopf'));
+  await warte(w, 1200);
+  pruefe('Beim naechsten Oeffnen stehen wieder beide da',
+    doc.querySelectorAll('.igfu-vl-titel').length === 2,
+    JSON.stringify([...doc.querySelectorAll('.igfu-vl-titel')].map((e) => e.textContent)));
+}
+
+gruppe('Vorlagen: bei einem Urheber gibt es keine Filterleiste');
+{
+  // Eine Leiste mit genau einer Person waehlt nichts aus und kostet nur Platz.
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '17843301684077111', titel: 'Jemand', vorschau: 'Hallo', zeit: '2h' }],
+    vorlagen: [
+      { id: 'v1', titel: 'Probeware', text: 'Von Josia.', wer: 'Josia Loos' },
+      { id: 'v2', titel: 'Bedingungen', text: 'Auch von Josia.', wer: 'Josia Loos' },
+    ],
+  });
+  await warte(w, 2000);
+  klick(w, doc.querySelector('.igfu-vl-knopf'));
+  await warte(w, 1200);
+  pruefe('Keine Leiste', !doc.querySelector('.igfu-vl-leiste'));
+  pruefe('Die Kuerzel stehen trotzdem da',
+    doc.querySelectorAll('.igfu-vl-kuerzel').length === 2);
+}
+
+gruppe('Vorlagen: ohne Urheber bleibt das Kuerzel weg');
+{
+  // ClickUp liefert den creator nicht immer. Dann steht lieber nichts da als
+  // etwas Erfundenes — und die Vorlage darf nicht unauffindbar werden.
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '17843301684077111', titel: 'Jemand', vorschau: 'Hallo', zeit: '2h' }],
+    vorlagen: [
+      { id: 'v1', titel: 'Namenlos', text: 'Ohne Urheber.' },
+      { id: 'v2', titel: 'Von Cosima', text: 'Mit Urheber.', wer: 'Cosima Werr' },
+    ],
+  });
+  await warte(w, 2000);
+  klick(w, doc.querySelector('.igfu-vl-knopf'));
+  await warte(w, 1200);
+  pruefe('Nur eine traegt ein Kuerzel',
+    doc.querySelectorAll('.igfu-vl-kuerzel').length === 1);
+  pruefe('Beide stehen unter Alle in der Liste',
+    doc.querySelectorAll('.igfu-vl-titel').length === 2);
+  pruefe('Keine Leiste, weil nur ein Urheber bekannt ist',
+    !doc.querySelector('.igfu-vl-leiste'));
+}
+
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));

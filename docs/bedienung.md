@@ -571,12 +571,24 @@ Senden-Knopf, und der Vorlagen-Knopf steht direkt daneben.
 | Knopf anklicken | Liste öffnet sich über der Verfassen-Zeile |
 | Auf eine Vorlage klicken | Text landet an der Schreibmarke, mehrzeilig |
 | Suchfeld | durchsucht Titel **und** Text |
+| Kürzel hinter dem Titel | wer die Vorlage angelegt hat, z. B. `JL`; Mauszeiger darauf zeigt den ganzen Namen |
+| Leiste „Alle │ JL │ CW" | zeigt nur die Vorlagen einer Person |
 | „Neu" | Titel und Text eingeben, „Sichern" |
 | „Bearbeiten" → „Stilllegen" | verschwindet aus dem Postfach, bleibt in ClickUp |
 | „In ClickUp öffnen" | führt direkt in die Liste |
 
 Der Text wird **ergänzt, nicht ersetzt** — ein angefangener Satz bleibt
 stehen. Abgeschickt wird nichts; du drückst Enter.
+
+Die zweite Zeile je Eintrag ist der **Anfang des Textes in einer Zeile** —
+Umbrüche werden zu Leerzeichen. Vorher stand dort die erste Zeile allein,
+und weil unsere Vorlagen fast alle mit „Hi," beginnen, hießen alle gleich.
+
+Die Urheber-Leiste erscheint erst, wenn **mehr als eine Person** Vorlagen
+angelegt hat, und sie steht beim Öffnen immer auf „Alle". Ein Filter, der
+still weiterwirkt, lässt sonst einen Text vermissen, den es sehr wohl gibt.
+Vorlagen, zu denen ClickUp keinen Urheber liefert, tragen kein Kürzel und
+sind nur unter „Alle" zu sehen.
 
 ### Wo die Vorlagen liegen
 
