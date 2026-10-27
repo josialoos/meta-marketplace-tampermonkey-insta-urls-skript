@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      8.6
+// @version      8.7
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -281,13 +281,42 @@
    Knoepfe wie an den Zeilen, nur sitzen sie fest statt absolut und sind
    immer sichtbar — hier gibt es kein Ueberfahren der Zeile. */
 .igfu-kopf { position: static; bottom: auto; z-index: auto;
-  margin-left: 10px; align-self: center; pointer-events: auto; }
+  margin-left: 10px; align-self: center; pointer-events: auto;
+  /* In die Breite, nicht in die Hoehe: die Leiste sitzt in derselben Zeile
+     wie der Name und bricht nie um. Wird es eng, laesst sie sich seitlich
+     schieben, statt den Kopf hoeher zu machen. */
+  flex-wrap: nowrap; width: auto; max-width: min(62vw, 760px);
+  overflow-x: auto; scrollbar-width: none; }
+.igfu-kopf::-webkit-scrollbar { display: none; }
+.igfu-kopf > .igfu-tag { max-width: 180px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.igfu-tag[data-kind="tag"].on { color: #fff; }
+.igfu-tag[data-kind="tagmenue"] { font-weight: 700; }
 .igfu-kopf > .igfu-tag { opacity: 1; pointer-events: auto; }
 .igfu-tag[data-kind="postfach"]::before {
   content: ""; width: 8px; height: 8px; border-radius: 50%;
   background: #d93025; box-sizing: border-box; }
 .igfu-tag[data-kind="postfach"].on::before { background: #0b8043; }
 .igfu-tag[data-kind="postfach"][disabled] { cursor: default; opacity: .7; }
+
+/* Das Auswahlmenue an der Status- und an der Tag-Pille */
+.igfu-menue { position: fixed; z-index: 2147483100; min-width: 220px; max-width: 280px;
+  max-height: 60vh; overflow: auto; padding: 6px; border-radius: 10px;
+  border: 1px solid rgb(var(--ig-separator, 219, 223, 228)); box-shadow: 0 8px 28px rgba(0,0,0,.28);
+  background: rgb(var(--ig-elevated-background, 255, 255, 255));
+  color: rgb(var(--ig-primary-text, 12, 16, 20));
+  font: 13px/1.4 system-ui, -apple-system, sans-serif; }
+.igfu-menue-zeile { display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 8px; border: 0; border-radius: 8px; background: transparent;
+  color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.igfu-menue-zeile:hover:not(:disabled) { background: rgba(128, 128, 128, .20); }
+.igfu-menue-zeile:disabled { opacity: .45; cursor: default; }
+.igfu-menue-text { flex: 1; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.igfu-menue-punkt { width: 9px; height: 9px; border-radius: 50%; flex: none;
+  background: rgb(var(--ig-secondary-text, 106, 113, 122)); }
+.igfu-menue-haken { flex: none; opacity: .8; }
+.igfu-menue-trenner { height: 1px; margin: 5px 4px; background: rgb(var(--ig-separator, 219, 223, 228)); }
 
 /* Notizen am rechten Rand */
 .igfu-ko { position: fixed; right: 0; top: 84px; z-index: 2147483000;
@@ -316,14 +345,6 @@
 .igfu-ko-at:hover { text-decoration: underline; }
 .igfu-ko-kopie { margin-left: auto; flex: none; }
 .igfu-ko-leer { color: rgb(var(--ig-secondary-text, 106, 113, 122)); }
-.igfu-ko-status { display: flex; align-items: center; gap: 8px;
-  padding: 8px 10px; border-bottom: 1px solid rgb(var(--ig-separator, 219, 223, 228)); }
-.igfu-ko-punkt { width: 9px; height: 9px; border-radius: 50%; flex: none;
-  background: rgb(var(--ig-secondary-text, 106, 113, 122)); }
-.igfu-ko-wahl { flex: 1; min-width: 0; font: inherit; border-radius: 8px; padding: 6px 8px;
-  border: 1px solid rgb(var(--ig-separator, 219, 223, 228));
-  background: rgb(var(--ig-primary-background, 255, 255, 255));
-  color: rgb(var(--ig-primary-text, 12, 16, 20)); }
 .igfu-ko-verlauf { flex: 1; min-height: 0; overflow: auto; padding: 4px 10px; }
 .igfu-ko-eintrag { padding: 8px 0; border-bottom: 1px solid rgb(var(--ig-separator, 219, 223, 228)); }
 .igfu-ko-eintrag:last-child { border-bottom: none; }
@@ -409,7 +430,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '8.6';
+  const VERSION = '8.7';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -2178,6 +2199,35 @@
     return liste;
   }
 
+  // Die Tags des Space, mit ihren Farben. Wie bei den Status gelesen statt
+  // fest eingebaut: ein Tag, den Josia in ClickUp anlegt, taucht dann von
+  // allein in der Auswahl auf.
+  const CU_TAGLISTE = 'clickup:tagliste:v1';
+  const tagsAusCache = () => {
+    const roh = GM_getValue(CU_TAGLISTE, []);
+    return Array.isArray(roh) ? roh : [];
+  };
+  async function tagsLaden() {
+    const space = cuSpace() || (await cuSpaceLaden());
+    const daten = await cuRequest('GET', '/space/' + space + '/tag');
+    const liste = (daten.tags || [])
+      .map((t) => ({ name: String(t.name || '').toLowerCase().trim(), farbe: t.tag_bg || '' }))
+      .filter((t) => t.name)
+      .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+    if (liste.length) GM_setValue(CU_TAGLISTE, liste);
+    return liste;
+  }
+
+  // Diese drei vergibt das Skript selbst. Von Hand umschaltbar waeren sie ein
+  // Kampf gegen die Automatik: „ad-code" haelt eine Tatsache fest und wird nie
+  // entfernt, „handle-fehlt" verschwindet von allein, sobald der Handle da
+  // ist, und fuer „follow-up" gibt es den eigenen Knopf daneben.
+  const TAGS_AUTOMATIK = {
+    [CU_TAG]: 'Dafuer gibt es den Follow-up-Knopf daneben',
+    [CU_TAG_ADCODE]: 'Setzt das Skript selbst, wenn Content erkannt wurde',
+    'handle-fehlt': 'Setzt und entfernt das Skript selbst',
+  };
+
   async function cuSpaceLaden() {
     const daten = await cuRequest('GET', '/list/' + encodeURIComponent(cuListe()));
     const id = daten && daten.space && daten.space.id;
@@ -2310,6 +2360,10 @@
       titel: t.name,
       status: (t.status && t.status.status) || '',
       farbe: (t.status && t.status.color) || '#65676b',
+      // Die Tags selbst, nicht nur die drei daraus abgeleiteten Flaggen: die
+      // Kopfleiste zeigt sie als Pillen und schaltet sie um. Bis 8.7 wurden
+      // sie berechnet und dann weggeworfen.
+      tags,
       follow: tags.includes(CU_TAG),
       adcode: tags.includes(CU_TAG_ADCODE),
       ohneHandle: tags.includes(CU_TAG_OHNE_HANDLE),
@@ -3363,7 +3417,14 @@
       if (type === 'click') {
         const wrap = chip.closest('.igfu-tags');
         if (!wrap) return;
-        if (chip.dataset.kind === 'crm') crmKlick(wrap.dataset.tid, wrap.dataset.title);
+        const imKopf = wrap.classList.contains('igfu-kopf');
+        // Im Kopf aendert die Status-Pille den Status, sobald es einen Task
+        // gibt. Ohne Task legt sie ihn an, wie an den Zeilen der Liste auch.
+        if (chip.dataset.kind === 'crm' && imKopf && cuTasks[wrap.dataset.tid]) {
+          statusMenue(chip, wrap.dataset.tid);
+        } else if (chip.dataset.kind === 'tag' || chip.dataset.kind === 'tagmenue') {
+          tagMenue(chip, wrap.dataset.tid);
+        } else if (chip.dataset.kind === 'crm') crmKlick(wrap.dataset.tid, wrap.dataset.title);
         // Der Postfach-Knopf schaltet nichts um, er fuehrt woandershin.
         else if (chip.dataset.kind === 'postfach') {
           if (chip.dataset.ziel) {
@@ -5217,6 +5278,56 @@
     return null;
   }
 
+  // Ein kleines Menue unter einem Knopf. Dieselbe Mechanik fuer Status und
+  // Tags — beides ist „aus einer Liste etwas auswaehlen".
+  let kopfMenue = null;
+
+  function menueSchliessen() {
+    if (!kopfMenue) return;
+    kopfMenue.remove();
+    kopfMenue = null;
+    document.removeEventListener('mousedown', menueDaneben, true);
+    document.removeEventListener('keydown', menueEscape, true);
+  }
+  function menueDaneben(e) {
+    if (kopfMenue && e.target instanceof Node && !kopfMenue.contains(e.target)) menueSchliessen();
+  }
+  function menueEscape(e) { if (e.key === 'Escape') { e.stopPropagation(); menueSchliessen(); } }
+
+  function menueOeffnen(anker, eintraege) {
+    const warOffen = !!kopfMenue;
+    menueSchliessen();
+    if (warOffen) return;
+    const m = el('div', 'igfu-menue');
+    for (const e of eintraege) {
+      if (e.trenner) { m.appendChild(el('div', 'igfu-menue-trenner')); continue; }
+      const z = button('igfu-menue-zeile', '', () => {
+        if (e.aus) return;
+        menueSchliessen();
+        e.tun();
+      }, e.hinweis || '');
+      if (e.aus) z.disabled = true;
+      const punkt = el('span', 'igfu-menue-punkt');
+      if (e.farbe) punkt.style.background = e.farbe;
+      else punkt.style.visibility = 'hidden';
+      z.append(punkt, el('span', 'igfu-menue-text', e.text));
+      if (e.an) z.appendChild(el('span', 'igfu-menue-haken', '\u2713'));
+      m.appendChild(z);
+    }
+    document.body.appendChild(m);
+    const r = anker.getBoundingClientRect();
+    m.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 268)) + 'px';
+    m.style.top = (r.bottom + 6) + 'px';
+    kopfMenue = m;
+    // Erst im naechsten Takt lauschen, sonst schliesst der Klick, der das
+    // Menue gerade geoeffnet hat, es sofort wieder.
+    setTimeout(() => {
+      if (!kopfMenue) return;
+      document.addEventListener('mousedown', menueDaneben, true);
+      document.addEventListener('keydown', menueEscape, true);
+    }, 0);
+  }
+
   function setzePostfachChip(chip, tid) {
     if (!chip) return;
     const art = postfachVon(tid);
@@ -5239,7 +5350,78 @@
     chip.title = 'Zu dieser Person ist im anderen Postfach keine Unterhaltung bekannt';
   }
 
-  // Die Leiste neben dem Namen: Status, Follow-up, anderes Postfach. Die
+  // Status aendern, von Hand. Ohne Rangpruefung — darfSetzen() bremst die
+  // Automatik, nicht Josia. Siehe die Begruendung an koStatusSetzen.
+  async function statusSetzen(tid, neu) {
+    const task = cuTasks[tid];
+    const wert = String(neu || '').toLowerCase().trim();
+    if (!task || !wert || wert === String(task.status || '').toLowerCase()) return;
+    try {
+      await cuRequest('PUT', '/task/' + task.taskId, { status: wert });
+      task.status = wert;
+      const treffer = stati().find((x) => x.name === wert);
+      if (treffer && treffer.farbe) task.farbe = treffer.farbe;
+      cuSpeichern();
+      toast('Status: ' + wert);
+      scanRows();
+      kopfLeisteSetzen();
+      koZeichnen();
+    } catch (e) {
+      toast('ClickUp: ' + e.message);
+    }
+  }
+
+  function statusMenue(anker, tid) {
+    const task = cuTasks[tid];
+    if (!task) return;
+    const jetzt = String(task.status || '').toLowerCase();
+    const eintraege = stati().map((st) => ({
+      text: st.name, farbe: st.farbe, an: st.name === jetzt,
+      tun: () => statusSetzen(tid, st.name),
+    }));
+    eintraege.push({ trenner: true });
+    eintraege.push({
+      text: 'In ClickUp öffnen',
+      tun: () => { if (task.url) window.open(task.url, '_blank', 'noopener'); },
+    });
+    menueOeffnen(anker, eintraege);
+  }
+
+  async function tagUmschalten(tid, name, an) {
+    const task = cuTasks[tid];
+    if (!task) return;
+    try {
+      const farbe = (tagsAusCache().find((t) => t.name === name) || {}).farbe || '';
+      await cuTagSetzen(task.taskId, name, farbe || YELLOW, an);
+      const bisher = (task.tags || []).filter((t) => t !== name);
+      task.tags = an ? bisher.concat([name]) : bisher;
+      if (name === CU_TAG) task.follow = an;
+      cuSpeichern();
+      toast(an ? 'Tag gesetzt: ' + name : 'Tag entfernt: ' + name);
+      scanRows();
+      kopfLeisteSetzen();
+    } catch (e) {
+      toast('ClickUp: ' + e.message);
+    }
+  }
+
+  function tagMenue(anker, tid) {
+    const task = cuTasks[tid];
+    if (!task) return;
+    const dran = new Set(task.tags || []);
+    const liste = tagsAusCache();
+    const eintraege = liste.length
+      ? liste.map((t) => ({
+        text: t.name, farbe: t.farbe, an: dran.has(t.name),
+        aus: !!TAGS_AUTOMATIK[t.name],
+        hinweis: TAGS_AUTOMATIK[t.name] || (dran.has(t.name) ? 'Entfernen' : 'Setzen'),
+        tun: () => tagUmschalten(tid, t.name, !dran.has(t.name)),
+      }))
+      : [{ text: 'Keine Tags im Space gefunden', aus: true, tun: () => {} }];
+    menueOeffnen(anker, eintraege);
+  }
+
+  // Die Leiste neben dem Namen: Status, Tags, Follow-up, anderes Postfach. Die
   // Knöpfe sind dieselben wie an den Zeilen der Liste, samt Klick-Weiche —
   // sie hängen nur an einem anderen Ort.
   function kopfLeisteSetzen() {
@@ -5255,12 +5437,48 @@
     if (!wrap || wrap.previousElementSibling !== block) {
       if (wrap) wrap.remove();
       wrap = el('div', 'igfu-tags igfu-kopf');
-      wrap.append(makeChip('crm', 'CRM'), makeChip('followup', 'Follow-up'), makeChip('postfach', 'Postfach'));
       block.insertAdjacentElement('afterend', wrap);
     }
     wrap.dataset.tid = tid;
     wrap.dataset.title = String(h2.textContent || '').trim();
+
+    const task = cuTasks[tid];
+    // Die Tags im Space einmal holen, damit das Menue sie anbieten kann.
+    if (task && !tagsAusCache().length && !tagsLaeuft) {
+      tagsLaeuft = true;
+      tagsLaden().catch(() => {}).finally(() => { tagsLaeuft = false; });
+    }
+
+    // Neu bauen nur, wenn sich etwas geaendert hat. Sonst verschwindet ein
+    // gerade geoeffnetes Menue bei jedem Takt unter den Fingern.
+    const eigene = (task ? task.tags || [] : []).filter((t) => !TAGS_AUTOMATIK[t]);
+    const sig = [tid, task ? task.status : '', eigene.join(','), !!follow[tid],
+      postfachVon(tid), (andereUnterhaltung(tid) || {}).tid || ''].join('|');
+    if (wrap.dataset.sig !== sig) {
+      wrap.dataset.sig = sig;
+      wrap.textContent = '';
+      wrap.append(makeChip('crm', 'CRM'));
+      // Die Tags, die Josia selbst vergibt — die drei vom Skript verwalteten
+      // haben eigene Anzeigen und wuerden die Zeile nur fuellen.
+      for (const name of eigene) {
+        const pille = makeChip('tag', name);
+        pille.classList.add('on');
+        const farbe = (tagsAusCache().find((t) => t.name === name) || {}).farbe;
+        if (farbe) { pille.style.background = farbe; pille.style.borderColor = farbe; }
+        wrap.appendChild(pille);
+      }
+      if (task) wrap.appendChild(makeChip('tagmenue', eigene.length ? '+' : '+ Tag'));
+      wrap.append(makeChip('followup', 'Follow-up'), makeChip('postfach', 'Postfach'));
+    }
+
     setzeCrmChip(wrap.querySelector('[data-kind="crm"]'), tid);
+    const crm = wrap.querySelector('[data-kind="crm"]');
+    if (crm) {
+      crm.title = task
+        ? 'Status ändern. Ein Schritt zurück innerhalb der Pipeline hält nicht — '
+          + 'den holt der nächste Abgleich wieder ein. Endstatus bleiben liegen.'
+        : 'Task in ClickUp anlegen';
+    }
     setChip(wrap.querySelector('[data-kind="followup"]'), !!follow[tid],
       'Follow-up entfernen', 'Als Follow-up markieren');
     setzePostfachChip(wrap.querySelector('[data-kind="postfach"]'), tid);
@@ -5316,8 +5534,8 @@
   let koFehler = '';
   let koSendet = false;
   let koEntwurf = '';    // angefangene Notiz, ueberlebt das Neuzeichnen
-  let koStatusLaeuft = false;
   let statiLaeuft = false;
+  let tagsLaeuft = false;
   let koStand = '';      // woran erkannt wird, dass sich wirklich etwas geaendert hat
 
   async function koKommentareLaden(taskId) {
@@ -5378,39 +5596,6 @@
     }
   }
 
-  // Von Hand gesetzt, also ohne Rangpruefung.
-  //
-  // darfSetzen() gilt fuer die *Automatik* — sie darf nur nach vorn schieben,
-  // sonst nehmen sich die drei Pruefungen gegenseitig das Ergebnis weg. Hier
-  // sitzt dagegen Josia am Knopf, und dann entscheidet er. Dieselbe Haltung
-  // wie bei der Prioritaet.
-  //
-  // Was er dabei wissen muss, steht am Auswahlfeld: ein Schritt zurueck
-  // innerhalb der Leiter haelt nicht, den holt der naechste Abgleich wieder
-  // ein. Nur die Endstatus bleiben liegen.
-  async function koStatusSetzen(neu) {
-    const task = cuTasks[koTid];
-    const wert = String(neu || '').toLowerCase().trim();
-    if (!task || !wert || wert === String(task.status || '').toLowerCase()) return;
-    koStatusLaeuft = true;
-    koZeichnen();
-    try {
-      await cuRequest('PUT', '/task/' + task.taskId, { status: wert });
-      task.status = wert;
-      const treffer = stati().find((x) => x.name === wert);
-      if (treffer && treffer.farbe) task.farbe = treffer.farbe;
-      cuSpeichern();
-      toast('Status: ' + wert);
-      scanRows();
-      kopfLeisteSetzen();
-    } catch (e) {
-      toast('ClickUp: ' + e.message);
-    } finally {
-      koStatusLaeuft = false;
-      koZeichnen();
-    }
-  }
-
   function koLeisteSetzen() {
     const vorhanden = document.querySelector('.igfu-ko');
     if (!isIG() || !cuEingerichtet()) { if (vorhanden) vorhanden.remove(); return; }
@@ -5425,8 +5610,9 @@
     if (tid !== koTid) koZustandSetzen(tid);
     if (koTaskId !== task.taskId) { koTaskId = task.taskId; koListe = null; }
     if (koListe === null && !koLaedt) koHolen(task.taskId);
-    // Die Status der Liste einmal holen. Ohne sie steht die Auswahl auf den im
-    // Skript bekannten Stufen, aber ohne Farben und ohne spaeter ergaenzte.
+    // Die Status der Liste einmal holen. Sie fuellen das Menue an der
+    // Status-Pille oben; ohne sie bleiben die im Skript bekannten Stufen,
+    // aber ohne Farben und ohne spaeter ergaenzte.
     if (!statiAusCache().length && !statiLaeuft) {
       statiLaeuft = true;
       statiLaden().catch(() => {}).finally(() => { statiLaeuft = false; koZeichnen(); });
@@ -5439,8 +5625,8 @@
   // waere eine angefangene Notiz nach anderthalb Sekunden weg.
   function koSignatur() {
     const task = cuTasks[koTid];
-    return [koTid, koTaskId, koOffen, koLaedt, koSendet, koStatusLaeuft, koFehler,
-      task ? task.status : '', task ? handleVonTask(task) : '', stati().length,
+    return [koTid, koTaskId, koOffen, koLaedt, koSendet, koFehler,
+      task ? handleVonTask(task) : '',
       koListe === null ? 'x' : koListe.length + ':' + koListe.map((k) => k.id).join(','),
     ].join('|');
   }
@@ -5510,30 +5696,6 @@
     }
     koerper.appendChild(hzeile);
 
-    // Der Status, von Hand aenderbar.
-    const szeile = el('div', 'igfu-ko-status');
-    const wahl = el('select', 'igfu-ko-wahl');
-    wahl.disabled = koStatusLaeuft;
-    wahl.title = 'Status in ClickUp setzen. Ein Schritt zurueck innerhalb der '
-      + 'Pipeline haelt nicht — den holt der naechste Abgleich wieder ein. '
-      + 'Endstatus wie „abgesagt" bleiben liegen.';
-    const jetzt = String((task && task.status) || '').toLowerCase();
-    const bekannt = stati();
-    // Steht am Task ein Status, den die Liste nicht (mehr) kennt, muss er
-    // trotzdem waehlbar bleiben — sonst setzt ein Blick ins Feld ihn um.
-    const alle = bekannt.some((x) => x.name === jetzt) || !jetzt
-      ? bekannt : bekannt.concat([{ name: jetzt, farbe: (task && task.farbe) || '' }]);
-    for (const st of alle) {
-      const o = el('option', '', st.name);
-      o.value = st.name;
-      if (st.name === jetzt) o.selected = true;
-      wahl.appendChild(o);
-    }
-    wahl.addEventListener('change', () => { koStatusSetzen(wahl.value); });
-    const punkt = el('span', 'igfu-ko-punkt');
-    if (task && task.farbe) punkt.style.background = task.farbe;
-    szeile.append(punkt, wahl);
-    koerper.appendChild(szeile);
 
     const verlauf = el('div', 'igfu-ko-verlauf');
     if (koFehler) verlauf.appendChild(el('p', 'igfu-empty', 'ClickUp: ' + koFehler));

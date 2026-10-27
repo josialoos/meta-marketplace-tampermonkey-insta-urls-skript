@@ -3522,85 +3522,74 @@ gruppe('Notizen: ohne Handle steht das auch da');
   pruefe('Dafuer der Hinweis', leer && /Kein Handle/.test(leer.textContent || ''), leer && leer.textContent);
 }
 
-gruppe('Notizen: die Statusauswahl kommt aus ClickUp, in der richtigen Reihenfolge');
+gruppe('Kopfleiste: die Stufen kommen aus ClickUp, in der richtigen Reihenfolge');
 {
   const { doc, w } = await starte({
     speicher: MIT_CLICKUP,
     ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
-    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian' },
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian Reichert' },
     tasks: [{ id: 'a1', name: 'reichert_florian — Florian Reichert', status: 'angeschrieben',
               farbe: '#87909e', beschreibung: 'x\\nigfu-ig: 101925914541472\\nigfu-handle: reichert_florian' }],
-    kommentare: { a1: [{ text: 'Erste Notiz.', wer: 'Josia Loos', wann: 1700000000000 }] },
   });
   await warte(w, 3500);
-  const wahl = doc.querySelector('.igfu-ko-wahl');
-  pruefe('Das Auswahlfeld ist da', !!wahl);
-  const werte = wahl ? [...wahl.options].map((o) => o.value) : [];
+  const pille = doc.querySelector('.igfu-kopf [data-kind="crm"]');
+  if (pille) klick(w, pille);
+  await warte(w, 300);
+  const menue = doc.querySelector('.igfu-menue');
+  pruefe('Das Menue ist offen', !!menue);
+  const zeilen = menue
+    ? [...menue.querySelectorAll('.igfu-menue-text')].map((e) => e.textContent)
+      .filter((t) => t !== 'In ClickUp öffnen')
+    : [];
   pruefe('Nach orderindex sortiert, nicht wie geliefert',
-    werte.join(',') === 'recherchiert,angeschrieben,hat sales,abgesagt', JSON.stringify(werte));
-  pruefe('Der aktuelle Status steht vorgewaehlt', wahl && wahl.value === 'angeschrieben', wahl && wahl.value);
+    zeilen.join(',') === 'recherchiert,angeschrieben,hat sales,abgesagt', JSON.stringify(zeilen));
+  const haken = menue && [...menue.querySelectorAll('.igfu-menue-zeile')]
+    .find((z) => z.querySelector('.igfu-menue-haken'));
+  pruefe('Der aktuelle traegt den Haken',
+    haken && /angeschrieben/.test(haken.textContent || ''), haken && haken.textContent);
 }
 
-gruppe('Notizen: Status umstellen schreibt nach ClickUp');
-{
-  const { doc, w, serverTasks } = await starte({
-    speicher: MIT_CLICKUP,
-    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
-    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian' },
-    tasks: [{ id: 'a1', name: 'reichert_florian — Florian Reichert', status: 'angeschrieben',
-              farbe: '#87909e', beschreibung: 'x\\nigfu-ig: 101925914541472\\nigfu-handle: reichert_florian' }],
-    kommentare: { a1: [{ text: 'Erste Notiz.', wer: 'Josia Loos', wann: 1700000000000 }] },
-  });
-  await warte(w, 3500);
-  const wahl = doc.querySelector('.igfu-ko-wahl');
-  pruefe('Das Auswahlfeld ist da', !!wahl);
-  if (wahl) { wahl.value = 'hat sales'; wahl.dispatchEvent(new w.Event('change', { bubbles: true })); }
-  await warte(w, 1500);
-  pruefe('Der Status steht in ClickUp', serverTasks[0].status === 'hat sales', serverTasks[0].status);
-  const chip = doc.querySelector('.igfu-kopf [data-kind="crm"]');
-  pruefe('Die Pille oben zieht mit', chip && chip.textContent === 'hat sales', chip && chip.textContent);
-  pruefe('Auch in der neuen Farbe',
-    chip && /(#e16b16|rgb\(225,\s*107,\s*22\))/i.test(chip.style.background || ''),
-    chip && chip.style.background);
-}
-
-gruppe('Notizen: von Hand darf auch zurueck und in einen Endstatus');
+gruppe('Kopfleiste: von Hand darf auch zurueck und in einen Endstatus');
 {
   // darfSetzen() bremst die Automatik, nicht die Hand. Sobald Josia selbst
   // einsortiert, entscheidet er — dieselbe Haltung wie bei der Prioritaet.
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
     ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
-    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian' },
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian Reichert' },
     tasks: [{ id: 'a1', name: 'reichert_florian — Florian', status: 'hat sales', farbe: '#e16b16',
-              beschreibung: 'x\nigfu-ig: 101925914541472\nigfu-handle: reichert_florian' }],
-    kommentare: { a1: [{ text: 'Notiz.', wer: 'Josia Loos', wann: 1700000000000 }] },
+              beschreibung: 'x\\nigfu-ig: 101925914541472\\nigfu-handle: reichert_florian' }],
   });
   await warte(w, 3500);
-  const wahl = doc.querySelector('.igfu-ko-wahl');
-  pruefe('Steht auf hat sales', wahl && wahl.value === 'hat sales', wahl && wahl.value);
-  if (wahl) { wahl.value = 'abgesagt'; wahl.dispatchEvent(new w.Event('change', { bubbles: true })); }
-  await warte(w, 1500);
+  const pille = doc.querySelector('.igfu-kopf [data-kind="crm"]');
+  pruefe('Steht auf hat sales', pille && pille.textContent === 'hat sales', pille && pille.textContent);
+  if (pille) klick(w, pille);
+  await warte(w, 300);
+  const menue = doc.querySelector('.igfu-menue');
+  const ziel = menue && [...menue.querySelectorAll('.igfu-menue-zeile')]
+    .find((z) => ((z.querySelector('.igfu-menue-text') || {}).textContent) === 'abgesagt');
+  if (ziel) klick(w, ziel);
+  await warte(w, 1200);
   pruefe('Der Endstatus wurde gesetzt', serverTasks[0].status === 'abgesagt', serverTasks[0].status);
 }
 
-gruppe('Notizen: ein unbekannter Status geht beim Hinsehen nicht verloren');
+gruppe('Kopfleiste: ein unbekannter Status wird nicht stillschweigend ersetzt');
 {
-  // Steht am Task etwas, das die Liste nicht mehr fuehrt, muss es waehlbar
-  // bleiben — sonst setzt ein Blick ins Feld den Task stillschweigend um.
+  // Steht am Task etwas, das die Liste nicht mehr fuehrt, darf allein das
+  // Hinsehen ihn nicht umstellen.
   const { doc, w, serverTasks } = await starte({
     speicher: MIT_CLICKUP,
     ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
-    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian' },
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian Reichert' },
     tasks: [{ id: 'a1', name: 'reichert_florian — Florian', status: 'altlast', farbe: '#87909e',
-              beschreibung: 'x\nigfu-ig: 101925914541472\nigfu-handle: reichert_florian' }],
-    kommentare: { a1: [{ text: 'Notiz.', wer: 'Josia Loos', wann: 1700000000000 }] },
+              beschreibung: 'x\\nigfu-ig: 101925914541472\\nigfu-handle: reichert_florian' }],
   });
   await warte(w, 3500);
-  const wahl = doc.querySelector('.igfu-ko-wahl');
-  const werte = wahl ? [...wahl.options].map((o) => o.value) : [];
-  pruefe('Der unbekannte Status steht zur Wahl', werte.includes('altlast'), JSON.stringify(werte));
-  pruefe('Und ist vorgewaehlt', wahl && wahl.value === 'altlast', wahl && wahl.value);
+  const pille = doc.querySelector('.igfu-kopf [data-kind="crm"]');
+  pruefe('Die Pille zeigt ihn an', pille && pille.textContent === 'altlast', pille && pille.textContent);
+  if (pille) klick(w, pille);
+  await warte(w, 300);
+  pruefe('Das Menue ist offen', !!doc.querySelector('.igfu-menue'));
   await warte(w, 2000);
   pruefe('Ungefragt wird nichts umgestellt', serverTasks[0].status === 'altlast', serverTasks[0].status);
 }
@@ -3653,6 +3642,159 @@ gruppe('Dark Mode: die Knoepfe in den Panels sind auch ungehovert sichtbar');
   pruefe('Das grosse Panel bleibt vorerst fest',
     /background:\s*#fff/.test(panel) && !/--ig-elevated-background/.test(panel),
     panel.slice(0, 300));
+}
+
+gruppe('Kopfleiste: Status und Tags stehen in einer Zeile, nicht untereinander');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    tags: ['follow-up', 'ad-code', 'handle-fehlt', 'ambassador', 'big', 'ignore'],
+    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian Reichert' },
+    tasks: [{ id: 'a1', name: 'reichert_florian — Florian Reichert', status: 'angeschrieben',
+              farbe: '#87909e', tags: ['ambassador', 'ad-code'],
+              beschreibung: 'x\\nigfu-ig: 101925914541472\\nigfu-handle: reichert_florian' }],
+  });
+  await warte(w, 3500);
+  const leiste = doc.querySelector('.igfu-kopf');
+  pruefe('Die Leiste ist da', !!leiste);
+  const css = (doc.getElementById('igfu-style') || {}).textContent || '';
+  const regel = css.slice(css.indexOf('.igfu-kopf {'), css.indexOf('.igfu-kopf::-webkit-scrollbar'));
+  pruefe('Sie bricht nicht um', /flex-wrap:\s*nowrap/.test(regel), regel);
+  pruefe('Und wird bei Enge seitlich schiebbar', /overflow-x:\s*auto/.test(regel), regel);
+}
+
+gruppe('Kopfleiste: nur die selbst vergebenen Tags stehen als Pille da');
+{
+  // follow-up, ad-code und handle-fehlt verwaltet das Skript. Als Pille
+  // wuerden sie die Zeile fuellen, und umschalten soll man sie hier nicht.
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    tags: ['follow-up', 'ad-code', 'handle-fehlt', 'ambassador', 'big', 'ignore'],
+    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian Reichert' },
+    tasks: [{ id: 'a1', name: 'reichert_florian — Florian Reichert', status: 'angeschrieben',
+              farbe: '#87909e', tags: ['ambassador', 'ad-code', 'big'],
+              beschreibung: 'x\\nigfu-ig: 101925914541472\\nigfu-handle: reichert_florian' }],
+  });
+  await warte(w, 3500);
+  const pillen = [...doc.querySelectorAll('.igfu-kopf [data-kind="tag"]')].map((e) => e.textContent);
+  pruefe('ambassador steht da', pillen.includes('ambassador'), JSON.stringify(pillen));
+  pruefe('big auch', pillen.includes('big'), JSON.stringify(pillen));
+  pruefe('ad-code nicht', !pillen.includes('ad-code'), JSON.stringify(pillen));
+  pruefe('Der Knopf zum Verwalten ist da', !!doc.querySelector('.igfu-kopf [data-kind="tagmenue"]'));
+}
+
+gruppe('Kopfleiste: die Status-Pille oeffnet die Auswahl und setzt den Status');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tags: ['follow-up', 'ad-code', 'handle-fehlt', 'ambassador', 'big', 'ignore'],
+    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian Reichert' },
+    tasks: [{ id: 'a1', name: 'reichert_florian — Florian Reichert', status: 'angeschrieben',
+              farbe: '#87909e', beschreibung: 'x\\nigfu-ig: 101925914541472\\nigfu-handle: reichert_florian' }],
+  });
+  await warte(w, 3500);
+  const pille = doc.querySelector('.igfu-kopf [data-kind="crm"]');
+  pruefe('Die Status-Pille ist da', pille && pille.textContent === 'angeschrieben', pille && pille.textContent);
+  if (pille) klick(w, pille);
+  await warte(w, 300);
+  const menue = doc.querySelector('.igfu-menue');
+  pruefe('Das Menue ist offen', !!menue);
+  const zeilen = menue ? [...menue.querySelectorAll('.igfu-menue-text')].map((e) => e.textContent) : [];
+  pruefe('Die Stufen stehen drin', zeilen.includes('hat sales'), JSON.stringify(zeilen));
+  pruefe('Und der Weg nach ClickUp', zeilen.includes('In ClickUp öffnen'), JSON.stringify(zeilen));
+  const ziel = menue && [...menue.querySelectorAll('.igfu-menue-zeile')]
+    .find((z) => (z.textContent || '').indexOf('hat sales') >= 0);
+  if (ziel) klick(w, ziel);
+  await warte(w, 1200);
+  pruefe('Der Status steht in ClickUp', serverTasks[0].status === 'hat sales', serverTasks[0].status);
+  pruefe('Das Menue ist wieder zu', !doc.querySelector('.igfu-menue'));
+  const neuePille = doc.querySelector('.igfu-kopf [data-kind="crm"]');
+  pruefe('Die Pille zieht mit', neuePille && neuePille.textContent === 'hat sales', neuePille && neuePille.textContent);
+}
+
+gruppe('Kopfleiste: ohne Task legt die Pille einen an, statt ein Menue zu oeffnen');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tags: ['follow-up', 'ad-code', 'handle-fehlt', 'ambassador', 'big', 'ignore'],
+    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian Reichert' },
+  });
+  await warte(w, 3000);
+  const pille = doc.querySelector('.igfu-kopf [data-kind="crm"]');
+  pruefe('Sie laedt zum Anlegen ein', pille && pille.textContent === 'CRM +', pille && pille.textContent);
+  if (pille) klick(w, pille);
+  await warte(w, 2500);
+  pruefe('Kein Menue', !doc.querySelector('.igfu-menue'));
+  pruefe('Dafuer ein Task', serverTasks.length === 1, String(serverTasks.length));
+}
+
+gruppe('Kopfleiste: Tags setzen und entfernen');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    tags: ['follow-up', 'ad-code', 'handle-fehlt', 'ambassador', 'big', 'ignore'],
+    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian Reichert' },
+    tasks: [{ id: 'a1', name: 'reichert_florian — Florian Reichert', status: 'angeschrieben',
+              farbe: '#87909e', tags: ['ambassador'],
+              beschreibung: 'x\\nigfu-ig: 101925914541472\\nigfu-handle: reichert_florian' }],
+  });
+  await warte(w, 3500);
+  const knopf = doc.querySelector('.igfu-kopf [data-kind="tagmenue"]');
+  pruefe('Der Verwalten-Knopf ist da', !!knopf);
+  if (knopf) klick(w, knopf);
+  await warte(w, 400);
+  let menue = doc.querySelector('.igfu-menue');
+  pruefe('Das Menue ist offen', !!menue);
+  const zeilen = menue ? [...menue.querySelectorAll('.igfu-menue-zeile')] : [];
+  const texte = zeilen.map((z) => (z.querySelector('.igfu-menue-text') || {}).textContent);
+  pruefe('Die Tags aus dem Space stehen drin',
+    texte.includes('ambassador') && texte.includes('ignore'), JSON.stringify(texte));
+  const vomSkript = zeilen.find((z) => ((z.querySelector('.igfu-menue-text') || {}).textContent) === 'ad-code');
+  pruefe('Vom Skript verwaltete sind gesperrt', vomSkript && vomSkript.disabled === true);
+  const haken = zeilen.find((z) => ((z.querySelector('.igfu-menue-text') || {}).textContent) === 'ambassador');
+  pruefe('Der gesetzte traegt einen Haken', !!(haken && haken.querySelector('.igfu-menue-haken')));
+
+  const neuerTag = zeilen.find((z) => ((z.querySelector('.igfu-menue-text') || {}).textContent) === 'big');
+  if (neuerTag) klick(w, neuerTag);
+  await warte(w, 1200);
+  pruefe('Der Tag liegt am Task', (serverTasks[0].tags || []).includes('big'),
+    JSON.stringify(serverTasks[0].tags));
+
+  const weg = doc.querySelector('.igfu-kopf [data-kind="tagmenue"]');
+  if (weg) klick(w, weg);
+  await warte(w, 400);
+  menue = doc.querySelector('.igfu-menue');
+  const raus = menue && [...menue.querySelectorAll('.igfu-menue-zeile')]
+    .find((z) => ((z.querySelector('.igfu-menue-text') || {}).textContent) === 'ambassador');
+  if (raus) klick(w, raus);
+  await warte(w, 1200);
+  pruefe('Und laesst sich wieder entfernen', !(serverTasks[0].tags || []).includes('ambassador'),
+    JSON.stringify(serverTasks[0].tags));
+}
+
+gruppe('Notizen: der Status ist dort nicht mehr doppelt');
+{
+  // Zwei Bedienstellen fuer dieselbe Sache waeren nur verwirrend. Der Status
+  // sitzt jetzt oben neben dem Namen.
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    tags: ['follow-up', 'ad-code', 'handle-fehlt', 'ambassador', 'big', 'ignore'],
+    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian Reichert' },
+    tasks: [{ id: 'a1', name: 'reichert_florian — Florian Reichert', status: 'angeschrieben',
+              farbe: '#87909e', beschreibung: 'x\\nigfu-ig: 101925914541472\\nigfu-handle: reichert_florian' }],
+    kommentare: { a1: [{ text: 'Notiz.', wer: 'Josia Loos', wann: 1700000000000 }] },
+  });
+  await warte(w, 3500);
+  pruefe('Kein Auswahlfeld in der Leiste', !doc.querySelector('.igfu-ko-wahl'));
+  pruefe('Der Handle steht weiter da', !!doc.querySelector('.igfu-ko-at'));
+  pruefe('Und die Notizen auch', doc.querySelectorAll('.igfu-ko-text').length === 1);
+  pruefe('Oben gibt es den Status', !!doc.querySelector('.igfu-kopf [data-kind="crm"]'));
 }
 
 console.log('\n' + (fehlgeschlagen

@@ -566,12 +566,37 @@ Neben dem Namen des Gegenübers steht eine Leiste mit drei Knöpfen. Es sind
 dieselben wie an den Zeilen der Liste — nur dort, wo du gerade hinsiehst, wenn
 du antwortest.
 
+Alles steht **in einer Zeile** neben dem Namen. Wird es eng, lässt sich die
+Leiste seitlich schieben — der Kopf wird nie höher.
+
 | | |
 |---|---|
-| Status-Pille | derselbe Status und dieselbe Farbe wie in der Liste; Klick öffnet den Task in ClickUp |
+| Status-Pille | derselbe Status und dieselbe Farbe wie in der Liste. **Klick öffnet die Auswahl** zum Umstellen, ganz unten steht „In ClickUp öffnen" |
 | „CRM +" | gibt es noch keinen Datensatz, legt der Klick ihn an |
+| Tag-Pillen | deine eigenen Tags am Datensatz |
+| „+" | öffnet die Tag-Auswahl: anklicken setzt, nochmal anklicken entfernt |
 | Follow-up | setzt und entfernt die Markierung |
 | Postfach-Knopf | **grün**: dieselbe Person gibt es auch im anderen Postfach, Klick öffnet sie in einem neuen Tab. **Rot**: gibt es nicht, der Knopf tut nichts. |
+
+### Status und Tags ändern
+
+Die Stufen und die Tags kommen **aus ClickUp selbst**. Legst du dort eine neue
+Stufe oder einen neuen Tag an, taucht er hier von allein auf.
+
+> **Zum Status von Hand.** Die Pipeline ist für das Skript eine Leiter: die
+> Automatik schiebt nur nach vorn. Für dich gilt das **nicht** — du kannst
+> jede Stufe wählen, auch rückwärts. Zwei Dinge dabei:
+>
+> - Ein Schritt **zurück innerhalb der Pipeline hält nicht**. Beim nächsten
+>   Abgleich zieht Onboarding, Ware oder Sales ihn wieder nach vorn.
+> - **Endstatus bleiben liegen** — `abgesagt`, `ignore`, `keine antwort`,
+>   `beendet` fasst keine Automatik mehr an.
+
+Drei Tags stehen im Menü, lassen sich aber **nicht** anklicken, weil das
+Skript sie selbst verwaltet: `follow-up` (dafür gibt es den Knopf daneben),
+`ad-code` (hält eine Tatsache fest und wird nie entfernt) und `handle-fehlt`
+(verschwindet von allein, sobald der Handle da ist). Der Mauszeiger sagt
+jeweils, warum.
 
 ### Der Postfach-Knopf
 
@@ -601,17 +626,9 @@ Oben in der Leiste stehen zwei Dinge, die ständig gebraucht werden:
   der nackte Handle ohne `@` — so, wie du ihn in UpPromote oder Shopify
   einfügst. Fehlt er, steht dort „Kein Handle hinterlegt"; ein Task ohne
   Handle ist für sämtliche Automatiken unsichtbar, und zwar lautlos.
-- **Der Status**, zum Umstellen. Die Stufen kommen aus ClickUp selbst, eine
-  dort ergänzte taucht also von allein auf.
 
-> **Zum Status von Hand.** Die Pipeline ist für das Skript eine Leiter: die
-> Automatik schiebt nur nach vorn. Für dich gilt das **nicht** — du kannst
-> jede Stufe wählen, auch rückwärts. Zwei Dinge dabei:
->
-> - Ein Schritt **zurück innerhalb der Pipeline hält nicht**. Beim nächsten
->   Abgleich zieht Onboarding, Ware oder Sales ihn wieder nach vorn.
-> - **Endstatus bleiben liegen** — `abgesagt`, `ignore`, `keine antwort`,
->   `beendet` fasst keine Automatik mehr an.
+Status und Tags sitzen **nicht** hier, sondern oben neben dem Namen — zwei
+Bedienstellen für dieselbe Sache wären nur verwirrend.
 
 | | |
 |---|---|

@@ -1088,6 +1088,34 @@ Genau das hat ein Mutationstest am 23.10.2026 gezeigt. Die erste Fassung der
 Prüfung las nur den Text zurück und lief grün durch, obwohl der Kurzschluss
 entfernt war. Sie prüft jetzt, ob es **dasselbe Element** geblieben ist.
 
+### Status und Tags in der Kopfleiste
+
+Beides sitzt seit 8.7 **oben neben dem Namen**, in derselben Zeile:
+`flex-wrap: nowrap`, und bei Enge `overflow-x: auto` statt Umbruch — der Kopf
+soll nicht höher werden. Das Statusfeld aus der Seitenleiste ist dafür
+entfallen; zwei Bedienstellen für dieselbe Sache verwirren nur.
+
+Status- und Tag-Auswahl teilen sich dieselbe Mechanik (`menueOeffnen`). Das
+Menü lauscht erst im nächsten Takt auf Klicks daneben — sonst schließt der
+Klick, der es gerade geöffnet hat, es sofort wieder.
+
+Die Leiste wird **nur bei echter Änderung** neu gebaut (`wrap.dataset.sig` aus
+tid, Status, eigenen Tags, Follow-up und Postfach-Zustand). Ohne das
+verschwände ein gerade geöffnetes Menü bei jedem Takt unter den Fingern —
+derselbe Grund wie bei `koSignatur()` in der Notiz-Leiste.
+
+**`taskAufbereiten` gibt die Tags jetzt mit.** Bis 8.7 wurden sie berechnet,
+die drei Flaggen `follow`, `adcode`, `leiche` daraus abgeleitet und die Liste
+dann weggeworfen. `task.tags` war schlicht `undefined`, die Pillen blieben
+leer, und das Menü wusste nicht, was schon gesetzt ist — „entfernen" setzte
+den Tag deshalb erneut.
+
+**Drei Tags sind im Menü gesperrt** (`TAGS_AUTOMATIK`): `follow-up` hat den
+eigenen Knopf daneben, `ad-code` hält eine Tatsache fest und wird nie
+entfernt, `handle-fehlt` verschwindet von allein. Als Pille erscheinen sie
+gar nicht erst, sie würden die Zeile nur füllen. Die übrige Tag-Liste kommt
+aus `GET /space/<id>/tag` und liegt in `clickup:tagliste:v1`.
+
 ### Handle und Status in der Leiste
 
 Der Handle kommt aus `handleVonTask()`, kopiert wird er **ohne `@`** — so wird
@@ -1101,7 +1129,8 @@ gesperrter Zwischenablage hat genau das aufgedeckt.
 Die Statusliste kommt aus `GET /list/<id>` — ClickUp liefert `statuses` mit
 `color` und `orderindex` gleich mit — und liegt in `clickup:stati:v1`. Fällt
 der Abruf aus, bleibt die Auswahl über `STATUS_LEITER + STATUS_ENDE`
-benutzbar, nur ohne Farben.
+benutzbar, nur ohne Farben. Seit 8.7 füllt sie das Menü an der Status-Pille
+oben, nicht mehr ein Feld in der Seitenleiste.
 
 **`darfSetzen()` gilt hier bewusst nicht.** Die Leiter bremst die *Automatik*,
 weil sich Onboarding-, Waren- und Sales-Abgleich sonst gegenseitig das
