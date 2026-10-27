@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      8.4
+// @version      8.5
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -266,6 +266,22 @@
   box-shadow: -8px 0 28px rgba(0,0,0,.18); }
 .igfu-ko-kopf { display: flex; justify-content: space-between; align-items: center;
   padding: 10px; border-bottom: 1px solid rgb(var(--ig-separator, 219, 223, 228)); }
+.igfu-ko-handle { display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-bottom: 1px solid rgb(var(--ig-separator, 219, 223, 228)); }
+.igfu-ko-at { font-weight: 600; text-decoration: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: rgb(var(--ig-primary-text, 12, 16, 20)); }
+.igfu-ko-at:hover { text-decoration: underline; }
+.igfu-ko-kopie { margin-left: auto; flex: none; }
+.igfu-ko-leer { color: rgb(var(--ig-secondary-text, 106, 113, 122)); }
+.igfu-ko-status { display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-bottom: 1px solid rgb(var(--ig-separator, 219, 223, 228)); }
+.igfu-ko-punkt { width: 9px; height: 9px; border-radius: 50%; flex: none;
+  background: rgb(var(--ig-secondary-text, 106, 113, 122)); }
+.igfu-ko-wahl { flex: 1; min-width: 0; font: inherit; border-radius: 8px; padding: 6px 8px;
+  border: 1px solid rgb(var(--ig-separator, 219, 223, 228));
+  background: rgb(var(--ig-primary-background, 255, 255, 255));
+  color: rgb(var(--ig-primary-text, 12, 16, 20)); }
 .igfu-ko-verlauf { flex: 1; min-height: 0; overflow: auto; padding: 4px 10px; }
 .igfu-ko-eintrag { padding: 8px 0; border-bottom: 1px solid rgb(var(--ig-separator, 219, 223, 228)); }
 .igfu-ko-eintrag:last-child { border-bottom: none; }
@@ -351,7 +367,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '8.4';
+  const VERSION = '8.5';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -2091,6 +2107,33 @@
     } finally {
       cuLaeuft = false;
     }
+  }
+
+  // Die Status der Liste, in ClickUps eigener Reihenfolge und mit ihren Farben.
+  //
+  // STATUS_LEITER im Skript ist etwas anderes: sie beschreibt, wohin die
+  // *Automatik* schieben darf. Fuer die Auswahl von Hand zaehlt, was in der
+  // Liste wirklich steht — auch die Endstatus, auch eine Stufe, die spaeter
+  // dazukommt.
+  const CU_STATI = 'clickup:stati:v1';
+  const statiAusCache = () => {
+    const roh = GM_getValue(CU_STATI, []);
+    return Array.isArray(roh) && roh.length ? roh : [];
+  };
+  // Faellt der Abruf aus, bleibt die Auswahl trotzdem benutzbar: die im Skript
+  // bekannten Stufen stehen dann ohne Farbe da.
+  const statiNotnagel = () => STATUS_LEITER.concat(STATUS_ENDE).map((n) => ({ name: n, farbe: '' }));
+  const stati = () => { const c = statiAusCache(); return c.length ? c : statiNotnagel(); };
+
+  async function statiLaden() {
+    const daten = await cuRequest('GET', '/list/' + encodeURIComponent(cuListe()));
+    const liste = (daten.statuses || [])
+      .slice()
+      .sort((a, b) => (Number(a.orderindex) || 0) - (Number(b.orderindex) || 0))
+      .map((x) => ({ name: String(x.status || '').toLowerCase().trim(), farbe: x.color || '' }))
+      .filter((x) => x.name);
+    if (liste.length) GM_setValue(CU_STATI, liste);
+    return liste;
   }
 
   async function cuSpaceLaden() {
@@ -5181,6 +5224,36 @@
     setzePostfachChip(wrap.querySelector('[data-kind="postfach"]'), tid);
   }
 
+  // Kopieren. Die Schreibrechte auf die Zwischenablage haengen an der Seite
+  // und an einer echten Nutzergeste; faellt der moderne Weg aus, bleibt der
+  // alte ueber ein kurzlebiges Textfeld.
+  async function inZwischenablage(text) {
+    const wert = String(text || '');
+    if (!wert) return false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(wert);
+        return true;
+      }
+    } catch { /* unten weiter */ }
+    try {
+      const hilf = document.createElement('textarea');
+      hilf.value = wert;
+      hilf.setAttribute('readonly', '');
+      hilf.style.position = 'fixed';
+      hilf.style.top = '-1000px';
+      document.body.appendChild(hilf);
+      // Erst den Fokus, dann die Auswahl: execCommand('copy') nimmt die
+      // Auswahl des *fokussierten* Elements. Browser setzen den Fokus bei
+      // select() meist gleich mit, verlassen sollte man sich darauf nicht.
+      hilf.focus();
+      hilf.select();
+      const gut = document.execCommand('copy');
+      hilf.remove();
+      return gut;
+    } catch { return false; }
+  }
+
   // ---------- Notizen: die Kommentare aus ClickUp ----------
   //
   // Die Kommentare eines Tasks sind unsere Notizen zu einem Affiliate. Sie
@@ -5201,6 +5274,8 @@
   let koFehler = '';
   let koSendet = false;
   let koEntwurf = '';    // angefangene Notiz, ueberlebt das Neuzeichnen
+  let koStatusLaeuft = false;
+  let statiLaeuft = false;
   let koStand = '';      // woran erkannt wird, dass sich wirklich etwas geaendert hat
 
   async function koKommentareLaden(taskId) {
@@ -5261,6 +5336,39 @@
     }
   }
 
+  // Von Hand gesetzt, also ohne Rangpruefung.
+  //
+  // darfSetzen() gilt fuer die *Automatik* — sie darf nur nach vorn schieben,
+  // sonst nehmen sich die drei Pruefungen gegenseitig das Ergebnis weg. Hier
+  // sitzt dagegen Josia am Knopf, und dann entscheidet er. Dieselbe Haltung
+  // wie bei der Prioritaet.
+  //
+  // Was er dabei wissen muss, steht am Auswahlfeld: ein Schritt zurueck
+  // innerhalb der Leiter haelt nicht, den holt der naechste Abgleich wieder
+  // ein. Nur die Endstatus bleiben liegen.
+  async function koStatusSetzen(neu) {
+    const task = cuTasks[koTid];
+    const wert = String(neu || '').toLowerCase().trim();
+    if (!task || !wert || wert === String(task.status || '').toLowerCase()) return;
+    koStatusLaeuft = true;
+    koZeichnen();
+    try {
+      await cuRequest('PUT', '/task/' + task.taskId, { status: wert });
+      task.status = wert;
+      const treffer = stati().find((x) => x.name === wert);
+      if (treffer && treffer.farbe) task.farbe = treffer.farbe;
+      cuSpeichern();
+      toast('Status: ' + wert);
+      scanRows();
+      kopfLeisteSetzen();
+    } catch (e) {
+      toast('ClickUp: ' + e.message);
+    } finally {
+      koStatusLaeuft = false;
+      koZeichnen();
+    }
+  }
+
   function koLeisteSetzen() {
     const vorhanden = document.querySelector('.igfu-ko');
     if (!isIG() || !cuEingerichtet()) { if (vorhanden) vorhanden.remove(); return; }
@@ -5275,6 +5383,12 @@
     if (tid !== koTid) koZustandSetzen(tid);
     if (koTaskId !== task.taskId) { koTaskId = task.taskId; koListe = null; }
     if (koListe === null && !koLaedt) koHolen(task.taskId);
+    // Die Status der Liste einmal holen. Ohne sie steht die Auswahl auf den im
+    // Skript bekannten Stufen, aber ohne Farben und ohne spaeter ergaenzte.
+    if (!statiAusCache().length && !statiLaeuft) {
+      statiLaeuft = true;
+      statiLaden().catch(() => {}).finally(() => { statiLaeuft = false; koZeichnen(); });
+    }
     koZeichnen();
   }
 
@@ -5282,7 +5396,9 @@
   // zeichnet der Takt nur, wenn sich wirklich etwas geaendert hat — sonst
   // waere eine angefangene Notiz nach anderthalb Sekunden weg.
   function koSignatur() {
-    return [koTid, koTaskId, koOffen, koLaedt, koSendet, koFehler,
+    const task = cuTasks[koTid];
+    return [koTid, koTaskId, koOffen, koLaedt, koSendet, koStatusLaeuft, koFehler,
+      task ? task.status : '', task ? handleVonTask(task) : '', stati().length,
       koListe === null ? 'x' : koListe.length + ':' + koListe.map((k) => k.id).join(','),
     ].join('|');
   }
@@ -5324,6 +5440,58 @@
       }, 'Den Task in ClickUp öffnen'));
     }
     koerper.appendChild(kopf);
+
+    const task = cuTasks[koTid];
+
+    // Der Handle. Er ist der Schluessel, an dem im CRM alles haengt, und wird
+    // staendig gebraucht — fuer die Suche in UpPromote, fuer Shopify, fuer
+    // Ad-Codes. Deshalb steht er hier mit einem Knopf daneben.
+    const handle = task ? handleVonTask(task) : '';
+    const hzeile = el('div', 'igfu-ko-handle');
+    if (handle) {
+      const name = el('a', 'igfu-ko-at', '@' + handle);
+      name.href = 'https://www.instagram.com/' + encodeURIComponent(handle) + '/';
+      name.target = '_blank';
+      name.rel = 'noopener';
+      name.title = 'Profil in einem neuen Tab oeffnen';
+      const kopieren = button('igfu-link igfu-ko-kopie', 'Kopieren', async () => {
+        const gut = await inZwischenablage(handle);
+        if (!gut) { toast('Kopieren hat nicht geklappt.'); return; }
+        kopieren.textContent = 'Kopiert';
+        setTimeout(() => { if (kopieren.isConnected) kopieren.textContent = 'Kopieren'; }, 1400);
+      }, 'Den Handle in die Zwischenablage legen');
+      hzeile.append(name, kopieren);
+    } else {
+      // Ohne Handle ist der Task fuer jede Automatik unsichtbar, und zwar
+      // lautlos. Das gehoert hier hingeschrieben, nicht verschwiegen.
+      hzeile.appendChild(el('span', 'igfu-ko-leer', 'Kein Handle hinterlegt'));
+    }
+    koerper.appendChild(hzeile);
+
+    // Der Status, von Hand aenderbar.
+    const szeile = el('div', 'igfu-ko-status');
+    const wahl = el('select', 'igfu-ko-wahl');
+    wahl.disabled = koStatusLaeuft;
+    wahl.title = 'Status in ClickUp setzen. Ein Schritt zurueck innerhalb der '
+      + 'Pipeline haelt nicht — den holt der naechste Abgleich wieder ein. '
+      + 'Endstatus wie „abgesagt" bleiben liegen.';
+    const jetzt = String((task && task.status) || '').toLowerCase();
+    const bekannt = stati();
+    // Steht am Task ein Status, den die Liste nicht (mehr) kennt, muss er
+    // trotzdem waehlbar bleiben — sonst setzt ein Blick ins Feld ihn um.
+    const alle = bekannt.some((x) => x.name === jetzt) || !jetzt
+      ? bekannt : bekannt.concat([{ name: jetzt, farbe: (task && task.farbe) || '' }]);
+    for (const st of alle) {
+      const o = el('option', '', st.name);
+      o.value = st.name;
+      if (st.name === jetzt) o.selected = true;
+      wahl.appendChild(o);
+    }
+    wahl.addEventListener('change', () => { koStatusSetzen(wahl.value); });
+    const punkt = el('span', 'igfu-ko-punkt');
+    if (task && task.farbe) punkt.style.background = task.farbe;
+    szeile.append(punkt, wahl);
+    koerper.appendChild(szeile);
 
     const verlauf = el('div', 'igfu-ko-verlauf');
     if (koFehler) verlauf.appendChild(el('p', 'igfu-empty', 'ClickUp: ' + koFehler));

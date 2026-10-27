@@ -1088,6 +1088,33 @@ Genau das hat ein Mutationstest am 23.10.2026 gezeigt. Die erste Fassung der
 Prüfung las nur den Text zurück und lief grün durch, obwohl der Kurzschluss
 entfernt war. Sie prüft jetzt, ob es **dasselbe Element** geblieben ist.
 
+### Handle und Status in der Leiste
+
+Der Handle kommt aus `handleVonTask()`, kopiert wird er **ohne `@`** — so wird
+er in UpPromote und Shopify gebraucht. `inZwischenablage()` nimmt
+`navigator.clipboard` und fällt auf ein kurzlebiges Textfeld mit
+`execCommand('copy')` zurück. Dort steht **`focus()` vor `select()`**:
+`copy` nimmt die Auswahl des fokussierten Elements, und dass `select()` den
+Fokus mitsetzt, ist Browserpraxis, aber nicht garantiert. Ein Test mit
+gesperrter Zwischenablage hat genau das aufgedeckt.
+
+Die Statusliste kommt aus `GET /list/<id>` — ClickUp liefert `statuses` mit
+`color` und `orderindex` gleich mit — und liegt in `clickup:stati:v1`. Fällt
+der Abruf aus, bleibt die Auswahl über `STATUS_LEITER + STATUS_ENDE`
+benutzbar, nur ohne Farben.
+
+**`darfSetzen()` gilt hier bewusst nicht.** Die Leiter bremst die *Automatik*,
+weil sich Onboarding-, Waren- und Sales-Abgleich sonst gegenseitig das
+Ergebnis wegnehmen. Am Auswahlfeld sitzt dagegen Josia, und dann entscheidet
+er — dieselbe Haltung wie bei der Priorität. Was das praktisch heißt, steht
+als Hinweis am Feld: ein Schritt zurück innerhalb der Leiter hält nicht, nur
+die Endstatus bleiben liegen.
+
+**Ein unbekannter Status bleibt wählbar.** Steht am Task etwas, das die Liste
+nicht mehr führt, wird es der Auswahl hinzugefügt und vorausgewählt. Ohne das
+stünde das Feld auf der ersten Stufe, und allein das Hinsehen hätte den Task
+beim nächsten `change` stillschweigend umgestellt.
+
 ### Die Benutzer-ID kam in neuer Verpackung
 
 Bis Oktober 2026 stand sie als `users[0].id` an der Zeile. Seit einem Umbau

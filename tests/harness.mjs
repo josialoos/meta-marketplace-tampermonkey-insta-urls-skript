@@ -55,6 +55,7 @@ export async function starte({
   ig = null,               // [{ id, titel, vorschau, zeit, ungelesen, bild }] baut die Instagram-Liste
   igOffen = null,          // { tid, handle, titel } simuliert eine geoeffnete Unterhaltung
   kommentare = null,       // { '<taskId>': [{ text, wer, wann }] } Notizen an Tasks
+  stati = null,            // [{ status, color, orderindex }] die Status der Liste
   vorlagen = null,         // [{ id, titel, text, wer }] legt die Liste „Standardnachrichten" an
 } = {}) {
   // Die vier festen Threads bleiben unangetastet, damit bestehende Pruefungen
@@ -165,7 +166,28 @@ export async function starte({
     e.preventDefault();
     f.textContent += (e.clipboardData && e.clipboardData.getData('text/plain')) || '';
   }, true);
+  // Die Zwischenablage. jsdom bringt keine mit. `ablage.frei = false` stellt
+  // eine Seite nach, die das Schreiben verbietet — dann muss der Rueckfall
+  // ueber execCommand greifen.
+  const ablage = { inhalt: '', weg: '', frei: true };
+  Object.defineProperty(w.navigator, 'clipboard', {
+    configurable: true,
+    value: {
+      writeText: async (t) => {
+        if (!ablage.frei) throw new Error('verboten');
+        ablage.inhalt = String(t);
+        ablage.weg = 'modern';
+      },
+    },
+  });
   w.document.execCommand = (befehl, _ui, wert) => {
+    if (befehl === 'copy') {
+      const f = w.document.activeElement;
+      if (!f || typeof f.value !== 'string') return false;
+      ablage.inhalt = f.value;
+      ablage.weg = 'alt';
+      return true;
+    }
     if (befehl !== 'insertText') return false;
     const f = w.document.querySelector('div[role="textbox"]');
     if (!f) return false;
@@ -341,7 +363,21 @@ export async function starte({
         return ok({ id: 'neu' });
       }
     }
-    if (methode === 'GET' && /^\/list\/[^/]+$/.test(pf)) return ok({ id: LISTE, space: { id: SPACE } });
+    if (methode === 'GET' && /^\/list\/[^/]+$/.test(pf)) {
+      // ClickUp liefert die Status der Liste gleich mit, unsortiert und mit
+      // orderindex. Der Pruefstand gibt sie bewusst in falscher Reihenfolge
+      // heraus, damit das Sortieren im Skript geprueft ist.
+      return ok({
+        id: LISTE,
+        space: { id: SPACE },
+        statuses: stati || [
+          { status: 'hat sales', color: '#e16b16', orderindex: 7 },
+          { status: 'recherchiert', color: '#87909e', orderindex: 0 },
+          { status: 'angeschrieben', color: '#87909e', orderindex: 1 },
+          { status: 'abgesagt', color: '#d33d44', orderindex: 8 },
+        ],
+      });
+    }
     if (methode === 'GET' && /^\/task\/[^/?]+/.test(pf)) {
       const id = pf.split('/')[2].split('?')[0];
       const t = serverTasks.find((x) => x.id === id);
@@ -455,7 +491,7 @@ export async function starte({
     await warte(w, 50);
   }
   await warte(w, 120);
-  return { dom, w, doc, store, aufrufe, serverTasks, spaceTags, vorlagenTasks, kommentarListen };
+  return { dom, w, doc, store, aufrufe, serverTasks, spaceTags, vorlagenTasks, kommentarListen, ablage };
 }
 
 // Bausteine fuer eigene Unterhaltungen in einzelnen Pruefungen.

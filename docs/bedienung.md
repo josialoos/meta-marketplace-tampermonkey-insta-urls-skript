@@ -595,6 +595,24 @@ Rechts am Fensterrand hängt eine schmale Leiste. Darin stehen die
 **ClickUp-Kommentare** des Datensatzes — unsere Notizen zu diesem Affiliate —
 und du kannst neue schreiben.
 
+Oben in der Leiste stehen zwei Dinge, die ständig gebraucht werden:
+
+- **Der Handle**, als Link aufs Profil, daneben **„Kopieren"**. Kopiert wird
+  der nackte Handle ohne `@` — so, wie du ihn in UpPromote oder Shopify
+  einfügst. Fehlt er, steht dort „Kein Handle hinterlegt"; ein Task ohne
+  Handle ist für sämtliche Automatiken unsichtbar, und zwar lautlos.
+- **Der Status**, zum Umstellen. Die Stufen kommen aus ClickUp selbst, eine
+  dort ergänzte taucht also von allein auf.
+
+> **Zum Status von Hand.** Die Pipeline ist für das Skript eine Leiter: die
+> Automatik schiebt nur nach vorn. Für dich gilt das **nicht** — du kannst
+> jede Stufe wählen, auch rückwärts. Zwei Dinge dabei:
+>
+> - Ein Schritt **zurück innerhalb der Pipeline hält nicht**. Beim nächsten
+>   Abgleich zieht Onboarding, Ware oder Sales ihn wieder nach vorn.
+> - **Endstatus bleiben liegen** — `abgesagt`, `ignore`, `keine antwort`,
+>   `beendet` fasst keine Automatik mehr an.
+
 | | |
 |---|---|
 | Es gibt Notizen | die Leiste steht **offen** |

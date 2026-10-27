@@ -3440,6 +3440,171 @@ gruppe('Notizen: das Textfeld wird beim Takt nicht neu gebaut');
     doc.activeElement && doc.activeElement.className);
 }
 
+gruppe('Notizen: der Handle steht in der Leiste');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian' },
+    tasks: [{ id: 'a1', name: 'reichert_florian — Florian Reichert', status: 'angeschrieben',
+              farbe: '#87909e', beschreibung: 'x\\nigfu-ig: 101925914541472\\nigfu-handle: reichert_florian' }],
+    kommentare: { a1: [{ text: 'Erste Notiz.', wer: 'Josia Loos', wann: 1700000000000 }] },
+  });
+  await warte(w, 3500);
+  const at = doc.querySelector('.igfu-ko-at');
+  pruefe('Der Handle steht da', at && at.textContent === '@reichert_florian', at && at.textContent);
+  pruefe('Und verlinkt das Profil',
+    at && /instagram\.com\/reichert_florian/.test(at.getAttribute('href') || ''),
+    at && at.getAttribute('href'));
+  pruefe('Der Kopier-Knopf ist da', !!doc.querySelector('.igfu-ko-kopie'));
+}
+
+gruppe('Notizen: Kopieren legt den Handle in die Zwischenablage');
+{
+  const { doc, w, ablage } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian' },
+    tasks: [{ id: 'a1', name: 'reichert_florian — Florian Reichert', status: 'angeschrieben',
+              farbe: '#87909e', beschreibung: 'x\\nigfu-ig: 101925914541472\\nigfu-handle: reichert_florian' }],
+    kommentare: { a1: [{ text: 'Erste Notiz.', wer: 'Josia Loos', wann: 1700000000000 }] },
+  });
+  await warte(w, 3500);
+  const k = doc.querySelector('.igfu-ko-kopie');
+  pruefe('Der Knopf ist da', !!k);
+  if (k) klick(w, k);
+  await warte(w, 400);
+  pruefe('Der Handle liegt drin', ablage.inhalt === 'reichert_florian', ablage.inhalt);
+  pruefe('Ohne @ davor', !/@/.test(ablage.inhalt), ablage.inhalt);
+  pruefe('Der Knopf sagt Bescheid', k && k.textContent === 'Kopiert', k && k.textContent);
+}
+
+gruppe('Notizen: Kopieren faellt zurueck, wenn die Seite es verbietet');
+{
+  // Das Schreiben in die Zwischenablage kann an der Seite scheitern. Dann muss
+  // der alte Weg greifen, sonst stuende der Knopf nur sinnlos da.
+  const { doc, w, ablage } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian' },
+    tasks: [{ id: 'a1', name: 'reichert_florian — Florian Reichert', status: 'angeschrieben',
+              farbe: '#87909e', beschreibung: 'x\\nigfu-ig: 101925914541472\\nigfu-handle: reichert_florian' }],
+    kommentare: { a1: [{ text: 'Erste Notiz.', wer: 'Josia Loos', wann: 1700000000000 }] },
+  });
+  await warte(w, 3500);
+  ablage.frei = false;
+  const k = doc.querySelector('.igfu-ko-kopie');
+  if (k) klick(w, k);
+  await warte(w, 400);
+  pruefe('Trotzdem kopiert', ablage.inhalt === 'reichert_florian', ablage.inhalt);
+  pruefe('Ueber den Rueckfall', ablage.weg === 'alt', ablage.weg);
+}
+
+gruppe('Notizen: ohne Handle steht das auch da');
+{
+  // Ohne Handle ist der Task fuer jede Automatik unsichtbar, und zwar lautlos.
+  //
+  // nurLeiste: eine Unterhaltung, in der das Gegenueber nicht verlinkt ist —
+  // so sehen Partner-Unterhaltungen aus. Mit Profillink waere der Test
+  // wertlos: dann liest das Skript den Handle aus der Kontaktkarte und traegt
+  // ihn am Task nach, und es gaebe sehr wohl einen.
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '101925914541472', titel: 'Larissa', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: '101925914541472', nurLeiste: true },
+    tasks: [{ id: 'a1', name: 'Larissa', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: 'x\nigfu-ig: 101925914541472' }],
+    kommentare: { a1: [{ text: 'Notiz.', wer: 'Josia Loos', wann: 1700000000000 }] },
+  });
+  await warte(w, 3500);
+  pruefe('Kein Handle-Link', !doc.querySelector('.igfu-ko-at'));
+  const leer = doc.querySelector('.igfu-ko-leer');
+  pruefe('Dafuer der Hinweis', leer && /Kein Handle/.test(leer.textContent || ''), leer && leer.textContent);
+}
+
+gruppe('Notizen: die Statusauswahl kommt aus ClickUp, in der richtigen Reihenfolge');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian' },
+    tasks: [{ id: 'a1', name: 'reichert_florian — Florian Reichert', status: 'angeschrieben',
+              farbe: '#87909e', beschreibung: 'x\\nigfu-ig: 101925914541472\\nigfu-handle: reichert_florian' }],
+    kommentare: { a1: [{ text: 'Erste Notiz.', wer: 'Josia Loos', wann: 1700000000000 }] },
+  });
+  await warte(w, 3500);
+  const wahl = doc.querySelector('.igfu-ko-wahl');
+  pruefe('Das Auswahlfeld ist da', !!wahl);
+  const werte = wahl ? [...wahl.options].map((o) => o.value) : [];
+  pruefe('Nach orderindex sortiert, nicht wie geliefert',
+    werte.join(',') === 'recherchiert,angeschrieben,hat sales,abgesagt', JSON.stringify(werte));
+  pruefe('Der aktuelle Status steht vorgewaehlt', wahl && wahl.value === 'angeschrieben', wahl && wahl.value);
+}
+
+gruppe('Notizen: Status umstellen schreibt nach ClickUp');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian' },
+    tasks: [{ id: 'a1', name: 'reichert_florian — Florian Reichert', status: 'angeschrieben',
+              farbe: '#87909e', beschreibung: 'x\\nigfu-ig: 101925914541472\\nigfu-handle: reichert_florian' }],
+    kommentare: { a1: [{ text: 'Erste Notiz.', wer: 'Josia Loos', wann: 1700000000000 }] },
+  });
+  await warte(w, 3500);
+  const wahl = doc.querySelector('.igfu-ko-wahl');
+  pruefe('Das Auswahlfeld ist da', !!wahl);
+  if (wahl) { wahl.value = 'hat sales'; wahl.dispatchEvent(new w.Event('change', { bubbles: true })); }
+  await warte(w, 1500);
+  pruefe('Der Status steht in ClickUp', serverTasks[0].status === 'hat sales', serverTasks[0].status);
+  const chip = doc.querySelector('.igfu-kopf [data-kind="crm"]');
+  pruefe('Die Pille oben zieht mit', chip && chip.textContent === 'hat sales', chip && chip.textContent);
+  pruefe('Auch in der neuen Farbe',
+    chip && /(#e16b16|rgb\(225,\s*107,\s*22\))/i.test(chip.style.background || ''),
+    chip && chip.style.background);
+}
+
+gruppe('Notizen: von Hand darf auch zurueck und in einen Endstatus');
+{
+  // darfSetzen() bremst die Automatik, nicht die Hand. Sobald Josia selbst
+  // einsortiert, entscheidet er — dieselbe Haltung wie bei der Prioritaet.
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian' },
+    tasks: [{ id: 'a1', name: 'reichert_florian — Florian', status: 'hat sales', farbe: '#e16b16',
+              beschreibung: 'x\nigfu-ig: 101925914541472\nigfu-handle: reichert_florian' }],
+    kommentare: { a1: [{ text: 'Notiz.', wer: 'Josia Loos', wann: 1700000000000 }] },
+  });
+  await warte(w, 3500);
+  const wahl = doc.querySelector('.igfu-ko-wahl');
+  pruefe('Steht auf hat sales', wahl && wahl.value === 'hat sales', wahl && wahl.value);
+  if (wahl) { wahl.value = 'abgesagt'; wahl.dispatchEvent(new w.Event('change', { bubbles: true })); }
+  await warte(w, 1500);
+  pruefe('Der Endstatus wurde gesetzt', serverTasks[0].status === 'abgesagt', serverTasks[0].status);
+}
+
+gruppe('Notizen: ein unbekannter Status geht beim Hinsehen nicht verloren');
+{
+  // Steht am Task etwas, das die Liste nicht mehr fuehrt, muss es waehlbar
+  // bleiben — sonst setzt ein Blick ins Feld den Task stillschweigend um.
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian' },
+    tasks: [{ id: 'a1', name: 'reichert_florian — Florian', status: 'altlast', farbe: '#87909e',
+              beschreibung: 'x\nigfu-ig: 101925914541472\nigfu-handle: reichert_florian' }],
+    kommentare: { a1: [{ text: 'Notiz.', wer: 'Josia Loos', wann: 1700000000000 }] },
+  });
+  await warte(w, 3500);
+  const wahl = doc.querySelector('.igfu-ko-wahl');
+  const werte = wahl ? [...wahl.options].map((o) => o.value) : [];
+  pruefe('Der unbekannte Status steht zur Wahl', werte.includes('altlast'), JSON.stringify(werte));
+  pruefe('Und ist vorgewaehlt', wahl && wahl.value === 'altlast', wahl && wahl.value);
+  await warte(w, 2000);
+  pruefe('Ungefragt wird nichts umgestellt', serverTasks[0].status === 'altlast', serverTasks[0].status);
+}
+
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));
