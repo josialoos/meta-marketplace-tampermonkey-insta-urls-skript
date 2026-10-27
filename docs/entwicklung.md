@@ -1201,6 +1201,54 @@ Einträge gleich.
 hell auf hell; eine Prüfung verbietet Hex-Farben in diesem Teil des
 Stylesheets.
 
+#### Die Werte, gemessen statt vermutet
+
+Am 27.10.2026 an der laufenden Seite abgefragt, einmal hell und einmal mit
+erzwungenem `prefers-color-scheme: dark`:
+
+| Token | hell | dunkel |
+|---|---|---|
+| `--ig-primary-text` | `12, 16, 20` | `245, 245, 245` |
+| `--ig-elevated-background` | `255, 255, 255` | `33, 35, 40` |
+| `--ig-highlight-background` | `243, 245, 247` | `38, 38, 38` |
+| `--ig-primary-button` | `74, 93, 249` | `74, 93, 249` |
+| `--ig-text-on-color` | `255, 255, 255` | `255, 255, 255` |
+
+Daran hängen zwei Erkenntnisse:
+
+**Warum die Knöpfe unsichtbar waren.** `.igfu-link` und `.igfu-close` tragen
+global `color: #1c2b33` = `rgb(28, 43, 51)` auf durchsichtigem Grund. Der
+Panel-Grund im Dark Mode ist `rgb(33, 35, 40)` — praktisch derselbe Wert,
+Kontrast rund 1:1. Erst der Hover-Hintergrund machte sie lesbar. Gemeldet am
+26.10.2026 für das Vorlagen-Widget, betraf genauso die Notiz-Leiste.
+
+**Warum nicht den Modus erkennen.** Eine eigene Erkennung kann dem
+widersprechen, was Instagram rendert. Am 27.10.2026 geprüft: die Klasse
+`__fb-light-mode` auf `<html>` gegen `__fb-dark-mode` zu tauschen ändert die
+Variablen **nicht** — wer sich darauf verließe, läge falsch. Instagrams eigene
+Klassennamen scheiden auch aus, die sind verschleiert und wechseln mit jedem
+Deploy. Die Variablen sind die stabile Schnittstelle.
+
+`--ig-primary-button` ist in **beiden** Modi dasselbe Blau/Lila und trägt
+deshalb die Knöpfe: `.igfu-link` als Schriftfarbe, `.igfu-done` als Füllung
+mit `--ig-text-on-color` als Schrift. Was keine eigene Farbe braucht —
+`.igfu-close`, `.igfu-empty` — nimmt `color: inherit` und damit die
+Schriftfarbe des Panels. Schrift und Grund können so nicht auseinanderlaufen.
+Die Hover-Flächen sind durchscheinendes Grau, das hellt auf Hellem auf und
+dunkelt auf Dunklem ab, ohne eine Farbe zu kennen.
+
+**Nur innerhalb der beiden Panels.** `#igfu-panel` hat weiterhin
+`background: #fff` fest eingebaut; helle Schrift darauf wäre genauso unlesbar,
+nur andersherum. Eine Prüfung hält beides fest: dass der neue Block dem Theme
+folgt **und** dass das große Panel vorerst fest bleibt.
+
+**Nebenbefund zur Fehlersuche.** Dass macOS im Dark Mode steht, heißt nicht,
+dass die Seite das erfährt: `matchMedia('(prefers-color-scheme: dark)')` meldet
+in Chrome, was **Chromes** Darstellungsmodus sagt, und der gilt pro Profil.
+Instagram hatte dort keine eigene gespeicherte Einstellung (localStorage und
+Cookies leer), folgte also dem Browser. Bei der Suche nach „warum sieht das
+hier anders aus" zuerst `matchMedia` abfragen, nicht das Betriebssystem.
+
 ## 10. Tests
 
 ```bash

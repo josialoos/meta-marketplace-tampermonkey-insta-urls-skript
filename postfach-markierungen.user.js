@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      8.5
+// @version      8.6
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -235,6 +235,48 @@
 .igfu-vl-feld::placeholder, .igfu-vl-suche::placeholder { color: rgb(var(--ig-secondary-text, 106, 113, 122)); }
 .igfu-vl-gross { min-height: 160px; resize: vertical; }
 
+/* --- Knoepfe in den beiden hellen/dunklen Panels (Anfang) ---
+   .igfu-link und .igfu-close tragen global color: #1c2b33 auf durchsichtigem
+   Grund. Im Dark Mode ist das fast schwarz auf dunkel, also unsichtbar — und
+   erst beim Ueberfahren kommt ein heller Hintergrund dazu und macht die
+   Schrift lesbar. Am 26.10.2026 im Vorlagen-Widget aufgefallen.
+
+   Die Farben kommen aus Instagrams eigenen Token, am 27.10.2026 an der
+   laufenden Seite abgefragt:
+
+       --ig-primary-button    74, 93, 249   das Blau/Lila der Oberflaeche
+       --ig-text-on-color    255, 255, 255  Schrift auf farbigem Grund
+
+   Warum nicht den Modus erkennen und zwei Farbsaetze pflegen: eine eigene
+   Erkennung kann dem widersprechen, was Instagram tatsaechlich rendert. Am
+   27.10.2026 gemessen — die Klasse __fb-light-mode auf <html> gegen
+   __fb-dark-mode zu tauschen aendert die Variablen *nicht*. Wer sich auf die
+   Klasse verliesse, laege falsch. Instagrams Klassennamen selbst zu benutzen
+   scheidet auch aus, die sind verschleiert und wechseln mit jedem Deploy.
+   Die Variablen sind die stabile Schnittstelle.
+
+   Was keine Farbe braucht, erbt: color: inherit nimmt die Schriftfarbe des
+   Panels, und die setzen beide Panels bereits aus --ig-primary-text. Schrift
+   und Grund koennen so gar nicht auseinanderlaufen. Die Hintergruende beim
+   Ueberfahren sind durchscheinendes Grau — das hellt auf hellem Grund auf
+   und dunkelt auf dunklem ab, ohne eine Farbe zu kennen.
+
+   Global geht das alles nicht: #igfu-panel hat noch einen fest eingebauten
+   weissen Grund. */
+.igfu-vl-panel .igfu-link, .igfu-ko .igfu-link {
+  color: rgb(var(--ig-primary-button, 74, 93, 249)); }
+.igfu-vl-panel .igfu-done, .igfu-ko .igfu-done {
+  background: rgb(var(--ig-primary-button, 74, 93, 249));
+  color: rgb(var(--ig-text-on-color, 255, 255, 255)); }
+.igfu-vl-panel .igfu-done:hover, .igfu-ko .igfu-done:hover { filter: brightness(1.1); }
+.igfu-vl-panel .igfu-done:disabled, .igfu-ko .igfu-done:disabled { opacity: .55; }
+.igfu-vl-panel .igfu-link:hover, .igfu-vl-panel .igfu-close:hover,
+.igfu-ko .igfu-link:hover, .igfu-ko .igfu-close:hover {
+  background: rgba(128, 128, 128, .20); }
+.igfu-vl-panel .igfu-close, .igfu-ko .igfu-close { color: inherit; opacity: .7; }
+.igfu-vl-panel .igfu-empty, .igfu-ko .igfu-empty { color: inherit; opacity: .7; }
+/* --- Knoepfe in den beiden Panels (Ende) --- */
+
 /* Die Leiste neben dem Namen in der geoeffneten Unterhaltung. Dieselben
    Knoepfe wie an den Zeilen, nur sitzen sie fest statt absolut und sind
    immer sichtbar — hier gibt es kein Ueberfahren der Zeile. */
@@ -367,7 +409,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '8.5';
+  const VERSION = '8.6';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt

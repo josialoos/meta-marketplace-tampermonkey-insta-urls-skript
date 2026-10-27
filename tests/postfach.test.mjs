@@ -3605,6 +3605,56 @@ gruppe('Notizen: ein unbekannter Status geht beim Hinsehen nicht verloren');
   pruefe('Ungefragt wird nichts umgestellt', serverTasks[0].status === 'altlast', serverTasks[0].status);
 }
 
+gruppe('Dark Mode: die Knoepfe in den Panels sind auch ungehovert sichtbar');
+{
+  // .igfu-link und .igfu-close tragen global color: #1c2b33 auf durchsichtigem
+  // Grund. Im Dark Mode war das fast schwarz auf dunkel — unsichtbar, bis man
+  // mit der Maus darueberfuhr und ein heller Hintergrund dazukam. Am
+  // 26.10.2026 im Vorlagen-Widget aufgefallen.
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '17843301684077111', titel: 'Jemand', vorschau: 'Hallo', zeit: '2h' }],
+    vorlagen: [{ id: 'v1', titel: 'Eins', text: 'Text' }],
+  });
+  await warte(w, 1500);
+  const css = (doc.getElementById('igfu-style') || {}).textContent || '';
+  const von = css.indexOf('Knoepfe in den beiden hellen/dunklen Panels (Anfang)');
+  const bis = css.indexOf('Knoepfe in den beiden Panels (Ende)');
+  pruefe('Der Block ist da', von >= 0 && bis > von, von + '/' + bis);
+  const teil = von >= 0 && bis > von ? css.slice(von, bis) : '';
+  // Am 27.10.2026 im Dark Mode gegengemessen:
+  //   --ig-elevated-background  hell 255,255,255   dunkel  33, 35, 40
+  //   --ig-primary-text         hell  12, 16, 20   dunkel 245,245,245
+  //   --ig-primary-button       in BEIDEN Modi     74, 93, 249
+  // Die alte Knopffarbe #1c2b33 = rgb(28,43,51) lag im Dark Mode praktisch
+  // auf dem Panel-Grund rgb(33,35,40) — Kontrast rund 1:1.
+  pruefe('Die Knopffarbe kommt aus Instagrams Button-Token',
+    /color:\s*rgb\(var\(--ig-primary-button/.test(teil), teil.slice(0, 400));
+  pruefe('Das Vorlagen-Panel ist abgedeckt', /\.igfu-vl-panel\s+\.igfu-link/.test(teil));
+  pruefe('Die Notiz-Leiste auch', /\.igfu-ko\s+\.igfu-link/.test(teil));
+  pruefe('Der Sichern-Knopf ist gefuellt, mit Schrift fuer farbigen Grund',
+    /\.igfu-done[^{]*\{[^}]*background:\s*rgb\(var\(--ig-primary-button/.test(teil)
+    && /color:\s*rgb\(var\(--ig-text-on-color/.test(teil), teil.slice(-600));
+  pruefe('Was keine eigene Farbe braucht, erbt sie vom Panel',
+    /\.igfu-empty[^{]*\{[^}]*color:\s*inherit/.test(teil), teil.slice(-400));
+  // Ohne Kommentare: dort steht die alte Farbe absichtlich zum Nachlesen, und
+  // eine Farbe in der Erklaerung ist keine fest verdrahtete Farbe.
+  // Der Schnitt beginnt *innerhalb* des Kommentars — der Marker steht ja
+  // darin. Das oeffnende /* liegt also davor und fehlt im Ausschnitt, deshalb
+  // erst alles bis zum ersten */ weg und dann die vollstaendigen Kommentare.
+  const regeln = teil.replace(/^[\s\S]*?\*\//, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  pruefe('Keine festen Hex-Farben in den Regeln',
+    !/#[0-9a-fA-F]{3,6}/.test(regeln), (regeln.match(/#[0-9a-fA-F]{3,6}/g) || []).join(' '));
+
+  // Die Gegenprobe: im grossen Panel darf die Schrift *nicht* dem Theme
+  // folgen. Dort steht noch ein fest eingebauter weisser Grund, helle Schrift
+  // waere dann genauso unlesbar, nur andersherum.
+  const panel = css.slice(css.indexOf('#igfu-panel {'), css.indexOf('.igfu-head '));
+  pruefe('Das grosse Panel bleibt vorerst fest',
+    /background:\s*#fff/.test(panel) && !/--ig-elevated-background/.test(panel),
+    panel.slice(0, 300));
+}
+
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));
