@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      8.7
+// @version      8.8
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -430,7 +430,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '8.7';
+  const VERSION = '8.8';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -5230,6 +5230,24 @@
   // an der falschen Stelle. Dieselbe Haltung wie bei igOffeneUnterhaltung.
   const KOPF_FREMD = '#igfu-panel, #igfu-frage, .igfu-vl-panel, .igfu-ko, .igfu-kopf';
 
+  // Der Kopf ist anklickbar: bei normalen DMs ein a[role="link"] auf das
+  // Profil, in Partner-Unterhaltungen ein div[role="button"], das die
+  // Profilkarte aufklappt. In beiden Faellen sitzt es vier Ebenen ueber der
+  // Ueberschrift — am 28.10.2026 in beiden Postfaechern nachgemessen.
+  //
+  // Daran haengt die Unterscheidung. Keine Pixel: im Pruefstand hat jedes
+  // Element die Groesse null, eine Regel aus gemessenen Abstaenden waere dort
+  // nicht pruefbar.
+  const KOPF_BEDIENBAR = 'a[href], a[role="link"], [role="button"], [role="link"]';
+  function kopfAnker(h2) {
+    let n = h2.parentElement;
+    for (let i = 0; i < 4 && n; i++) {
+      if (n.matches(KOPF_BEDIENBAR)) return n;
+      n = n.parentElement;
+    }
+    return null;
+  }
+
   function kopfUeberschrift() {
     const selbst = eigenerHandle();
     const treffer = [];
@@ -5240,7 +5258,21 @@
       if (selbst && t.toLowerCase() === selbst.toLowerCase()) continue;
       treffer.push(h);
     }
-    return treffer.length === 1 ? treffer[0] : null;
+    // In Partner-Unterhaltungen steht der Name ein zweites Mal im Verlauf, auf
+    // der Profilkarte ganz oben. Bis 8.7 blieben damit zwei Kandidaten uebrig,
+    // die Regel „genau einer, sonst gar nichts" griff — und die Kopfleiste
+    // fehlte in *jeder* Partner-Unterhaltung. Am 28.10.2026 an bellaa_sophie
+    // gefunden. Die Karte im Verlauf traegt kein bedienbares Element ueber
+    // sich, der Kopf schon.
+    const amKopf = treffer.filter(kopfAnker);
+    if (amKopf.length === 1) return amKopf[0];
+    // Bleiben mehrere mit demselben Text, meinen sie dieselbe Person — dann
+    // ist die Wahl ungefaehrlich. Bei verschiedenen Namen lieber nichts:
+    // genau davor schuetzt die Regel.
+    const wahl = amKopf.length ? amKopf : treffer;
+    const text = wahl.length ? String(wahl[0].textContent || '').trim() : '';
+    if (wahl.length > 1 && !wahl.every((h) => String(h.textContent || '').trim() === text)) return null;
+    return wahl[0] || null;
   }
 
   // Der Block, neben den die Leiste gehoert.
@@ -5255,7 +5287,9 @@
   //
   // In Partner-Unterhaltungen ist das Gegenueber nicht immer verlinkt. Dann
   // bleibt der Block direkt ueber der Ueberschrift.
-  const kopfBlock = (h2) => h2.closest('a') || h2.parentElement || h2;
+  // Der Block, neben den die Leiste gehoert: das bedienbare Element im Kopf,
+  // sonst der naechste Vorfahr.
+  const kopfBlock = (h2) => kopfAnker(h2) || h2.parentElement || h2;
 
   // Die Gegenstelle derselben Person im jeweils anderen Postfach.
   //

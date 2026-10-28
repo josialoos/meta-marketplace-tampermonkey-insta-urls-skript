@@ -1024,16 +1024,46 @@ DIV  (Kopfbalken, 1401 px)
 
 Die Leiste wird **hinter dem `a`** eingehängt, nicht im Balken.
 
-Auf der Seite stehen **drei** `h2`: das eigene Konto links, das Gegenüber im
+Auf der Seite stehen mehrere `h2`: das eigene Konto links, das Gegenüber im
 Kopf, und eines aus unserem eigenen Panel. Die beiden Störer werden benannt —
-das eigene Konto am gelernten Handle, das Panel an seiner Kennung. Bleibt
-nicht genau eines übrig, wird **nichts** eingehängt. Dieselbe Haltung wie bei
-`igOffeneUnterhaltung()`: lieber keine Leiste als eine an der falschen Stelle.
+das eigene Konto am gelernten Handle, das Panel an seiner Kennung.
 
 **Keine Pixelbreiten.** Der erste Entwurf stieg vom `h2` nach oben, bis ein
 Vorfahr einen Teil der Fensterbreite einnahm. Das war nicht prüfbar — jsdom
 gibt jedem Element die Größe null, der Mutationstest wäre grün durchgelaufen.
-Jetzt macht `kopfBlock()` am `a` fest, und das lässt sich nachbauen.
+Jetzt macht `kopfAnker()` am bedienbaren Vorfahr fest, und das lässt sich
+nachbauen.
+
+#### In Partner-Unterhaltungen steht der Name zweimal
+
+Am 28.10.2026 an `bellaa_sophie` gefunden, nachdem Josia meldete, sie werde
+„nicht erkannt". Der Datensatz war tadellos — Handle, Benutzer-ID, Bild-ID,
+drei Unterhaltungen. Gefehlt hat die **Kopfleiste**.
+
+In einer Partner-Unterhaltung trägt die Seite den Namen **zweimal** als `h2`:
+einmal im Kopf, einmal auf der Profilkarte oben im Verlauf (gemessen bei
+`top: -1806`, also weit aus dem Bild gescrollt). Damit blieben zwei Kandidaten
+übrig, die Regel „genau einer, sonst gar nichts" griff, und die Leiste fehlte
+in **jeder** Partner-Unterhaltung. Dass Notizen und Handle trotzdem da waren,
+hat es verschleiert: die Notiz-Leiste hängt an der Adresse, nicht an der
+Überschrift.
+
+Unterschieden wird am **bedienbaren Vorfahr**, vier Ebenen über der
+Überschrift:
+
+| | Kopf | Karte im Verlauf |
+|---|---|---|
+| Normale DM | `a[role="link"]` auf das Profil | — |
+| Partner | `div[role="button"]`, klappt die Profilkarte auf | nichts Bedienbares, auch zehn Ebenen weiter oben nicht |
+
+Deshalb `kopfAnker()` mit Schranke bei vier Ebenen. Keine Pixel, aus demselben
+Grund wie oben.
+
+**Die Schranke bleibt scharf.** Bleiben mehrere Kandidaten mit
+**verschiedenen** Namen, wird weiterhin nichts eingehängt — genau davor
+schützt die Regel. Nur bei gleichem Text ist die Wahl ungefährlich, es ist
+dieselbe Person. Beide Richtungen sind geprüft, und der Prüfstand baut eine
+Partner-Unterhaltung jetzt mit beiden Überschriften nach.
 
 ### Welches Postfach
 

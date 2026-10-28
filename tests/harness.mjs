@@ -107,7 +107,16 @@ export async function starte({
     ? igLeiste
     : igOffen
     ? igLeiste + '<section><div><div>' + (igOffen.partner
+      // Eine Partner-Unterhaltung, am 28.10.2026 nachgemessen: kein einziger
+      // Profillink, der Kopf ist ein div[role="button"] statt einer <a>, und
+      // der Name steht ein **zweites** Mal im Verlauf, auf der Profilkarte
+      // ganz oben. Ueber der steht nichts Bedienbares. Bis 8.7 blieben damit
+      // zwei Kandidaten uebrig und die Kopfleiste fehlte ganz.
       ? ('<a href="/' + igOffen.handle + '"><i></i></a>').repeat(3)
+        + '<div role="button"><div><div><h2><span>'
+        + (igOffen.titel || igOffen.handle) + '</span></h2></div></div></div>'
+        + '<div><div><div><div><h2><span>'
+        + (igOffen.titel || igOffen.handle) + '</span></h2></div></div></div></div>'
       : '<a href="/' + igOffen.handle + '/" role="link"><div><div><h2><span>'
         + (igOffen.titel || igOffen.handle) + '</span></h2></div>'
         + '<div><span>' + igOffen.handle + '</span></div></div></a>') + '</div></div></section>'
