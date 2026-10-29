@@ -604,15 +604,23 @@ Partner-Nachrichten und normale DMs sind **verschiedene Unterhaltungen mit
 verschiedenen Kennungen**, auch wenn es dieselbe Person ist. Der Knopf sagt,
 ob es die zweite gibt, und bringt dich hin.
 
-Damit er das weiß, muss das Skript **beide Listen einmal gesehen haben** —
-den normalen Posteingang und `instagram.com/direct/partnerships/`. Woher eine
-Unterhaltung stammt, ist ihrer Kennung nämlich nicht anzusehen. Das merkt sich
-**dein Browser**, nicht ClickUp: auf einem frischen Rechner steht der Knopf
-deshalb anfangs auf „Postfach?" und wird grau, bis du beide Listen einmal
-offen hattest. Danach stimmt er.
+**Zum Öffnen genügt die Kennung** — beide Postfächer liegen unter derselben
+Adressform. Steht im Datensatz eine zweite Unterhaltung, ist der Knopf also
+grün, auch wenn das Skript sie noch nie in einer Liste gesehen hat.
 
-Steht „Nur normal" oder „Nur Partner", ist zu dieser Person im anderen
-Postfach nichts bekannt.
+Nur die **Beschriftung** hängt daran, woher eine Unterhaltung stammt, und das
+ist ihrer Kennung nicht anzusehen. Das merkt sich dein Browser aus den Listen,
+die offen waren. Weiß er es nicht, steht im Knopf „Andere Unterhaltung" statt
+„Partner-Postfach" oder „Normales Postfach" — er funktioniert trotzdem.
+Geraten wird nicht.
+
+Steht „Nur normal" oder „Nur Partner", kennt der Datensatz überhaupt nur eine
+Unterhaltung.
+
+> Bis 8.8 verlangte der Knopf, dass **beide** Kennungen schon in einer Liste
+> gestanden hatten. Beide Listen zeigen aber nur rund 15 bis 20 Zeilen auf
+> einmal, und alles darunter blieb ungesehen — der Knopf war deshalb bei
+> nahezu jedem Kontakt grau. Seit 8.9 nicht mehr.
 
 ## Notizen zu einer Person
 

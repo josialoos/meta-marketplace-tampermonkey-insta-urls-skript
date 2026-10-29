@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      8.8
+// @version      8.9
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -430,7 +430,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '8.8';
+  const VERSION = '8.9';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -5294,22 +5294,50 @@
   // Die Gegenstelle derselben Person im jeweils anderen Postfach.
   //
   // Beide Postfaecher liegen auf instagram.com und oeffnen unter derselben
-  // Adressform, aber eine Person hat in jedem eine *andere* Kennung. Welche
-  // Kennung wohin gehoert, steht in postfaecher() — gefuellt, sobald die
-  // jeweilige Liste einmal offen war. Ist die Art einer der beiden Kennungen
-  // unbekannt, gilt sie nicht als Treffer: ein falsches Gruen waere schlimmer
-  // als ein Grau.
+  // Adressform. Zum Öffnen genuegt also die Kennung; die Art braucht es nur
+  // fuer die Beschriftung. Genau daran haengt der Knopf seit 8.9 nicht mehr.
+  //
+  // Vorgeschichte: bis 8.8 galt die Gegenstelle nur als gefunden, wenn
+  // postfaecher() zu *beiden* Kennungen eine Art kannte. Dieser Speicher lernt
+  // aber ausschliesslich aus Zeilen, die gerade in der Liste gerendert sind,
+  // und beide Listen halten nur rund 15 bis 20 Zeilen auf einmal vor. Am
+  // 29.10.2026 an der echten Liste nachgemessen: im Partner-Ordner lagen beim
+  // Öffnen 20 Kennungen vor, im normalen Postfach 15. sarahpandabaers
+  // Partner-Unterhaltung stand weit darunter, ihre Art war also unbekannt —
+  // und der Knopf blieb grau. Das traf nicht sie allein, sondern nahezu jeden
+  // Kontakt ausserhalb der obersten Zeilen.
+  //
+  // Bleibt genau eine weitere Unterhaltung uebrig, ist sie die Gegenstelle.
+  // Ihr *Postfach* wird deshalb aber nicht erraten: dass eine Person je
+  // Postfach hoechstens eine Unterhaltung hat, klingt zwingend, ist aber nie
+  // nachgewiesen worden. Am 29.10.2026 stand sarahpandabaers zweite Kennung
+  // in keiner der drei vollstaendig durchgeladenen Listen — Partner (114),
+  // Primary (60), General (110) — und liess sich trotzdem oeffnen. Woher sie
+  // stammt, ist damit offen. Solche plausiblen Regeln haben hier schon zweimal
+  // Schaden angerichtet, siehe die Laengenregel oben und den Titel aus dem
+  // Seitentext. Unbekannt bleibt also unbekannt, und der Knopf sagt das.
+  //
+  // Ist die Art nachweislich dieselbe, gilt sie nicht als Treffer — ein
+  // falsches Gruen waere immer noch schlimmer als ein Grau.
   function andereUnterhaltung(tid) {
-    const art = postfachVon(tid);
-    if (!art) return null;
     const task = cuTasks[tid];
     if (!task) return null;
-    for (const fremd of task.tids || []) {
-      if (fremd === tid) continue;
+    const art = postfachVon(tid);
+    const fremde = (task.tids || []).filter((x) => x && x !== tid);
+    if (!fremde.length) return null;
+    // Der sichere Fall: die Art steht im Speicher und ist die andere.
+    for (const fremd of fremde) {
       const fremdArt = postfachVon(fremd);
-      if (fremdArt && fremdArt !== art) return { tid: fremd, art: fremdArt };
+      if (art && fremdArt && fremdArt !== art) return { tid: fremd, art: fremdArt };
     }
-    return null;
+    // Sonst nur, wenn keine Wahl bleibt. Bei mehreren Kennungen waere nicht
+    // entscheidbar, welche gemeint ist.
+    if (fremde.length !== 1) return null;
+    const fremdArt = postfachVon(fremde[0]);
+    if (art && fremdArt && fremdArt === art) return null;
+    // Leerstring heisst: Gegenstelle ja, Postfach unbekannt. Die Beschriftung
+    // behauptet dann nichts.
+    return { tid: fremde[0], art: fremdArt || '' };
   }
 
   // Ein kleines Menue unter einem Knopf. Dieselbe Mechanik fuer Status und
@@ -5370,8 +5398,12 @@
     chip.classList.toggle('on', !!andere);
     chip.disabled = !andere;
     if (andere) {
-      chip.textContent = andere.art === 'partner' ? 'Partner-Postfach' : 'Normales Postfach';
-      chip.title = 'Dieselbe Person im anderen Postfach — öffnet einen neuen Tab';
+      chip.textContent = andere.art === 'partner' ? 'Partner-Postfach'
+        : andere.art === 'normal' ? 'Normales Postfach' : 'Andere Unterhaltung';
+      chip.title = andere.art
+        ? 'Dieselbe Person im anderen Postfach — öffnet einen neuen Tab'
+        : 'Dieselbe Person hat noch eine Unterhaltung — öffnet einen neuen Tab. '
+          + 'In welchem Postfach sie liegt, weiß das Skript hier noch nicht.';
       return;
     }
     if (!art) {

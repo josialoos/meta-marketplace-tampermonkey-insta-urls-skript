@@ -1090,12 +1090,52 @@ derselbe Irrtum, der bis 6.8 an der Länge die Business Suite erkennen wollte.
 Die Zuordnung steht in `igfu:postfachart:v1` im **Browser**, nicht in der
 Task-Beschreibung. Dort stünde sie für alle drei Rechner, kostete aber beim
 ersten Lauf eine Schreibanfrage je Task — und die Beschreibungen werden
-ohnehin gerade umgebaut. Der Preis: auf einem frischen Rechner ist der Knopf
-grau, bis beide Listen einmal offen waren.
+ohnehin gerade umgebaut.
 
-`andereUnterhaltung()` verlangt, dass die Art **beider** Kennungen bekannt ist.
-Ist die der zweiten unbekannt, gilt sie nicht als Treffer: ein falsches Grün
-wäre schlimmer als ein Grau.
+Dieser Speicher lernt **nur aus gerenderten Zeilen**. Beide Listen sind
+virtualisiert und halten rund 15 bis 20 Zeilen auf einmal vor; was nie
+sichtbar war, steht nicht drin.
+
+#### Warum `andereUnterhaltung()` seit 8.9 anders rechnet
+
+Bis 8.8 galt die Gegenstelle nur als gefunden, wenn die Art **beider**
+Kennungen im Speicher stand. Am 29.10.2026 an der echten Liste nachgemessen,
+nachdem Josia meldete, der Knopf sei bei sarahpandabaer tot:
+
+* Partner-Ordner beim Öffnen: 20 Kennungen, normales Postfach: 15. Das
+  normale Postfach ist ausserdem in **drei Reiter** geteilt — Primary,
+  General, Requests — und die Liste lädt immer nur den aktiven.
+* Ihre zweite Kennung lag weit darunter, war also unbekannt — Knopf grau.
+* Das traf **fast jeden Kontakt**, nicht sie allein. Aufgefallen ist es nur,
+  weil die Leiste erst seit 8.8 in Partner-Unterhaltungen überhaupt erscheint.
+
+Der Denkfehler war, die Art fürs Öffnen zu brauchen. Beide Postfächer liegen
+unter `/direct/t/<kennung>/` — **die Kennung allein genügt**, die Art nur für
+die Beschriftung. Seitdem:
+
+1. Steht zu einer fremden Kennung eine Art im Speicher und ist sie die andere,
+   ist das der sichere Treffer.
+2. Sonst: bleibt **genau eine** fremde Kennung übrig, ist sie die Gegenstelle.
+   Ihr *Postfach* wird dabei **nicht** erraten.
+3. Sind beide Arten bekannt und **gleich**, ist die Gegenstelle widerlegt, kein
+   Treffer. Ein falsches Grün wäre immer noch schlimmer als ein Grau.
+4. Ist die fremde Art unbekannt, heißt der Knopf „Andere Unterhaltung".
+
+Bei mehr als einer fremden Kennung wird nichts erschlossen — dann wäre nicht
+entscheidbar, welche gemeint ist.
+
+**Warum nicht aus der eigenen Art erschlossen wird.** „Eine Person hat je
+Postfach höchstens eine Unterhaltung" klingt zwingend und war der erste
+Entwurf. Nachgewiesen ist es nicht. Am 29.10.2026 wurden alle drei Listen
+vollständig durchgeladen — Partner 114, Primary 60, General 160 — und
+sarahpandabaers zweite Kennung `2313035792786243` stand in **keiner** davon,
+ließ sich aber unter `/direct/t/` ohne weiteres öffnen. Ihre Herkunft ist
+damit offen. Genau solche plausiblen Regeln haben hier schon zweimal Schaden
+angerichtet: die Längenregel oben und der Titel aus dem Seitentext.
+
+Die saubere Lösung ist, die Art beim Aufräumen der Beschreibungen als eigenen
+Marker mitzuschreiben. Dann steht sie für alle Rechner fest, statt in jedem
+Browser neu gelernt zu werden.
 
 ### Notizen
 

@@ -3297,17 +3297,45 @@ gruppe('Postfach-Knopf: rot und tot, wenn es die Person nur einmal gibt');
   pruefe('Und sagt, dass es nur eines gibt', k && k.textContent === 'Nur normal', k && k.textContent);
 }
 
-gruppe('Postfach-Knopf: unbekannte Art ergibt kein falsches Gruen');
+gruppe('Postfach-Knopf: ungesehene Gegenstelle ist trotzdem klickbar');
 {
-  // Die zweite Unterhaltung des Tasks hat dieses Geraet noch nie gesehen.
-  // Dann ist nicht entscheidbar, ob sie im anderen Postfach liegt — und ein
-  // falsches Gruen waere schlimmer als ein Grau.
+  // Der Regelfall, nicht die Ausnahme. Die zweite Unterhaltung des Tasks hat
+  // dieses Geraet noch nie in einer Liste gesehen — beide Listen halten nur
+  // rund 15 bis 20 Zeilen vor, alles darunter bleibt ungesehen. Bis 8.8 blieb
+  // der Knopf deshalb bei fast jedem Kontakt grau.
+  //
+  // Zum Oeffnen genuegt die Kennung: beide Postfaecher liegen unter derselben
+  // Adressform. Welches es ist, wird *nicht* erraten.
   const { doc, w } = await starte({
     speicher: MIT_CLICKUP,
     ig: [{ id: '101925914541472', titel: 'Bella', vorschau: 'a', zeit: '2h', postfach: 'normal' }],
     igOffen: { tid: '101925914541472', handle: 'bellaa_sophie', titel: 'Bella' },
     tasks: [{ id: 'a1', name: 'bellaa_sophie — BELLA', status: 'angeschrieben', farbe: '#87909e',
               beschreibung: 'x\nigfu-ig: 101925914541472\nigfu-ig: 1636057484698926' }],
+  });
+  await warte(w, 3500);
+  const k = doc.querySelector('.igfu-kopf [data-kind="postfach"]');
+  pruefe('Steht auf gruen', k && k.classList.contains('on'), k && k.className);
+  pruefe('Ist klickbar', k && !k.disabled);
+  pruefe('Mit der ungesehenen Kennung als Ziel',
+    k && k.dataset.ziel === '1636057484698926', k && k.dataset.ziel);
+  pruefe('Behauptet aber kein Postfach, obwohl diese hier normal ist',
+    k && k.textContent === 'Andere Unterhaltung', k && k.textContent);
+}
+
+gruppe('Postfach-Knopf: zwei nachweislich gleiche Arten sind keine Gegenstelle');
+{
+  // Beide Kennungen sind gesehen worden und liegen im selben Postfach. Dann
+  // ist die Gegenstelle nicht erschlossen, sondern widerlegt.
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [
+      { id: '101925914541472', titel: 'Bella', vorschau: 'a', zeit: '2h', postfach: 'normal' },
+      { id: '103219894411070', titel: 'Bella', vorschau: 'b', zeit: '3h', postfach: 'normal' },
+    ],
+    igOffen: { tid: '101925914541472', handle: 'bellaa_sophie', titel: 'Bella' },
+    tasks: [{ id: 'a1', name: 'bellaa_sophie — BELLA', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: 'x\nigfu-ig: 101925914541472\nigfu-ig: 103219894411070' }],
   });
   await warte(w, 3500);
   const k = doc.querySelector('.igfu-kopf [data-kind="postfach"]');
