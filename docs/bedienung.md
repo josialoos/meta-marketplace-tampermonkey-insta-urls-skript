@@ -486,7 +486,7 @@ tragen. Im zweiten Fall wäre jede Zuordnung geraten.
 | Speichern | Token und Listen-ID übernehmen |
 | UpPromote abgleichen | Nur den UpPromote-Teil, ohne Listendurchlauf |
 | Inhalte-Seite öffnen | Metas Inhalte, datumssortiert, richtiges Konto |
-| Affiliates importieren | Legt aktive Affiliates aus UpPromote als Tasks an. **Erster Klick zählt nur**, zweiter legt an. |
+| Affiliates importieren | Legt aktive Affiliates aus UpPromote als Tasks an, aus dem Affiliate- **und** dem Ambassador-Programm. **Erster Klick zählt nur**, zweiter legt an. |
 | Ganze Liste durchgehen | Kompletter Durchlauf statt nur bis zum letzten Lauf |
 | Token löschen | Trennt die ClickUp-Verbindung. Follow-ups bleiben lokal erhalten. |
 
@@ -512,10 +512,31 @@ einmal rüber.
 ## Affiliates aus UpPromote holen
 
 Der Knopf **„Affiliates importieren"** im Panel legt alle aktiven Affiliates
-des Programms an, die noch nicht im CRM sind.
+an, die noch nicht im CRM sind.
+
+**Gelesen werden zwei Programme:**
+
+| Programm | kommt ins CRM | Tag |
+|---|---|---|
+| TZAMPAS Affiliate Programm | ja | — |
+| Ambassador Programm | ja | `ambassador`, automatisch |
+| TZAMPAS Brand-Kooperation | **nein** | |
+| September-Aktion 2026 | **nein** | |
+
+Wer im Ambassador-Programm liegt, bekommt den Tag `ambassador` ohne Zutun —
+beim Import und, für die schon vorhandenen Datensätze, beim nächsten
+**„UpPromote abgleichen"**. Entfernt wird er nie; nimmst du ihn von Hand ab,
+setzt ihn der nächste Abgleich wieder. Von Hand **setzen** kannst du ihn
+weiterhin, etwa für Ambassadore, die gar nicht bei UpPromote stehen.
 
 **Der erste Klick legt nichts an**, er zählt nur und sagt dir, wie viele neu
 wären. Erst der zweite legt an.
+
+Die Zählung nennt **jedes Programm mit Namen und Zahl**, auch die
+übersprungenen. Steht dort plötzlich „0 aus „Ambassador Programm"", ist das
+Programm in UpPromote umbenannt worden — dann stimmt die Liste im Skript nicht
+mehr, und sie muss nachgezogen werden. Ohne diese Zahlen fiele das nicht auf:
+der Import würde brav „0 neu" melden.
 
 Wichtig vorher: Tasks, denen der Handle fehlt, kann der Import nicht
 wiedererkennen und legt sie doppelt an. Also erst die Liste „Handles
@@ -619,6 +640,11 @@ Skript sie selbst verwaltet: `follow-up` (dafür gibt es den Knopf daneben),
 (verschwindet von allein, sobald der Handle da ist). Der Mauszeiger sagt
 jeweils, warum.
 
+`ambassador` ist der Sonderfall dazwischen: anklickbar wie deine eigenen Tags,
+aber das Skript setzt ihn auch selbst, sobald jemand bei UpPromote im
+Ambassador-Programm liegt. Abnehmen hält deshalb nur bis zum nächsten
+Abgleich.
+
 ### Der Postfach-Knopf
 
 Partner-Nachrichten und normale DMs sind **verschiedene Unterhaltungen mit
@@ -655,6 +681,11 @@ Oben in der Leiste stehen zwei Dinge, die ständig gebraucht werden:
   der nackte Handle ohne `@` — so, wie du ihn in UpPromote oder Shopify
   einfügst. Fehlt er, steht dort „Kein Handle hinterlegt"; ein Task ohne
   Handle ist für sämtliche Automatiken unsichtbar, und zwar lautlos.
+- **Die E-Mail-Adresse**, falls am Datensatz eine hinterlegt ist, ebenfalls mit
+  **„Kopieren"**. Der Text selbst öffnet dein Mailprogramm. Sie ist die
+  Brücke zu Shopify und zu UpPromote — dort wird nach der Adresse gesucht,
+  nicht nach dem Handle. Ist keine hinterlegt, bleibt die Zeile weg; die
+  Adresse kommt meist beim nächsten UpPromote-Abgleich von allein dazu.
 
 Status und Tags sitzen **nicht** hier, sondern oben neben dem Namen — zwei
 Bedienstellen für dieselbe Sache wären nur verwirrend.

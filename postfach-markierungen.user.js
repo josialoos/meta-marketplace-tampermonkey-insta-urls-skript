@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      9.0
+// @version      9.1
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -343,6 +343,8 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   color: rgb(var(--ig-primary-text, 12, 16, 20)); }
 .igfu-ko-at:hover { text-decoration: underline; }
+.igfu-ko-mail { font-weight: 400; font-size: 12px; }
+.igfu-ko-mailzeile { padding-top: 6px; padding-bottom: 6px; }
 .igfu-ko-kopie { margin-left: auto; flex: none; }
 .igfu-ko-leer { color: rgb(var(--ig-secondary-text, 106, 113, 122)); }
 .igfu-ko-verlauf { flex: 1; min-height: 0; overflow: auto; padding: 4px 10px; }
@@ -430,7 +432,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '9.0';
+  const VERSION = '9.1';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -551,7 +553,13 @@
   // weiter mit. Sein Handle und seine Mailadresse gelten als vergeben, damit
   // derselbe Datensatz nicht beim naechsten Lauf erneut entsteht.
   const CU_TAG_LEICHE = 'karteileiche';
+  // Wer bei UpPromote im Ambassador-Programm liegt, bekommt diesen Tag: beim
+  // Import und bei jedem Abgleich. Entfernt wird er nie, denn er haelt eine
+  // Zugehoerigkeit fest. Von Hand gesetzt gilt er genauso — fuer Ambassadore,
+  // die gar nicht bei UpPromote stehen.
+  const CU_TAG_AMBASSADOR = 'ambassador';
   const ROT = '#e5484d';
+  const VIOLETT = '#8e4ec6';
   const FELD_THREAD = 'Thread-ID';   // wird nur noch gelesen, falls vorhanden
   const CU_HANDLES = 'clickup:handles:v1';
   // Handles, die von UpPromote abweichen. Ergebnis der Gegenprobe, nicht mehr —
@@ -716,9 +724,43 @@
   // Mehr als das braucht keine realistische Affiliate-Liste. Schuetzt davor,
   // minutenlang gegen eine Schnittstelle zu laufen, die nicht blaettert.
   const UP_MAX_SEITEN = 10;
-  // Nur dieses Programm wird importiert. Andere Programme im selben Konto
-  // bleiben aussen vor.
-  const UP_PROGRAMM = 'TZAMPAS Affiliate Programm';
+  // Welche UpPromote-Programme ins CRM gehoeren — und welcher Tag daraus
+  // folgt. „TZAMPAS Brand-Kooperation" und „September-Aktion 2026" bleiben
+  // bewusst aussen vor; so entschieden am 06.11.2026.
+  //
+  // Verglichen wird klein und ohne doppelte Leerzeichen: eine Umbenennung mit
+  // anderer Schreibweise soll nicht stillschweigend alles aussortieren. Wird
+  // ein Programm wirklich umbenannt, faellt das in der Vorschau auf, weil die
+  // jedes gelesene Programm mit Namen und Zahl nennt.
+  const UP_PROGRAMME = [
+    { name: 'TZAMPAS Affiliate Programm', tag: '' },
+    { name: 'Ambassador Programm', tag: CU_TAG_AMBASSADOR },
+  ];
+  const upSchluessel = (name) => String(name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const UP_PROGRAMM_INDEX = {};
+  for (const p of UP_PROGRAMME) UP_PROGRAMM_INDEX[upSchluessel(p.name)] = p;
+  // Gehoert dieses Programm ins CRM? Gibt seinen Eintrag zurueck, sonst null.
+  const upProgramm = (name) => UP_PROGRAMM_INDEX[upSchluessel(name)] || null;
+  // Der Tag, der aus dem Programm folgt. Leerer String heisst: keiner.
+  const upProgrammTag = (name) => (upProgramm(name) || {}).tag || '';
+  // Je gelesenes Programm die Zahl, mit Namen. Ein in UpPromote umbenanntes
+  // Programm faellt sonst lautlos auf null: der Import meldet brav „0 neu", und
+  // niemand sieht, dass die Haelfte der Affiliates nicht mehr gefunden wird.
+  const upZaehlung = (alle) => UP_PROGRAMME.map((p) => alle
+    .filter((a) => upSchluessel(a.programm) === upSchluessel(p.name)).length
+    + ' aus „' + p.name + '"').join(', ');
+  // Und die uebersprungenen, ebenfalls mit Namen. „27 uebersprungen" allein sagt
+  // nicht, ob da ein Programm fehlt, das eigentlich mitgelesen werden soll.
+  const upFremdZaehlung = (alle) => {
+    const zahl = {};
+    for (const a of alle) {
+      if (upProgramm(a.programm)) continue;
+      const n = a.programm || 'ohne Programm';
+      zahl[n] = (zahl[n] || 0) + 1;
+    }
+    return Object.keys(zahl).sort((x, y) => x.localeCompare(y, 'de'))
+      .map((n) => zahl[n] + ' aus „' + n + '"').join(', ');
+  };
   const upToken = () => String(GM_getValue(UP_TOKEN, '') || '').trim();
 
   const cuListe = () => String(GM_getValue(CU_LIST, '') || '').trim();
@@ -1451,11 +1493,18 @@
         // dieser Antwort, das kostet keine zusaetzliche Anfrage.
         const umsatz = ['approved_amount', 'pending_amount', 'paid_amount']
           .reduce((summe, feld) => summe + (parseFloat(a[feld]) || 0), 0);
+        // Dieselbe Person kann in zwei Programmen stehen. Seit das
+        // Ambassador-Programm mitgelesen wird, ist das keine Ausnahme mehr.
+        // Die Programme sammeln sich deshalb, und die Betraege werden addiert:
+        // „hat Umsatz" ist eine Frage an die Person, nicht an ein einzelnes
+        // Programm. Bis 9.0 gewann hier schlicht der letzte Eintrag.
+        const vorig = gefunden[h];
         gefunden[h] = {
           name: [a.first_name, a.last_name].filter(Boolean).join(' '),
           email: String(a.email || '').trim().toLowerCase(),
           notiz: notizAusAffiliate(a),
-          umsatz,
+          programme: (vorig ? vorig.programme : []).concat(String(a.program_name || '').trim()),
+          umsatz: (vorig ? vorig.umsatz : 0) + umsatz,
         };
       }
       if (liste.length < 100) break;
@@ -1664,6 +1713,14 @@
       await cuTagSetzen(angelegt.taskId, CU_TAG_OHNE_HANDLE, ROT, true);
       angelegt.ohneHandle = true;
     }
+    // Der Tag, der aus dem Programm folgt. Er ist der einzige Hinweis darauf,
+    // aus welchem Programm ein Datensatz stammt — in der Beschreibung steht
+    // das Programm nicht, und es waere dort auch nur eine Momentaufnahme.
+    const progTag = upProgrammTag(a.programm);
+    if (progTag) {
+      await cuTagSetzen(angelegt.taskId, progTag, VIOLETT, true);
+      angelegt.tags = (angelegt.tags || []).concat(progTag);
+    }
     await notizUebertragen(angelegt, a.notiz);
     return angelegt;
   }
@@ -1678,7 +1735,7 @@
     cuLaeuft = true;
     try {
       const alle = await upAktiveVoll(toast);
-      const imProgramm = alle.filter((a) => a.programm === UP_PROGRAMM);
+      const imProgramm = alle.filter((a) => upProgramm(a.programm));
       await cuTasksLaden();
       const handlesDa = new Set();
       const mailsDa = new Set();
@@ -1693,11 +1750,11 @@
 
       if (!importVorschau || importVorschau.stand < Date.now() - 300000) {
         importVorschau = { stand: Date.now(), anzahl: neu.length };
-        toast(imProgramm.length + ' aktive im Programm „' + UP_PROGRAMM + '", '
+        toast(imProgramm.length + ' aktive Affiliates (' + upZaehlung(alle) + '), '
           + (imProgramm.length - neu.length) + ' schon im CRM, ' + neu.length + ' neu'
           + (ohneH ? ', davon ' + ohneH + ' ohne Handle' : '')
-          + (alle.length - imProgramm.length ? '. ' + (alle.length - imProgramm.length)
-            + ' aus anderen Programmen übersprungen' : '')
+          + (alle.length - imProgramm.length
+            ? '. Übersprungen: ' + upFremdZaehlung(alle) : '')
           + '. Nochmal klicken legt sie an.');
         return;
       }
@@ -2152,8 +2209,16 @@
         const statusNoetig = darfSetzen(t.status, ziel);
         const mailNoetig = !!a.email && !t.mail;
         const notizNoetig = !!a.notiz && t.notiz !== kurzHash(a.notiz.trim());
-        if (statusNoetig || mailNoetig || notizNoetig) {
-          treffer.push({ t, ziel, statusNoetig, mailNoetig, mail: a.email, notiz: a.notiz });
+        // Die Tags, die aus den Programmen folgen und noch fehlen. Der Abgleich
+        // ist der einzige Weg, auf dem ein schon vorhandener Datensatz seinen
+        // Ambassador-Tag bekommt: der Import sieht ihn nie wieder, der zaehlt
+        // ihn nur noch als vergeben.
+        const tagsNoetig = (a.programme || []).map(upProgrammTag)
+          .filter((tag) => tag && !(t.tags || []).includes(tag))
+          .filter((tag, i, liste) => liste.indexOf(tag) === i);
+        if (statusNoetig || mailNoetig || notizNoetig || tagsNoetig.length) {
+          treffer.push({ t, ziel, statusNoetig, mailNoetig, mail: a.email,
+                         notiz: a.notiz, tagsNoetig });
         }
       }
       if (!treffer.length) {
@@ -2163,6 +2228,7 @@
       let fertig = 0;
       let mails = 0;
       let notizen = 0;
+      let getagged = 0;
       for (const x of treffer) {
         if (x.statusNoetig) {
           toast('Setze auf „' + x.ziel + '" …');
@@ -2172,11 +2238,17 @@
         }
         if (x.mailNoetig) { await mailEintragen(x.t, x.mail); mails++; }
         if (await notizUebertragen(x.t, x.notiz)) notizen++;
+        for (const tag of x.tagsNoetig || []) {
+          await cuTagSetzen(x.t.taskId, tag, VIOLETT, true);
+          x.t.tags = (x.t.tags || []).concat(tag);
+          getagged++;
+        }
       }
       cuSpeichern();
       toast(fertig + ' Status gesetzt'
         + (mails ? ', ' + mails + ' E-Mail(s) nachgetragen' : '')
         + (notizen ? ', ' + notizen + ' Notiz(en) als Kommentar' : '')
+        + (getagged ? ', ' + getagged + ' Tag(s) aus dem Programm' : '')
         + ', von ' + Object.keys(aktive).length + ' bestätigten Affiliates.');
       scanRows();
     } catch (e) {
@@ -3979,7 +4051,8 @@
       button('igfu-link', 'UpPromote abgleichen', async () => { await upAbgleichen(); standAnzeigen(); },
         'Bestätigte Affiliates aus UpPromote auf „' + CU_STATUS_ONBOARD + '" setzen'),
       button('igfu-link', 'Affiliates importieren', () => upImport(),
-        'Legt aktive Affiliates aus „' + UP_PROGRAMM + '" als Tasks an. '
+        'Legt aktive Affiliates als Tasks an, aus '
+        + UP_PROGRAMME.map((p) => '„' + p.name + '"').join(' und ') + '. '
         + 'Erster Klick zählt nur, zweiter legt an.'),
       button('igfu-link', 'Inhalte-Seite öffnen', () => {
         const ziel = inhalteZiel();
@@ -5839,6 +5912,9 @@
     const task = cuTasks[koTid];
     return [koTid, koTaskId, koOffen, koLaedt, koSendet, koFehler,
       task ? handleVonTask(task) : '',
+      // Die Mail kommt oft erst mit dem UpPromote-Abgleich dazu. Ohne sie in
+      // der Signatur erschiene ihre Zeile erst beim naechsten anderen Anlass.
+      task ? task.mail || '' : '',
       koListe === null ? 'x' : koListe.length + ':' + koListe.map((k) => k.id).join(','),
     ].join('|');
   }
@@ -5907,6 +5983,26 @@
       hzeile.appendChild(el('span', 'igfu-ko-leer', 'Kein Handle hinterlegt'));
     }
     koerper.appendChild(hzeile);
+
+    // Die E-Mail-Adresse. Sie ist die Bruecke zu Shopify und zu UpPromote und
+    // wird genauso oft gebraucht wie der Handle — bisher musste man sie in
+    // ClickUp aufschlagen und von Hand markieren. Fehlt sie, bleibt die Zeile
+    // ganz weg: dass der Task da ist, sagt schon die Zeile darueber.
+    const mailAdresse = task ? String(task.mail || '') : '';
+    if (mailAdresse) {
+      const mzeile = el('div', 'igfu-ko-handle igfu-ko-mailzeile');
+      const adresse = el('a', 'igfu-ko-at igfu-ko-mail', mailAdresse);
+      adresse.href = 'mailto:' + mailAdresse;
+      adresse.title = 'Eine Mail an diese Adresse schreiben';
+      const mkopie = button('igfu-link igfu-ko-kopie igfu-ko-kopie-mail', 'Kopieren', async () => {
+        const gut = await inZwischenablage(mailAdresse);
+        if (!gut) { toast('Kopieren hat nicht geklappt.'); return; }
+        mkopie.textContent = 'Kopiert';
+        setTimeout(() => { if (mkopie.isConnected) mkopie.textContent = 'Kopieren'; }, 1400);
+      }, 'Die E-Mail-Adresse in die Zwischenablage legen');
+      mzeile.append(adresse, mkopie);
+      koerper.appendChild(mzeile);
+    }
 
 
     const verlauf = el('div', 'igfu-ko-verlauf');

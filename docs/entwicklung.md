@@ -77,6 +77,13 @@ Es gibt **keinen Gifts-Endpunkt** — die Bereiche sind Programs, Affiliates,
 Coupons, Payments, Referrals, Analytics, Webhooks. Warensendungen sind deshalb
 nur über Shopify zu bekommen.
 
+**Welche Programme gelesen werden, steht in `UP_PROGRAMME`.** Seit 9.1 sind es
+zwei: `TZAMPAS Affiliate Programm` (ohne Tag) und `Ambassador Programm` (Tag
+`ambassador`). `TZAMPAS Brand-Kooperation` und `September-Aktion 2026` bleiben
+bewusst draußen. Verglichen wird über `upSchluessel()` — klein, getrimmt,
+Mehrfach-Leerzeichen zusammengezogen —, damit eine Umbenennung mit anderer
+Schreibweise nicht stillschweigend alles aussortiert.
+
 `upAktive()` blättert mit `per_page=100&page=N` und bricht ab, sobald eine Seite
 dieselben Einträge liefert wie die vorige. Ohne diese Schranke lief die
 Schleife bis zum Seitenlimit, falls UpPromote `page` ignoriert — einmal über
@@ -214,8 +221,8 @@ wegen der Leiter nicht mehr geändert wird.
 
 ### Affiliates aus UpPromote importieren
 
-Knopf „Affiliates importieren" im Panel. Holt alle **aktiven** Affiliates des
-Programms `TZAMPAS Affiliate Programm` und legt die an, die noch fehlen.
+Knopf „Affiliates importieren" im Panel. Holt alle **aktiven** Affiliates der
+Programme aus `UP_PROGRAMME` und legt die an, die noch fehlen.
 
 **Erster Klick zählt nur**, zweiter legt an. Bei über hundert Datensätzen will
 man vorher sehen, was passiert. Die Vorschau verfällt nach fünf Minuten.
@@ -228,6 +235,26 @@ füllen.
 Neue Tasks bekommen Titel `handle — Name`, Status nach der Leiter
 (`ongeboardet`, bei Provision `hat sales`), die Instagram-Zeile und die Marker
 `igfu-handle` und `igfu-mail`. Ohne Handle zusätzlich den Tag `handle-fehlt`.
+
+**Der Tag aus dem Programm** (`upProgrammTag()`) kommt an zwei Stellen dran:
+in `importAnlegen()` für neue Datensätze und in `upAbgleichen()` für die schon
+vorhandenen. Die zweite Stelle ist die wichtigere — wer schon im CRM steht,
+läuft dem Import nie wieder über den Weg, der zählt ihn nur noch als vergeben.
+Gesetzt wird nur, **entfernt nie**: der Tag hält eine Zugehörigkeit fest und
+gilt von Hand gesetzt genauso. Karteileichen bleiben auch hier unberührt.
+
+Der Abgleich ordnet **nur über den Handle** zu. Ein Ambassador ohne Handle im
+CRM bekommt seinen Tag deshalb nicht; das ist derselbe blinde Fleck wie bei
+Status und Notiz und einer von mehreren Gründen, die Liste „Handles nachtragen"
+leer zu halten.
+
+**Die Vorschau zählt je Programm** (`upZaehlung()`, `upFremdZaehlung()`) und
+nennt dabei auch die übersprungenen Programme mit Namen. Das ist nicht Zierde:
+wird ein Programm in UpPromote umbenannt, fällt seine Zahl auf null, und ohne
+diese Aufschlüsselung meldete der Import nur „0 neu" — nicht unterscheidbar
+von „es ist wirklich nichts neu". Genau in dieser Lücke blieben bis November
+2026 zwanzig aktive Affiliates unbemerkt außerhalb des CRM; aufgefallen ist es
+erst, als eine davon sich selbst gemeldet hat.
 
 **Der Unterhaltungs-Link lässt sich nicht aus dem Handle bauen.**
 `selected_item_id` ist Metas interne, 39-stellige Unterhaltungs-ID; der Handle
@@ -790,6 +817,7 @@ Ausgelesene, aber Josias eigene Eingabe steht darüber.
 | `follow-up` | gelb | Skript (Chip im Postfach) | setzt und entfernt ihn |
 | `ad-code` | grün | Skript (Content erkannt) | setzt ihn, entfernt ihn **nie** |
 | `handle-fehlt` | rot | Skript | setzt ihn, entfernt ihn, sobald der Handle da ist |
+| `ambassador` | violett | Skript (Programm bei UpPromote) **und** Josia von Hand | setzt ihn, entfernt ihn **nie** |
 | `karteileiche` | rot | **Josia von Hand** | **lässt den Task vollständig in Ruhe** |
 | `ignore` | — | **Josia von Hand** | **nichts, der Tag ist rein organisatorisch** |
 | `big`, `bug` | — | Josia von Hand | nichts |
@@ -1266,7 +1294,12 @@ aus `GET /space/<id>/tag` und liegt in `clickup:tagliste:v1`.
 ### Handle und Status in der Leiste
 
 Der Handle kommt aus `handleVonTask()`, kopiert wird er **ohne `@`** — so wird
-er in UpPromote und Shopify gebraucht. `inZwischenablage()` nimmt
+er in UpPromote und Shopify gebraucht. Seit 9.1 steht die **E-Mail-Adresse**
+aus `task.mail` als zweite Zeile darunter, mit eigenem Kopier-Knopf und als
+`mailto:`-Link; ohne Adresse entfällt die Zeile ganz. Sie gehört deshalb in
+`koSignatur()` — sie kommt oft erst mit einem UpPromote-Abgleich dazu, und
+ohne sie in der Signatur erschiene ihre Zeile erst beim nächsten anderen
+Anlass. `inZwischenablage()` nimmt
 `navigator.clipboard` und fällt auf ein kurzlebiges Textfeld mit
 `execCommand('copy')` zurück. Dort steht **`focus()` vor `select()`**:
 `copy` nimmt die Auswahl des fokussierten Elements, und dass `select()` den

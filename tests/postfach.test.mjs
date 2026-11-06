@@ -459,6 +459,8 @@ gruppe('Ein bereits verbundener Task wird nicht nochmal verbunden');
 }
 
 const MIT_UP = { ...MIT_CLICKUP, 'uppromote:token:v1': 'up_geheim_999' };
+const PROG = 'TZAMPAS Affiliate Programm';
+const AMBI = 'Ambassador Programm';
 
 gruppe('UpPromote: bestätigte Affiliates werden ongeboardet');
 {
@@ -483,6 +485,70 @@ gruppe('UpPromote: bestätigte Affiliates werden ongeboardet');
     aufrufe.some((a) => a.pfad.startsWith('UP/affiliates') && a.pfad.includes('status=active')));
   pruefe('Der UpPromote-Token steht in keiner Nutzlast',
     !aufrufe.some((a) => JSON.stringify(a.data || '').includes('up_geheim')));
+}
+
+gruppe('UpPromote: der Ambassador-Tag kommt auch an vorhandene Tasks');
+{
+  // Die 138 Datensaetze, die schon im CRM stehen, sieht der Import nie wieder.
+  // Ihren Tag bekommen sie nur hier.
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_UP,
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: beschreibungMit('T1'), tags: [] }],
+    affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de',
+                   instagram: 'marakell.runs', program_name: AMBI }],
+  });
+  await klickKnopf(w, doc, 'UpPromote abgleichen');
+  await warte(w, 1500);
+  pruefe('Der Tag ist dran', serverTasks[0].tags.includes('ambassador'),
+    JSON.stringify(serverTasks[0].tags));
+}
+
+gruppe('UpPromote: aus dem Affiliate-Programm kommt kein Tag');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_UP,
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: beschreibungMit('T1'), tags: [] }],
+    affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de',
+                   instagram: 'marakell.runs', program_name: PROG }],
+  });
+  await klickKnopf(w, doc, 'UpPromote abgleichen');
+  await warte(w, 1500);
+  pruefe('Kein Tag gesetzt', !serverTasks[0].tags.includes('ambassador'),
+    JSON.stringify(serverTasks[0].tags));
+}
+
+gruppe('UpPromote: ein vorhandener Ambassador-Tag wird nicht neu gesetzt');
+{
+  const { doc, w, aufrufe } = await starte({
+    speicher: MIT_UP,
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: beschreibungMit('T1'), tags: ['ambassador'] }],
+    tags: [TAG, 'ambassador'],
+    affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de',
+                   instagram: 'marakell.runs', program_name: AMBI }],
+  });
+  await klickKnopf(w, doc, 'UpPromote abgleichen');
+  await warte(w, 1500);
+  const taggen = aufrufe.filter((a) => a.methode === 'POST' && /\/tag\/ambassador$/.test(a.pfad));
+  pruefe('Keine Tag-Anfrage', taggen.length === 0, String(taggen.length));
+}
+
+gruppe('UpPromote: eine Karteileiche bleibt ohne Ambassador-Tag');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_UP,
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: beschreibungMit('T1'), tags: ['karteileiche'] }],
+    tags: [TAG, 'karteileiche'],
+    affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de',
+                   instagram: 'marakell.runs', program_name: AMBI }],
+  });
+  await klickKnopf(w, doc, 'UpPromote abgleichen');
+  await warte(w, 1500);
+  pruefe('Die Leiche bleibt in Ruhe', !serverTasks[0].tags.includes('ambassador'),
+    JSON.stringify(serverTasks[0].tags));
 }
 
 gruppe('UpPromote: Sales heben den Status auf „hat sales"');
@@ -855,7 +921,6 @@ gruppe('Der Link gilt für Partner-Nachrichten und normale DMs gleichermaßen');
   pruefe('thread_type bleibt', /thread_type=IG_MESSAGE/.test(text));
 }
 
-const PROG = 'TZAMPAS Affiliate Programm';
 
 gruppe('Import: erster Klick zählt nur');
 {
@@ -922,6 +987,80 @@ gruppe('Import: Vorhandene und fremde Programme bleiben aussen vor');
   await klickKnopf(w, doc, 'Affiliates importieren');
   await warte(w, 2500);
   pruefe('Nichts Neues angelegt', serverTasks.length === 2, String(serverTasks.length));
+}
+
+gruppe('Import: das Ambassador-Programm kommt mit, die anderen nicht');
+{
+  // Seit 9.1 werden zwei Programme gelesen. Der Ambassador bringt seinen Tag
+  // mit, die Brand-Kooperation bleibt draussen — so entschieden, nicht
+  // vergessen.
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_UP,
+    affiliates: [
+      { first_name: 'Ein', last_name: 'Affiliate', email: 'af@b.de', instagram: 'ein_affiliate',
+        program_name: PROG },
+      { first_name: 'Eine', last_name: 'Botschafterin', email: 'am@b.de', instagram: 'die_botschafterin',
+        program_name: AMBI },
+      { first_name: 'Eine', last_name: 'Marke', email: 'br@b.de', instagram: 'die_marke',
+        program_name: 'TZAMPAS Brand-Kooperation' },
+    ],
+  });
+  await klickKnopf(w, doc, 'Affiliates importieren');
+  await warte(w, 1500);
+  await klickKnopf(w, doc, 'Affiliates importieren');
+  await warte(w, 3000);
+  pruefe('Zwei Tasks angelegt, nicht drei', serverTasks.length === 2, String(serverTasks.length));
+  const bot = serverTasks.find((x) => /die_botschafterin/.test(x.name));
+  const aff = serverTasks.find((x) => /ein_affiliate/.test(x.name));
+  pruefe('Die Botschafterin ist dabei', !!bot, JSON.stringify(serverTasks.map((x) => x.name)));
+  pruefe('Die Marke bleibt draussen', !serverTasks.some((x) => /die_marke/.test(x.name)),
+    JSON.stringify(serverTasks.map((x) => x.name)));
+  pruefe('Sie bekommt den Ambassador-Tag',
+    bot && bot.tags.includes('ambassador'), JSON.stringify(bot && bot.tags));
+  pruefe('Der normale Affiliate bekommt ihn nicht',
+    aff && !aff.tags.includes('ambassador'), JSON.stringify(aff && aff.tags));
+}
+
+gruppe('Import: die Vorschau nennt jedes Programm mit Namen');
+{
+  // Ein in UpPromote umbenanntes Programm faellt sonst lautlos auf null. Die
+  // Zahl je Programm ist die einzige Stelle, an der das auffaellt.
+  const { doc, w } = await starte({
+    speicher: MIT_UP,
+    affiliates: [
+      { first_name: 'Ein', last_name: 'Affiliate', email: 'af@b.de', instagram: 'ein_affiliate',
+        program_name: PROG },
+      { first_name: 'Eine', last_name: 'Botschafterin', email: 'am@b.de', instagram: 'die_botschafterin',
+        program_name: AMBI },
+      { first_name: 'Eine', last_name: 'Marke', email: 'br@b.de', instagram: 'die_marke',
+        program_name: 'TZAMPAS Brand-Kooperation' },
+    ],
+  });
+  await klickKnopf(w, doc, 'Affiliates importieren');
+  await warte(w, 1500);
+  const t = (doc.querySelector('#igfu-toast') || {}).textContent || '';
+  pruefe('Das Affiliate-Programm steht mit Zahl da', /1 aus „TZAMPAS Affiliate Programm"/.test(t), t);
+  pruefe('Das Ambassador-Programm auch', /1 aus „Ambassador Programm"/.test(t), t);
+  pruefe('Das uebersprungene wird benannt',
+    /Übersprungen: 1 aus „TZAMPAS Brand-Kooperation"/.test(t), t);
+  pruefe('Und zwei sind neu', /2 neu/.test(t), t);
+}
+
+gruppe('Import: eine andere Schreibweise des Programms zaehlt trotzdem');
+{
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_UP,
+    affiliates: [{ first_name: 'Eine', last_name: 'Botschafterin', email: 'am@b.de',
+                   instagram: 'die_botschafterin', program_name: '  ambassador   programm ' }],
+  });
+  await klickKnopf(w, doc, 'Affiliates importieren');
+  await warte(w, 1500);
+  await klickKnopf(w, doc, 'Affiliates importieren');
+  await warte(w, 2500);
+  pruefe('Trotz Schreibweise angelegt', serverTasks.length === 1, String(serverTasks.length));
+  pruefe('Mit Ambassador-Tag',
+    serverTasks[0] && serverTasks[0].tags.includes('ambassador'),
+    JSON.stringify((serverTasks[0] || {}).tags));
 }
 
 gruppe('Import: ohne Handle gibt es den roten Tag');
@@ -3505,6 +3644,54 @@ gruppe('Notizen: Kopieren legt den Handle in die Zwischenablage');
   pruefe('Der Handle liegt drin', ablage.inhalt === 'reichert_florian', ablage.inhalt);
   pruefe('Ohne @ davor', !/@/.test(ablage.inhalt), ablage.inhalt);
   pruefe('Der Knopf sagt Bescheid', k && k.textContent === 'Kopiert', k && k.textContent);
+}
+
+gruppe('Notizen: die E-Mail steht in der Leiste und laesst sich kopieren');
+{
+  const { doc, w, ablage } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian' },
+    tasks: [{ id: 'a1', name: 'reichert_florian — Florian Reichert', status: 'angeschrieben',
+              farbe: '#87909e',
+              beschreibung: 'x\nigfu-ig: 101925914541472\nigfu-handle: reichert_florian'
+                + '\nigfu-mail: florian@beispiel.de' }],
+    kommentare: { a1: [{ text: 'Erste Notiz.', wer: 'Josia Loos', wann: 1700000000000 }] },
+  });
+  await warte(w, 3500);
+  const mail = doc.querySelector('.igfu-ko-mail');
+  pruefe('Die Adresse steht da', mail && mail.textContent === 'florian@beispiel.de',
+    mail && mail.textContent);
+  pruefe('Und haengt an mailto',
+    mail && mail.getAttribute('href') === 'mailto:florian@beispiel.de',
+    mail && mail.getAttribute('href'));
+  const k = doc.querySelector('.igfu-ko-kopie-mail');
+  pruefe('Mit eigenem Kopier-Knopf', !!k);
+  if (k) klick(w, k);
+  await warte(w, 400);
+  pruefe('Die Adresse liegt in der Ablage', ablage.inhalt === 'florian@beispiel.de', ablage.inhalt);
+  pruefe('Der Knopf sagt Bescheid', k && k.textContent === 'Kopiert', k && k.textContent);
+  const handleKnopf = doc.querySelector('.igfu-ko-kopie:not(.igfu-ko-kopie-mail)');
+  pruefe('Der Handle-Knopf steht unberuehrt daneben',
+    handleKnopf && handleKnopf.textContent === 'Kopieren', handleKnopf && handleKnopf.textContent);
+}
+
+gruppe('Notizen: ohne hinterlegte E-Mail bleibt die Zeile weg');
+{
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian' },
+    tasks: [{ id: 'a1', name: 'reichert_florian — Florian Reichert', status: 'angeschrieben',
+              farbe: '#87909e',
+              beschreibung: 'x\nigfu-ig: 101925914541472\nigfu-handle: reichert_florian' }],
+    kommentare: { a1: [{ text: 'Erste Notiz.', wer: 'Josia Loos', wann: 1700000000000 }] },
+  });
+  await warte(w, 3500);
+  pruefe('Keine Mailzeile', !doc.querySelector('.igfu-ko-mailzeile'));
+  pruefe('Kein Mail-Kopierknopf', !doc.querySelector('.igfu-ko-kopie-mail'));
+  pruefe('Der Handle steht trotzdem da',
+    !!doc.querySelector('.igfu-ko-at'), 'Handle-Zeile fehlt');
 }
 
 gruppe('Notizen: Kopieren faellt zurueck, wenn die Seite es verbietet');
