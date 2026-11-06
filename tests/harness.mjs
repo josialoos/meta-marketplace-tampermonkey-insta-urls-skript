@@ -47,6 +47,12 @@ export async function starte({
   tasks = [],
   tags = [TAG],            // im Space vorhandene Tags
   fehler = null,           // (methode, pfad) => 'netz'|'limit'|'token'|'weg'|'ungueltig'|null
+  // (methode, pfad) => Millisekunden. Normalerweise antwortet der Pruefstand
+  // sofort; damit laesst sich eine Anfrage bremsen. Gebraucht wird das, um zwei
+  // Laeufe wirklich zu ueberlappen: ohne Verzoegerung ist das Anlegen schon
+  // fertig, bevor der zweite Lauf ueberhaupt losgeht, und eine fehlende Sperre
+  // faellt nicht auf.
+  verzoegerung = null,
   affiliates = null,       // [{ first_name, last_name, email, instagram, custom_fields }] für UpPromote
   karte = null,            // { handle } fuer die Kontaktkarte der geoeffneten Unterhaltung
   markt = null,            // [{ handle, bild }] baut stattdessen Marketplace-Karten
@@ -445,8 +451,12 @@ export async function starte({
   };
 
   w.GM_xmlhttpRequest = (o) => {
+    // Die Antwort entsteht sofort, damit der Zustand des Pruefstands sich in
+    // der Reihenfolge der Anfragen aendert — nur ausgeliefert wird sie spaeter.
+    const pfad = o.url.replace('https://api.clickup.com/api/v2', '');
     const a = antwort(o.method, o.url, o.data);
-    w.setTimeout(() => { if (a.netz) o.onerror && o.onerror({}); else o.onload && o.onload(a); }, 0);
+    const ms = (verzoegerung && verzoegerung(o.method, pfad)) || 0;
+    w.setTimeout(() => { if (a.netz) o.onerror && o.onerror({}); else o.onload && o.onload(a); }, ms);
   };
   w.open = (url) => { (w.__geoeffnet = w.__geoeffnet || []).push(url); return null; };
 

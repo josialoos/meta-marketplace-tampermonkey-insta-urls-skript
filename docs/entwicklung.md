@@ -510,6 +510,83 @@ igfu-thread: B
   existiert, sondern hängt die Unterhaltung über `threadAnhaengen()` dort an.
   Karteileichen zählen dabei nicht mit, die sind absichtlich stillgelegt.
 
+#### Drei Löcher, durch die trotzdem Dubletten entstanden sind
+
+Die beiden Sperren in `cuTaskSichern()` — erst `cuTasks[tid]`, dann die Suche
+über den Handle — haben zweimal nicht gegriffen. Nachgewiesen an zwei Paaren im
+CRM, und es waren zwei verschiedene Ursachen:
+
+**1. Nebenläufigkeit.** Zwischen der Prüfung und dem Eintrag in `cuTasks` liegt
+das Anlegen selbst. Solange der `POST` unterwegs ist, sieht ein zweiter Lauf die
+Sperre noch nicht — beide kommen durch, beide legen an. Belegt an den beiden
+Tasks für „Nuria": gleiche Thread-Kennung, gleiche Bild-ID, **1,8 Sekunden**
+auseinander (`1792073977998` und `1792073979812`).
+
+Nebenläufig wird das, weil `crmKlick()` nicht an der Warteschlange hängt.
+`abarbeiten()` sperrt sich über `cuLaeuft` gegen sich selbst, einen Klick auf
+die CRM-Pille hält das aber nicht auf — und genau der wartet vorher noch auf
+`handleBeschaffen()`, kann also beliebig lange offen stehen.
+
+Seit 9.0 liegt in `cuAnlage` je Unterhaltung ein Platzhalter, und zwar **vor dem
+ersten `await`**. Der zweite Lauf wartet auf das Ergebnis des ersten statt selbst
+anzulegen. Der Platzhalter wird auch nach einem Fehler wieder entfernt, sonst
+läuft jeder weitere Versuch für diese Unterhaltung in denselben Fehler.
+
+**2. Ein Spiegel, der nicht stimmt.** `cuTasks` ist nur ein Spiegel. Er kann aus
+einem zweiten Tab stammen, von einem zweiten Rechner — `GM_addValueChangeListener`
+hängt nur an `igfu:v1`, nicht an `clickup:tasks:v1`, ein Tab erfährt also nichts
+von den Tasks des anderen — oder von einem Anlegen, dessen Antwort unterwegs
+verloren ging: der Task steht dann in ClickUp, aber nicht im Spiegel. In allen
+drei Fällen sind **beide** Sperren blind.
+
+Belegt an den beiden Tasks für „sabrina.balster": gleiche Thread-Kennung *und*
+gleicher Handle, **acht Minuten** auseinander. Nach acht Minuten kann es keine
+Nebenläufigkeit mehr sein; der erste Task stand zu diesem Zeitpunkt einfach nicht
+im Spiegel.
+
+Seit 9.0 erneuert `cuTaskAnlegen()` den Stand, wenn er älter als
+`CU_STAND_FRISCH` (eine Minute) ist, und prüft danach noch einmal. Dafür gibt es
+`cuGeladen` — `stand` aus `cuSpeichern()` taugt nicht, das wird bei **jeder**
+lokalen Änderung neu gesetzt und sagt nichts darüber, wie alt die Kenntnis der
+Liste ist. Scheitert das Erneuern, wird **nicht** angelegt: der Fehler ist
+`wiederholbar`, der Auftrag bleibt in der Warteschlange stehen und kommt von
+allein wieder. Lieber später als doppelt.
+
+Teuer ist das nicht — hierher kommt nur, wer überhaupt keinen Task gefunden hat,
+und vier Lesezugriffe sind billiger als ein zweiter Datensatz im CRM.
+
+**3. Eine Sperre, die stehen blieb.** `uebernehmen()` setzt `cuLaeuft` und hat es
+auf dem Weg „in ClickUp fehlt nichts" nicht wieder fallen lassen — bis zum
+nächsten Neuladen der Seite. Danach stiegen `abarbeiten()` **und**
+`cuAktualisieren()` beide sofort wieder aus: die Warteschlange lief nicht mehr,
+und der Stand wurde nie wieder gelesen. Ein Klick auf die CRM-Pille legte dann
+gegen einen Spiegel an, der nicht mehr aktuell werden konnte. Das ist der Weg,
+auf dem Ursache 2 ohne zweiten Tab entsteht.
+
+#### Eine Dublette darf sich nicht selbst verstecken
+
+Stehen zwei Tasks unter derselben Thread-Kennung, muss `cuTasksLaden()` sich beim
+Aufbau des Index für einen entscheiden — der getaggte gewinnt, bei Gleichstand
+der zuletzt gefundene. Der Verlierer war danach **nirgends** mehr zu sehen, weder
+in `cuTasks` noch in `cuOhneThread`. Eine Dublette versteckte sich damit selbst,
+und deshalb sind die beiden „Nuria"-Tasks zwei Wochen unentdeckt geblieben.
+
+Seit 9.0 sammelt `cuTasksLaden()` beides in `cuDubletten`:
+
+- zwei Tasks unter derselben Thread-Kennung,
+- zwei Tasks mit demselben Handle (`handleVonTask()`, also Markerzeile vor Name).
+
+Karteileichen zählen nicht mit — die sind absichtlich stillgelegt, dafür gibt es
+den Tag. Je Task-Paar gibt es genau einen Eintrag, der erste Grund gewinnt: zwei
+Tasks können sich eine Unterhaltung *und* den Handle teilen, oder gleich zwei
+Unterhaltungen. `zeigeDubletten()` stellt die Paare ins Panel, mit Link auf beide
+Tasks.
+
+**Zusammengelegt oder gelöscht wird dort nichts.** Welcher Datensatz der richtige
+ist, entscheidet Josia, und der andere wird über den Leichen-Tag stillgelegt —
+gelöscht holt ihn der nächste UpPromote-Import zurück (siehe
+[Der Tag `karteileiche`](#der-tag-karteileiche)).
+
 #### Die Herkunft einer Kennung wird festgehalten, nicht geraten
 
 Bis 6.8 stand jede Unterhaltung unter `igfu-thread:`, und woher sie stammte,
@@ -1375,6 +1452,20 @@ längst einen Task gibt, und legt einen zweiten an. Bei Thorsten wäre das
 passiert: die Zeile heißt im Postfach „Thorsten | Laufen & Trailrunning", der
 Task „lauf\_bolti\_lauf — Torsten Bolthaup". Der gesparte Augenblick ist eine
 Dublette im CRM nicht wert.
+
+**Nebenläufigkeit braucht eine gebremste Antwort.** Der Prüfstand antwortet
+normalerweise sofort; damit ist das Anlegen längst fertig, bevor der zweite Lauf
+überhaupt losgeht, und eine fehlende Sperre fällt nicht auf. `starte()` nimmt
+deshalb `verzoegerung: (methode, pfad) => ms`. Die Antwort selbst entsteht
+weiterhin sofort — nur ausgeliefert wird sie später, sonst ändert sich der
+Zustand des Prüfstands nicht in der Reihenfolge der Anfragen.
+
+**Ein veralteter Spiegel wird über einen Fehlschlag hergestellt.** Für
+„Vor dem Anlegen wird der Stand aus ClickUp erneuert" muss `cuTasks` den schon
+vorhandenen Task *nicht* kennen. Ein vorbelegter Speicher allein genügt nicht,
+weil der Start sofort `cuTasksLaden()` ruft. Also lässt die Prüfung den **ersten**
+Listenabruf am Netz scheitern: danach steht im Spiegel nichts, `cuGeladen` bleibt
+alt, und `cuAktualisieren()` versucht es zwei Minuten lang nicht erneut.
 
 **Zwei Zahlen, die leicht verwechselt werden.** `threadRows()` liefert die
 Zeilen, die Meta gerade im Dokument hält — bei einer virtualisierten Liste immer

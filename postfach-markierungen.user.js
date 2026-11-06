@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      8.9
+// @version      9.0
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -430,7 +430,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '8.9';
+  const VERSION = '9.0';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -758,6 +758,20 @@
   }
   let cuLetzterAbruf = 0;
   let cuLaeuft = false;
+  // Wann der Spiegel zuletzt wirklich aus ClickUp gelesen wurde. Nicht zu
+  // verwechseln mit `stand` aus cuSpeichern: das wird bei jeder lokalen
+  // Aenderung neu gesetzt und sagt deshalb nichts darueber, wie alt die
+  // Kenntnis der Liste ist.
+  let cuGeladen = (GM_getValue(CU_TASKS, {}) || {}).geladen || 0;
+  // Wie lange ein gelesener Stand als frisch gilt. Kuerzer als der Abruf im
+  // Hintergrund (zwei Minuten), denn vor dem Anlegen entscheidet er darueber,
+  // ob ein zweiter Datensatz fuer dieselbe Person entsteht.
+  const CU_STAND_FRISCH = 60000;
+  // Tasks, die sich eine Thread-Kennung oder einen Handle teilen. cuTasksLaden
+  // muss sich beim Aufbau des Index fuer einen entscheiden und hat den anderen
+  // bis 8.9 stillschweigend fallen gelassen — eine Dublette versteckte sich
+  // damit selbst. Hier bleibt sie stehen und wird im Panel gezeigt.
+  let cuDubletten = [];
 
   // Metas eigener Link auf eine Unterhaltung. Das Briefing sagte, so etwas
   // gebe es nicht, inzwischen gibt es das: selected_item_id oeffnet die
@@ -2384,6 +2398,14 @@
     const nachBild = {};
     const nachNutzer = {};
     const ohneThread = [];
+    // Je Task-Paar genau ein Eintrag, der erste Grund gewinnt. Ohne das stuende
+    // dasselbe Paar mehrfach im Panel: zwei Tasks koennen sich eine
+    // Unterhaltung *und* den Handle teilen, oder gleich zwei Unterhaltungen.
+    const doppelt = new Map();
+    const doppeltMerken = (grund, wert, a, b) => {
+      const schluessel = [a.taskId, b.taskId].sort().join('|');
+      if (!doppelt.has(schluessel)) doppelt.set(schluessel, { grund, wert, tasks: [a, b] });
+    };
     for (let seite = 0; seite < 25; seite++) {
       const d = await cuRequest('GET', '/list/' + liste + '/task?include_closed=true&subtasks=false&page=' + seite);
       for (const t of d.tasks || []) {
@@ -2398,6 +2420,12 @@
         // Markierung. Bei Gleichstand der zuletzt gefundene.
         for (const einzel of neu.tids) {
           const alt = gefunden[einzel];
+          // Der Verlierer dieser Entscheidung ist danach nirgends mehr zu
+          // sehen — weder in cuTasks noch in cuOhneThread. Deshalb wird er
+          // hier vermerkt, bevor er verschwindet.
+          if (alt && alt.taskId !== neu.taskId && !alt.leiche && !neu.leiche) {
+            doppeltMerken('thread', einzel, alt, neu);
+          }
           if (!alt || neu.follow || !alt.follow) gefunden[einzel] = neu;
         }
       }
@@ -2407,13 +2435,30 @@
     cuBilder = nachBild;
     cuNutzer = nachNutzer;
     cuOhneThread = ohneThread;
+    // Derselbe Handle in zwei Tasks heisst: zwei Datensaetze fuer eine Person.
+    // Karteileichen zaehlen nicht mit, die sind absichtlich stillgelegt —
+    // genau dafuer gibt es den Tag.
+    const nachHandle = {};
+    for (const t of alleTasks()) {
+      if (t.leiche) continue;
+      const h = handleVonTask(t);
+      if (!h) continue;
+      if (nachHandle[h] && nachHandle[h].taskId !== t.taskId) {
+        doppeltMerken('handle', h, nachHandle[h], t);
+      } else {
+        nachHandle[h] = t;
+      }
+    }
+    cuDubletten = [...doppelt.values()];
+    cuGeladen = Date.now();
     cuSpeichern();
     return gefunden;
   }
 
   function cuSpeichern() {
     GM_setValue(CU_TASKS, {
-      stand: Date.now(), tasks: cuTasks, bilder: cuBilder, nutzer: cuNutzer, ohneThread: cuOhneThread,
+      stand: Date.now(), geladen: cuGeladen,
+      tasks: cuTasks, bilder: cuBilder, nutzer: cuNutzer, ohneThread: cuOhneThread,
     });
   }
 
@@ -2467,8 +2512,64 @@
     return task;
   }
 
-  async function cuTaskSichern(tid, titel, handle) {
-    if (cuTasks[tid]) return cuTasks[tid];
+  // Laeufe, die gerade einen Task anlegen, je Unterhaltung. Zwischen der
+  // Pruefung in cuTaskAnlegen und dem Eintrag in cuTasks liegt das Anlegen
+  // selbst, und solange es laeuft, sieht ein zweiter Lauf die Sperre noch
+  // nicht: beide kommen durch, beide legen an. Genau so sind am 15.10.2026 die
+  // beiden Tasks fuer „Nuria" entstanden — 1,8 Sekunden auseinander, gleiche
+  // Thread-Kennung, gleiche Bild-ID. Der Platzhalter steht deshalb hier, vor
+  // dem ersten await, und der zweite Lauf wartet auf das Ergebnis des ersten
+  // statt selbst anzulegen.
+  //
+  // Nebenlaeufig wird das, weil crmKlick nicht an der Warteschlange haengt:
+  // abarbeiten() sperrt sich selbst ueber cuLaeuft, einen Klick auf die
+  // CRM-Pille haelt das aber nicht auf.
+  const cuAnlage = new Map();
+
+  function cuTaskSichern(tid, titel, handle) {
+    if (cuTasks[tid]) return Promise.resolve(cuTasks[tid]);
+    const laeuft = cuAnlage.get(tid);
+    if (laeuft) return laeuft;
+    const lauf = cuTaskAnlegen(tid, titel, handle);
+    cuAnlage.set(tid, lauf);
+    // Der Platzhalter muss auch nach einem Fehler weg, sonst laeuft jeder
+    // weitere Versuch fuer diese Unterhaltung in denselben Fehler.
+    return lauf.then(
+      (t) => { cuAnlage.delete(tid); return t; },
+      (e) => { cuAnlage.delete(tid); throw e; },
+    );
+  }
+
+  async function cuTaskAnlegen(tid, titel, handle) {
+    // Der lokale Spiegel ist nur ein Spiegel. Er kann aus einem zweiten Tab
+    // stammen, von einem zweiten Rechner, oder von einem Anlegen, dessen
+    // Antwort unterwegs verloren ging — dann steht der Task in ClickUp, hier
+    // aber nicht, und beide Sperren unten sind blind. So sind am 29.10.2026 die
+    // beiden Tasks fuer „sabrina.balster" entstanden: acht Minuten
+    // auseinander, gleiche Thread-Kennung *und* gleicher Handle.
+    //
+    // Vor dem Anlegen wird der Stand deshalb erneuert. Vier Lesezugriffe sind
+    // billiger als ein zweiter Datensatz im CRM, und hierher kommt nur, wer
+    // ueberhaupt keinen Task gefunden hat.
+    if (Date.now() - cuGeladen > CU_STAND_FRISCH) {
+      try {
+        await cuTasksLaden();
+      } catch (e) {
+        // Lieber spaeter anlegen als doppelt — hier entsteht kein Task.
+        //
+        // Die Einordnung bleibt die von cuRequest, sie darf hier nicht
+        // pauschal zu „wiederholbar" werden: ein abgelehnter Token ist
+        // blockierend, der Auftrag bleibt stehen und verbraucht keinen
+        // Wiederholungszaehler. Ein Netzwerkfehler ist wiederholbar und kommt
+        // von allein wieder. Alles andere — etwa eine falsche Listen-ID — ist
+        // aussichtslos, und dann waere auch das Anlegen gescheitert.
+        throw Object.assign(
+          new Error('Stand aus ClickUp fehlt, ich lege es später an. ' + e.message),
+          { wiederholbar: !!e.wiederholbar, blockierend: !!e.blockierend },
+        );
+      }
+      if (cuTasks[tid]) return cuTasks[tid];
+    }
     const w = handleVon(tid);
     const h = handle || (w && w.handle) || '';
     // Dieselbe Person kann zwei Unterhaltungen haben: eine als Partner-Nachricht,
@@ -2497,9 +2598,19 @@
     // Die Antwort auf das Anlegen enthaelt die Beschreibung nicht immer zurueck,
     // deshalb Thread und Bild aus dem, was wir gerade geschickt haben.
     angelegt.tid = tid;
+    // tids kommt aus der Beschreibung, und die liefert ClickUp beim Anlegen
+    // nicht zurueck. Ohne diese Zeile stand der frische Task mit leerer
+    // tids-Liste im Spiegel — fuer threadAnhaengen sah er dann aus wie einer
+    // ohne Unterhaltung.
+    if (!(angelegt.tids || []).length) angelegt.tids = [tid];
     angelegt.bild = angelegt.bild || (w && w.bild) || '';
+    // Die Benutzer-ID steht noch in keiner Markerzeile — die traegt erst der
+    // Auftrag „nutzer" nach. Im Spiegel gehoert sie trotzdem gleich hin, sonst
+    // findet dieselbe Person aus dem anderen Postfach ihren Task nicht.
+    angelegt.nutzer = angelegt.nutzer || (w && w.nutzer) || '';
     cuTasks[tid] = angelegt;
     if (angelegt.bild) cuBilder[angelegt.bild] = angelegt;
+    if (angelegt.nutzer) cuNutzer[angelegt.nutzer] = angelegt;
     cuSpeichern();
     return cuTasks[tid];
   }
@@ -3978,7 +4089,13 @@
       return;
     }
     offen = Object.entries(follow).filter(([tid]) => !cuTasks[tid] || !cuTasks[tid].follow);
-    if (!offen.length) { toast('In ClickUp fehlt nichts.'); return; }
+    // cuLaeuft muss hier wieder fallen. Bis 8.9 blieb es auf diesem Weg stehen,
+    // und zwar bis zum naechsten Neuladen der Seite: abarbeiten() und
+    // cuAktualisieren() steigen beide gleich wieder aus, wenn es gesetzt ist.
+    // Die Warteschlange lief danach nicht mehr, und — schlimmer — der Stand
+    // wurde nie wieder aus ClickUp gelesen. Ein Klick auf die CRM-Pille legte
+    // dann gegen einen Spiegel an, der nicht mehr aktuell werden konnte.
+    if (!offen.length) { cuLaeuft = false; toast('In ClickUp fehlt nichts.'); return; }
     toast(offen.length + ' Follow-ups werden übertragen …');
     let fertig = 0;
     try {
@@ -4222,6 +4339,34 @@
 
   // Der Gegenstueck-Abschnitt zu „Unterhaltungen ohne Task": hier stehen die
   // Tasks, denen die Unterhaltung fehlt.
+  // Zwei Datensaetze fuer eine Person. Hier wird nur gezeigt, nie
+  // zusammengelegt und schon gar nicht geloescht: welcher der richtige ist und
+  // was mit dem anderen geschieht, entscheidet Josia — und stillgelegt wird er
+  // ueber den Leichen-Tag, sonst holt der naechste UpPromote-Import ihn zurueck.
+  function zeigeDubletten() {
+    if (!cuDubletten.length) return;
+    bodyEl.appendChild(el('h3', 'igfu-section-title',
+      'Mögliche Dubletten (' + cuDubletten.length + ')'));
+    bodyEl.appendChild(el('p', 'igfu-empty',
+      'Diese Tasks teilen sich eine Unterhaltung oder einen Handle. Prüf, welcher '
+      + 'bleibt, und häng den anderen als Karteileiche ab — gelöscht kommt er beim '
+      + 'nächsten Import zurück.'));
+    const ul = el('ol', 'igfu-list');
+    for (const d of cuDubletten.slice(0, 20)) {
+      const li = el('li', 'igfu-item');
+      const top = el('div', 'igfu-item-top');
+      top.appendChild(el('span', 'igfu-meta',
+        (d.grund === 'handle' ? '@' + d.wert : 'Unterhaltung ' + d.wert) + ':'));
+      for (const t of d.tasks) {
+        top.appendChild(button('igfu-name', t.titel || t.taskId,
+          () => window.open(t.url, '_blank', 'noopener'), 'Task in ClickUp öffnen'));
+      }
+      li.appendChild(top);
+      ul.appendChild(li);
+    }
+    bodyEl.appendChild(ul);
+  }
+
   function zeigeOhneUnterhaltung() {
     const offen = ohneUnterhaltung();
     if (!offen.length) return;
@@ -4386,6 +4531,7 @@
 
     if (isInbox()) {
       zeigeHandleZweifel();
+      zeigeDubletten();
       zeigeUmzug();
       zeigeOhneTask();
       zeigeOhneUnterhaltung();

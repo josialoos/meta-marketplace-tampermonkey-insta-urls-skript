@@ -3883,6 +3883,125 @@ gruppe('Kopfleiste: zwei verschiedene Namen bleiben eine Absage');
     String(doc.querySelectorAll('.igfu-kopf').length));
 }
 
+gruppe('Zwei Läufe legen für dieselbe Unterhaltung nur einen Task an');
+{
+  // Der Fall aus dem CRM: zwei Tasks „Nuria", 1,8 Sekunden auseinander,
+  // gleiche Thread-Kennung. Entstanden ist das, weil zwischen der Pruefung
+  // „gibt es schon einen?" und dem Eintrag in den Spiegel das Anlegen selbst
+  // liegt. Hier laufen die Warteschlange (Klick auf Follow-up) und die
+  // CRM-Pille absichtlich gleichzeitig, und das Anlegen ist gebremst.
+  const { doc, w, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    karte: { handle: 'nuria_laeuft' },
+    pfad: '/latest/inbox/all/?selected_item_id=T3',
+    verzoegerung: (methode, pfad) => (methode === 'POST' && /^\/list\/[^/]+\/task$/.test(pfad) ? 400 : 0),
+  });
+  await warte(w, 600);
+  klick(w, chip(doc, 2, 'followup'));
+  klick(w, chip(doc, 2, 'crm'));
+  await warte(w, 3000);
+  pruefe('Genau ein Task angelegt', angelegte(aufrufe).length === 1,
+    JSON.stringify(angelegte(aufrufe).map((a) => a.data && a.data.name)));
+}
+
+gruppe('Vor dem Anlegen wird der Stand aus ClickUp erneuert');
+{
+  // Der Fall „sabrina.balster": acht Minuten auseinander, gleiche
+  // Thread-Kennung *und* gleicher Handle. Beide Sperren im Skript sind blind,
+  // wenn der lokale Spiegel den ersten Task nicht kennt — etwa aus einem
+  // zweiten Tab, von einem zweiten Rechner, oder weil die Antwort auf das
+  // Anlegen unterwegs verloren ging.
+  //
+  // Nachgestellt wird das so: der Spiegel im Speicher kennt nichts, und der
+  // erste Abruf beim Laden scheitert am Netz. Damit bleibt der Spiegel leer,
+  // obwohl in ClickUp ein Task fuer T3 liegt.
+  let ersterAbruf = true;
+  const { doc, w, serverTasks, aufrufe } = await starte({
+    speicher: {
+      ...MIT_CLICKUP,
+      'clickup:tasks:v1': { stand: 1, geladen: 1, tasks: {}, bilder: {}, nutzer: {}, ohneThread: [] },
+    },
+    karte: { handle: 'timo__83' },
+    pfad: '/latest/inbox/all/?selected_item_id=T3',
+    fehler: (methode, pfad) => {
+      if (methode === 'GET' && /^\/list\/[^/]+\/task\?/.test(pfad) && ersterAbruf) {
+        ersterAbruf = false;
+        return 'netz';
+      }
+      return null;
+    },
+    tasks: [{ id: 'a1', name: 'timo__83 — Timo', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T3') }],
+  });
+  await warte(w, 900);
+  pruefe('Der Spiegel kennt die Unterhaltung nicht', chip(doc, 2, 'crm').textContent === 'CRM +',
+    chip(doc, 2, 'crm').textContent);
+  klick(w, chip(doc, 2, 'crm'));
+  await warte(w, 3000);
+  pruefe('Kein zweiter Task', angelegte(aufrufe).length === 0,
+    JSON.stringify(angelegte(aufrufe).map((a) => a.data && a.data.name)));
+  pruefe('Der vorhandene Task wird erkannt', serverTasks.length === 1, String(serverTasks.length));
+}
+
+gruppe('Übernehmen gibt die Sperre frei, wenn in ClickUp nichts fehlt');
+{
+  // Bis 8.9 blieb cuLaeuft auf diesem Weg stehen. Danach lief die
+  // Warteschlange nicht mehr und der Stand wurde nie wieder gelesen — der
+  // Spiegel konnte also gar nicht mehr aktuell werden.
+  const { doc, w, aufrufe } = await starte({ speicher: MIT_CLICKUP });
+  await warte(w, 900);
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 200);
+  await klickKnopf(w, doc, 'Lokale Follow-ups übernehmen');
+  await warte(w, 1500);
+  pruefe('Noch wurde nichts angelegt', angelegte(aufrufe).length === 0,
+    JSON.stringify(angelegte(aufrufe).map((a) => a.pfad)));
+  klick(w, chip(doc, 0, 'followup'));
+  await warte(w, 2500);
+  pruefe('Die Warteschlange läuft weiter', angelegte(aufrufe).length === 1,
+    JSON.stringify(angelegte(aufrufe).map((a) => a.data && a.data.name)));
+}
+
+gruppe('Zwei Tasks zu einer Person stehen als Dublette im Panel');
+{
+  // cuTasksLaden muss sich beim Index fuer einen der beiden entscheiden. Der
+  // andere darf dabei nicht lautlos verschwinden, sonst versteckt sich eine
+  // Dublette selbst — genau deshalb sind die beiden „Nuria"-Tasks zwei Wochen
+  // unentdeckt geblieben.
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [
+      // Dasselbe T1 in zwei Tasks, aber verschiedene Handles: das ist eine
+      // Dublette an der Unterhaltung.
+      { id: 'a1', name: 'mara.eins — Mara Kell', status: 'angeschrieben', farbe: '#87909e',
+        beschreibung: beschreibungMit('T1') },
+      { id: 'a2', name: 'mara.zwei — Mara Kell', status: 'angeschrieben', farbe: '#87909e',
+        beschreibung: beschreibungMit('T1') },
+      // Derselbe Handle in zwei Tasks, verschiedene Unterhaltungen: das ist
+      // eine Dublette an der Person. Einer der beiden hat gar keine.
+      { id: 'a3', name: 'timo__83 — Timo', status: 'recherchiert', farbe: '#87909e',
+        beschreibung: 'aus UpPromote\nigfu-handle: timo__83' },
+      { id: 'a4', name: 'timo__83 — Timo', status: 'angeschrieben', farbe: '#87909e',
+        beschreibung: beschreibungMit('T3') },
+      // Eine Karteileiche zaehlt nicht mit: die ist absichtlich stillgelegt.
+      // Sonst waere jede bewusst abgehaengte Dopplung taeglich wieder im Panel.
+      { id: 'a5', name: 'timo__83 — Timo (alter Account)', status: 'ignore', farbe: '#87909e',
+        beschreibung: 'stillgelegt\nigfu-handle: timo__83', tags: ['karteileiche'] },
+    ],
+  });
+  await warte(w, 1200);
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const t = (doc.querySelector('.igfu-body') || {}).textContent || '';
+  pruefe('Der Abschnitt steht im Panel', /Mögliche Dubletten/.test(t), t.slice(0, 500));
+  pruefe('Die doppelte Unterhaltung wird genannt', /Unterhaltung T1/.test(t), t.slice(0, 900));
+  pruefe('Der doppelte Handle wird genannt', /@timo__83/.test(t), t.slice(0, 900));
+  // Zwei Paare, nicht drei: a5 ist stillgelegt und darf kein Paar mit a3 oder
+  // a4 bilden.
+  pruefe('Genau zwei Paare', /Mögliche Dubletten \(2\)/.test(t), t.slice(0, 500));
+  pruefe('Die Karteileiche wird nicht verlinkt', !/alter Account/.test(t), t.slice(0, 900));
+}
+
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));

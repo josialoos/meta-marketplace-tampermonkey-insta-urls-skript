@@ -287,6 +287,27 @@ nicht wieder.
 Schreib in die Beschreibung dazu, **warum** der Task stillgelegt ist. Das Skript
 überschreibt deine Notizen nicht, es ergänzt nur.
 
+### Mögliche Dubletten
+
+Das Skript legt für eine Person nur einen Task an. Trotzdem sind zweimal zwei
+Datensätze entstanden — einmal, weil zwei Abläufe gleichzeitig losgelaufen sind,
+einmal, weil der lokale Stand den schon vorhandenen Task nicht kannte. Seit
+Version 9.0 ist beides abgedichtet.
+
+Für den Altbestand steht im Panel der Abschnitt **„Mögliche Dubletten"**. Dort
+landet jedes Paar, das sich eine Unterhaltung oder einen Handle teilt, mit einem
+Link auf beide Tasks. Vorher sah man so ein Paar gar nicht: das Skript musste
+sich beim Einlesen für einen der beiden entscheiden, und der andere war danach
+unsichtbar.
+
+Das Skript **legt nichts zusammen und löscht nichts**. Entscheide, welcher Task
+bleibt, trag seine Nummer in die Beschreibung des anderen ein und häng dem
+anderen den Tag `karteileiche` an. Gelöscht kommt er beim nächsten Import
+zurück.
+
+Karteileichen zählen in dem Abschnitt nicht mit — eine bewusst stillgelegte
+Dopplung soll dort nicht jeden Tag wieder auftauchen.
+
 ### Abgeschlossen: der Tag `ignore`
 
 `ignore` hängt an Profilen, mit denen wir fertig sind — aus welchem Grund auch
