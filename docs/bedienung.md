@@ -51,10 +51,14 @@ Eine harte Obergrenze von 2000 gibt es zusätzlich.
 „… — abbrechen". Ein Klick stoppt ihn, und was bis dahin gefunden wurde, bleibt
 erhalten.
 
-**Die alten Links funktionieren weiter.** Das Skript erkennt am Format, wohin ein
-Link gehört: 39-stellige Kennungen stammen aus dem Postfach, kürzere von
-Instagram. Beide Sorten können nebeneinander bestehen, bis die Altbestände
-umgezogen sind.
+**Die alten Links funktionieren weiter.** Woher eine Kennung stammt, steht in
+ihrer **Markerzeile** — `igfu-ig` für Instagram, `igfu-thread` für das alte
+Postfach. Beide Sorten können nebeneinander im selben Datensatz stehen, bis die
+Altbestände umgezogen sind.
+
+> An der **Länge** ist das nicht zu erkennen, auch wenn es eine Zeit lang so im
+> Skript stand. Am 10.11.2026 nachgemessen: normale DMs mit 15 und mit 17
+> Stellen, eine Partner-Kennung mit 16, eine aus dem alten Postfach mit 39.
 
 Beim Update fragt Tampermonkey einmal nach, weil `instagram.com` als neue Domain
 dazukommt.
@@ -344,10 +348,25 @@ stehen, bis man sie aufräumt:
 - **„https — <Anzeigename>"** — die Vorschau begann mit einer Adresse, und daraus wurde
   der „Handle" `https`.
 
-Der Menüpunkt **„Namen richtigstellen"** schneidet den Vorschautext heraus und
-entfernt falsche Handles — auch aus der Beschreibung. Die betroffenen Tasks
-landen danach in **„Handles nachtragen"**, weil der echte Handle unbekannt ist.
-Ein erfundener wäre schlimmer als keiner.
+Dazu kam am 10.11.2026 ein dritter Fehler:
+
+- **Ein fremder Handle im Namen, während die Markerzeile stimmt.** Eine
+  Automatik hat ihn aus dem Browser-Speicher gesetzt, nachdem der Handle beim
+  Wechsel der Unterhaltung an der falschen Kennung gelandet war. Betroffen
+  waren zwei Datensätze; die Markerzeile blieb in beiden Fällen richtig.
+
+Der Menüpunkt **„Namen richtigstellen"** schneidet den Vorschautext heraus,
+entfernt falsche Handles — auch aus der Beschreibung — und **setzt einen Namen,
+der der Markerzeile widerspricht, auf die Markerzeile zurück**. Die Tasks mit
+einem entfernten Handle landen danach in **„Handles nachtragen"**, weil der
+echte Handle unbekannt ist. Ein erfundener wäre schlimmer als keiner.
+
+Ein **fehlender** Handle im Namen wird dabei nicht ergänzt. Das ist kein
+Schaden, und ein Klick würde sonst die halbe Liste umbenennen.
+
+> Die Ursache ist seit 9.2 behoben: der Name folgt jetzt der Markerzeile, nicht
+> dem Browser-Speicher. Beschädigte Namen heilen deshalb auch von allein,
+> sobald die Unterhaltung einmal offen war.
 
 ### Alte Links aufräumen
 
@@ -493,6 +512,17 @@ tragen. Im zweiten Fall wäre jede Zuordnung geraten.
 „Ganze Liste durchgehen" brauchst du nach längerer Abwesenheit oder wenn etwas
 fehlt. Im Alltag reicht der normale Knopf.
 
+**Unten im Panel steht eine Standzeile.** Sie sagt, was verbunden ist, wie viele
+Änderungen noch auf Übertragung warten — und wie viele **aktive Affiliates noch
+keinen Task haben**, mit dem Datum der Messung. Ist die Zahl älter als zwölf
+Stunden, zählt das Skript beim Öffnen des Panels im Hintergrund nach; es legt
+dabei nichts an.
+
+> Warum die Zahl dort steht: der Import kann sie nur nennen, wenn jemand ihn
+> anstößt — und das tat ein halbes Jahr niemand, während 20 aktive Affiliates
+> außerhalb des CRM lagen. Aufgefallen ist es erst, als eine davon sich selbst
+> gemeldet hat.
+
 ---
 
 ## Notizen aus UpPromote
@@ -618,12 +648,18 @@ Leiste seitlich schieben — der Kopf wird nie höher.
 | Tag-Pillen | deine eigenen Tags am Datensatz |
 | „+" | öffnet die Tag-Auswahl: anklicken setzt, nochmal anklicken entfernt |
 | Follow-up | setzt und entfernt die Markierung |
-| Postfach-Knopf | **grün**: dieselbe Person gibt es auch im anderen Postfach, Klick öffnet sie in einem neuen Tab. **Rot**: gibt es nicht, der Knopf tut nichts. |
+| Postfach-Knopf | **grün**: dieselbe Person gibt es auch im anderen Postfach, Klick öffnet sie in einem neuen Tab. **Rot**: gibt es nicht, der Knopf tut nichts. Steht dort **„Alte Adresse“**, führt er ins alte Postfach der Business Suite. |
 
 ### Status und Tags ändern
 
 Die Stufen und die Tags kommen **aus ClickUp selbst**. Legst du dort eine neue
-Stufe oder einen neuen Tag an, taucht er hier von allein auf.
+Stufe oder einen neuen Tag an, taucht er hier von allein auf — die Tag-Liste
+wird höchstens eine halbe Stunde alt, dann holt das Skript sie neu. Wenn du
+nicht warten willst: Seite neu laden.
+
+> Bis 9.1 wurde die Liste nur geholt, **solange sie leer war**. Ein Tag, den du
+> später in ClickUp angelegt hast, erschien im Menü deshalb nie. Am 10.11.2026
+> an `low potential` aufgefallen.
 
 > **Zum Status von Hand.** Die Pipeline ist für das Skript eine Leiter: die
 > Automatik schiebt nur nach vorn. Für dich gilt das **nicht** — du kannst
@@ -663,6 +699,21 @@ Geraten wird nicht.
 
 Steht „Nur normal" oder „Nur Partner", kennt der Datensatz überhaupt nur eine
 Unterhaltung.
+
+**„Alte Adresse"** ist der vierte Fall. Dann trägt der Datensatz neben der
+Instagram-Kennung noch eine aus dem alten Postfach der Business Suite, und der
+Knopf öffnet dort. Meist ist das **dieselbe** Unterhaltung, nur anders
+adressiert: die alte Markerzeile entstand, als hier noch im alten Postfach
+gearbeitet wurde, die Instagram-Zeile kam beim Umzug dazu. Deshalb heißt der
+Knopf dort nicht „Andere Unterhaltung" — das wäre eine Behauptung.
+
+Gibt es **beides**, eine zweite Instagram-Kennung und eine alte, gewinnt die
+Instagram-Kennung: nur dort ist nachweislich eine zweite Unterhaltung.
+
+> Bis 9.1 baute der Knopf aus **jeder** Kennung eine Instagram-Adresse — auch
+> aus einer aus dem alten Postfach. Instagram kann die nicht auflösen und
+> zeigte wieder die Liste: der Klick sah aus, als tue er nichts. Am 10.11.2026
+> an tborowsky aufgefallen.
 
 > Bis 8.8 verlangte der Knopf, dass **beide** Kennungen schon in einer Liste
 > gestanden hatten. Beide Listen zeigen aber nur rund 15 bis 20 Zeilen auf

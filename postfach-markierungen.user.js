@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      9.1
+// @version      9.2
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -432,7 +432,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '9.1';
+  const VERSION = '9.2';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -936,12 +936,32 @@
     if (!geaendert) return;
     alle[tid] = alt;
     GM_setValue(CU_HANDLES, alle);
-    // Hat die Unterhaltung schon einen Task, den Namen nachziehen
+    // Hat die Unterhaltung schon einen Task, den Namen nachziehen — aber nach
+    // dem *Marker* des Tasks, nicht nach dem gerade gelernten Handle.
+    //
+    // Bis 9.1 stand hier alt.handle, also der Wert aus diesem Speicher. Der
+    // lernt auch aus Vorschautexten und Zeilentiteln, und er lernt ueber die
+    // Kennung aus der Adresszeile. Geriet ein Handle an die falsche Kennung,
+    // trug diese Zeile ihn in den Task-Namen — am 10.11.2026 bei zwei Tasks
+    // passiert, waehrend igfu-handle jeweils richtig stehen blieb. Ein Handle,
+    // der nicht gut genug fuer die Markerzeile ist, hat im Namen nichts zu
+    // suchen; dafuer gibt es den Auftrag 'handle', der beides zusammen setzt.
+    //
+    // Der Auftrag richtet den Namen also nur noch am Marker aus. Damit heilt
+    // er die beschaedigten Namen beim naechsten Oeffnen von allein.
     const task = cuTasks[tid];
-    if (task && alt.handle && task.titel !== taskName(alt.handle, rohTitel(task.titel))) {
+    if (task && task.handle && task.titel !== taskName(task.handle, rohTitel(task.titel))) {
       vormerken({ art: 'name', tid, titel: rohTitel(task.titel) });
     }
   }
+
+  // Tag und Monat eines Zeitstempels, zweistellig. Fuer Stand-Angaben im
+  // Panel: das Jahr steht ohnehin fest, die Uhrzeit interessiert nicht.
+  const datumKurz = (ms) => {
+    const d = new Date(Number(ms) || 0);
+    if (!Number.isFinite(d.getTime()) || !ms) return '?';
+    return String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0') + '.';
+  };
 
   // „handle — Anzeigename" wieder auf den Anzeigenamen zurueckfuehren
   const rohTitel = (name) => String(name || '').replace(/^[a-z0-9._]{2,30}\s+—\s+/, '');
@@ -1256,12 +1276,52 @@
     return { tid: m[1], handle, titel: daten.titel || handle };
   }
 
+  // Das zuletzt gelesene Paar aus Kennung und Handle. Siehe karteStabil().
+  let karteVorig = { tid: '', handle: '' };
+  let karteNachprobe = null;
+  // Eine halbe Sekunde. Der Takt des Kartenlesers liegt bei drei Sekunden; so
+  // lange auf die Bestaetigung zu warten waere unnoetig, die Seite ist nach
+  // einem Wechsel in Bruchteilen davon fertig.
+  const KARTE_NACHPROBE = 500;
+
+  // Erst beim zweiten gleichen Lesen uebernehmen.
+  //
+  // Die Kennung kommt aus der Adresszeile, der Handle aus den Profillinks der
+  // Seite. Beim Wechsel der Unterhaltung aendert sich beides nicht im selben
+  // Augenblick: fuer einen Moment stand die neue Kennung neben dem alten
+  // Handle. Genau so kam am 10.11.2026 ein fremder Handle an eine Unterhaltung
+  // und von dort in zwei Task-Namen. Zwei gleiche Lesungen schliessen das
+  // Fenster.
+  function karteStabil(tid, handle) {
+    const stabil = karteVorig.tid === tid && karteVorig.handle === handle;
+    karteVorig = { tid, handle };
+    if (stabil) return true;
+    if (!karteNachprobe) {
+      karteNachprobe = setTimeout(() => { karteNachprobe = null; karteAuslesen(); }, KARTE_NACHPROBE);
+    }
+    return false;
+  }
+
+  // Ein Handle aus der Kontaktkarte gehoert in die Markerzeile, nicht nur in
+  // den Seitenspeicher.
+  //
+  // Bis 9.1 zog allein der Namensauftrag nach, und der nahm seinen Wert aus
+  // dem Seitenspeicher — ueber diesen Weg geriet ein fremder Handle in zwei
+  // Task-Namen, waehrend die Markerzeile leer blieb. Der Auftrag 'handle'
+  // setzt beides zusammen und prueft vorher auf Widerspruch. Vorhandene
+  // Marker werden dabei nie ueberschrieben.
+  function markerNachtragen(tid, handle) {
+    const task = cuTasks[tid];
+    if (task && handle && !task.handle) vormerken({ art: 'handle', tid, titel: '', wert: handle });
+  }
+
   function karteAuslesen() {
     if (!isInbox()) return;
     if (isIG()) {
       eigenesKontoLernen();
       const offen = igOffeneUnterhaltung();
-      if (!offen) return;
+      if (!offen) { karteVorig = { tid: '', handle: '' }; return; }
+      if (!karteStabil(offen.tid, offen.handle)) return;
       // Den Handle nur merken, wenn er neu ist — aber das Verknuepfen *immer*
       // versuchen. Vorher stand hier ein `return`, sobald der Handle schon
       // bekannt war. Damit wurde beim ersten Oeffnen zwar der Handle
@@ -1273,6 +1333,7 @@
       if (!vorhanden || vorhanden.handle !== offen.handle) {
         handleMerken(offen.tid, offen.handle, 'karte');
       }
+      markerNachtragen(offen.tid, offen.handle);
       if (!cuTasks[offen.tid]) {
         const ziel = alleTasks().find((x) => !x.leiche
           && !(x.tids || []).includes(offen.tid) && handleVonTask(x) === offen.handle);
@@ -1281,11 +1342,16 @@
       return;
     }
     const tid = offenerThread();
-    if (!tid) return;
+    if (!tid) { karteVorig = { tid: '', handle: '' }; return; }
     const vorhanden = handleVon(tid);
     if (vorhanden && vorhanden.quelle === 'karte') return;
     const h = handleAusKarte();
-    if (h) handleMerken(tid, h, 'karte');
+    if (!h) { karteVorig = { tid: '', handle: '' }; return; }
+    // Dieselbe Bestaetigung wie auf instagram.com: die Kennung steht in der
+    // Adresszeile, die Karte daneben im Dokument.
+    if (!karteStabil(tid, h)) return;
+    handleMerken(tid, h, 'karte');
+    markerNachtragen(tid, h);
   }
 
   function beschreibungMarkt(handle, bildID) {
@@ -1512,6 +1578,21 @@
     return gefunden;
   }
 
+  // In welcher Welt eine Kennung adressiert wird: auf instagram.com oder im
+  // alten Postfach der Business Suite. Nicht geraten, sondern aus der
+  // Markerzeile, in der sie steht — igfu-ig oder igfu-thread.
+  //
+  // Die Form der Kennung sagt es nicht. Am 10.11.2026 nachgemessen: normale
+  // DMs lagen mit 15 und mit 17 Stellen vor, eine Partner-Kennung mit 16,
+  // eine Business-Suite-Kennung mit 39. Eine Laengenregel hat hier schon
+  // einmal Schaden angerichtet, siehe postfachLink().
+  const weltVon = (task, tid) => {
+    if (!task || !tid) return '';
+    if ((task.tidsIG || []).includes(tid)) return 'ig';
+    if ((task.tidsBS || []).includes(tid)) return 'bs';
+    return '';
+  };
+
   // Das Handle eines Tasks steht im Namen vor dem Gedankenstrich, sonst ist der
   // ganze Name das Handle.
   // Markerzeile schlaegt Name. Der Name bleibt die Anzeige, der Marker ist der
@@ -1728,6 +1809,61 @@
   // Erster Aufruf zaehlt nur, zweiter legt an. Bei dieser Menge will man vorher
   // sehen, was passiert.
   let importVorschau = null;
+  // Wie viele aktive Affiliates noch keinen Task haben.
+  //
+  // Der Import kann das nur sagen, wenn jemand ihn anstoesst — und genau das
+  // tat ein halbes Jahr niemand. Im November 2026 fehlten dadurch 20 aktive
+  // Affiliates im CRM; aufgefallen ist es erst, als eine davon sich selbst
+  // gemeldet hat. Also steht die Zahl jetzt dauerhaft im Panel, mit dem Datum
+  // ihrer Messung, und sie frischt im Hintergrund nach.
+  const UP_LUECKE = 'uppromote:luecke:v1';
+  const UP_LUECKE_FRISCH = 43200000;   // zwoelf Stunden
+  const lueckeStand = () => {
+    const x = GM_getValue(UP_LUECKE, null);
+    return x && typeof x.anzahl === 'number' ? x : null;
+  };
+  const lueckeMerken = (anzahl, ohneHandle) => {
+    GM_setValue(UP_LUECKE, { stand: Date.now(), anzahl, ohneHandle: ohneHandle || 0 });
+  };
+  const lueckeVeraltet = () => {
+    const x = lueckeStand();
+    return !x || Number(x.stand || 0) < Date.now() - UP_LUECKE_FRISCH;
+  };
+
+  // Die Affiliates aus den gelesenen Programmen, die im CRM fehlen. Zugeordnet
+  // ueber Handle *und* Mailadresse, und Karteileichen zaehlen als vergeben —
+  // ein in UpPromote geloeschter Datensatz kommt beim Import sonst zurueck.
+  function importLuecke(alle) {
+    const imProgramm = alle.filter((a) => upProgramm(a.programm));
+    const handlesDa = new Set();
+    const mailsDa = new Set();
+    for (const t of alleTasks()) {
+      const h = handleVonTask(t);
+      if (h) handlesDa.add(h);
+      if (t.mail) mailsDa.add(t.mail);
+    }
+    const neu = imProgramm.filter((a) => !(a.handle && handlesDa.has(a.handle))
+      && !(a.email && mailsDa.has(a.email)));
+    return { imProgramm, neu, ohneHandle: neu.filter((a) => !a.handle).length };
+  }
+
+  // Zaehlt im Hintergrund nach, ohne etwas anzulegen und ohne Meldung. Laeuft
+  // beim Oeffnen des Panels, wenn der letzte Stand alt ist.
+  async function lueckeNachzaehlen() {
+    if (!cuEingerichtet() || !upToken() || cuLaeuft) return;
+    cuLaeuft = true;
+    try {
+      const alle = await upAktiveVoll(null);
+      await cuTasksLaden();
+      const { neu, ohneHandle } = importLuecke(alle);
+      lueckeMerken(neu.length, ohneHandle);
+    } catch (e) {
+      // Ein stiller Zaehler darf nicht laut scheitern.
+    } finally {
+      cuLaeuft = false;
+    }
+  }
+
   async function upImport() {
     if (!cuEingerichtet()) { toast('Bitte erst ClickUp einrichten.'); return; }
     if (!upToken()) { toast('Bitte erst den UpPromote-Token eintragen.'); return; }
@@ -1735,18 +1871,9 @@
     cuLaeuft = true;
     try {
       const alle = await upAktiveVoll(toast);
-      const imProgramm = alle.filter((a) => upProgramm(a.programm));
       await cuTasksLaden();
-      const handlesDa = new Set();
-      const mailsDa = new Set();
-      for (const t of alleTasks()) {
-        const h = handleVonTask(t);
-        if (h) handlesDa.add(h);
-        if (t.mail) mailsDa.add(t.mail);
-      }
-      const neu = imProgramm.filter((a) => !(a.handle && handlesDa.has(a.handle))
-        && !(a.email && mailsDa.has(a.email)));
-      const ohneH = neu.filter((a) => !a.handle).length;
+      const { imProgramm, neu, ohneHandle: ohneH } = importLuecke(alle);
+      lueckeMerken(neu.length, ohneH);
 
       if (!importVorschau || importVorschau.stand < Date.now() - 300000) {
         importVorschau = { stand: Date.now(), anzahl: neu.length };
@@ -1768,6 +1895,7 @@
         fertig += 1;
       }
       cuSpeichern();
+      lueckeMerken(neu.length - fertig, 0);
       toast(fertig + ' angelegt, davon ' + verknuepft + ' mit Unterhaltung verknüpft.');
       scanRows();
       updateLauncher();
@@ -1970,6 +2098,18 @@
     // Vorschau im Namen? Alles ab „You: " bzw. „Du: " gehoert nicht dazu.
     name = name.split(/(?:You|Du):\s/)[0].replace(/\s+$/, '');
     if (!name) return null;
+    // Ein anderer Handle im Namen als in der Markerzeile? Dann gilt der
+    // Marker. So ein Name entsteht nicht von Hand, sondern wenn eine
+    // Automatik ihn aus dem Seitenspeicher gesetzt hat — am 10.11.2026 bei
+    // zwei Tasks so gefunden, der Marker blieb dabei jeweils richtig.
+    //
+    // Ein *fehlender* Handle im Namen wird hier nicht ergaenzt. Das waere
+    // kein Schaden, der behoben werden muss, und es wuerde bei einem Klick
+    // auf diesen Knopf die halbe Liste umbenennen.
+    if (task.handle && !handleRaus) {
+      const vorne = handleAusTaskname(name);
+      if (vorne && vorne !== task.handle) name = taskName(task.handle, rohTitel(name));
+    }
     return (name === alt && !handleRaus) ? null : { name, handleRaus };
   }
 
@@ -2289,10 +2429,18 @@
   // fest eingebaut: ein Tag, den Josia in ClickUp anlegt, taucht dann von
   // allein in der Auswahl auf.
   const CU_TAGLISTE = 'clickup:tagliste:v1';
+  // Wann die Liste zuletzt geholt wurde. Ohne diesen Stand wurde sie nur
+  // geholt, *solange sie leer war* — ein Tag, den Josia in ClickUp anlegt,
+  // tauchte danach nie auf. Am 10.11.2026 an „low potential" aufgefallen.
+  const CU_TAGLISTE_STAND = 'clickup:tagliste:stand:v1';
+  // Eine halbe Stunde. Kurz genug, dass ein neuer Tag im selben Arbeitsgang
+  // ankommt, lang genug, dass nicht jeder Takt eine Abfrage ausloest.
+  const TAGLISTE_FRISCH = 1800000;
   const tagsAusCache = () => {
     const roh = GM_getValue(CU_TAGLISTE, []);
     return Array.isArray(roh) ? roh : [];
   };
+  const tagsVeraltet = () => Number(GM_getValue(CU_TAGLISTE_STAND, 0) || 0) < Date.now() - TAGLISTE_FRISCH;
   async function tagsLaden() {
     const space = cuSpace() || (await cuSpaceLaden());
     const daten = await cuRequest('GET', '/space/' + space + '/tag');
@@ -2300,7 +2448,10 @@
       .map((t) => ({ name: String(t.name || '').toLowerCase().trim(), farbe: t.tag_bg || '' }))
       .filter((t) => t.name)
       .sort((a, b) => a.name.localeCompare(b.name, 'de'));
-    if (liste.length) GM_setValue(CU_TAGLISTE, liste);
+    if (liste.length) {
+      GM_setValue(CU_TAGLISTE, liste);
+      GM_setValue(CU_TAGLISTE_STAND, Date.now());
+    }
     return liste;
   }
 
@@ -2858,6 +3009,18 @@
       }
     } else if (a.art === 'handle') {
       const h = String(a.wert || '').toLowerCase();
+      // Steht im Marker schon ein anderer Handle, wird hier nichts angefasst.
+      // Dieser Auftrag entsteht aus der Kontaktkarte und aus Josias Eingabe;
+      // beides kann waehrend eines Wechsels der Unterhaltung an der falschen
+      // Kennung landen. markerEintragen() ergaenzt nur und haette den Marker
+      // in Ruhe gelassen — den *Namen* aber ueberschrieben, und damit stuende
+      // beides im Widerspruch. Der Widerspruch wird gemeldet, nicht geloest.
+      if (h && task.handle && task.handle !== h) {
+        toast('Handle-Widerspruch bei „' + task.titel + '": gelesen „' + h
+          + '", in der Markerzeile steht „' + task.handle
+          + '". Nichts geändert — bitte von Hand entscheiden.');
+        return;
+      }
       if (h) {
         // Der Anzeigename kommt aus dem Task, nie aus `a.titel`. Dort steht der
         // Zeilentitel aus dem Postfach, und der hat hier nichts zu suchen: er
@@ -2877,8 +3040,11 @@
       await cuRequest('PUT', '/task/' + task.taskId, { priority: urgent ? 1 : null });
       task.prio = urgent ? 'urgent' : '';
     } else if (a.art === 'name') {
-      const w = handleVon(a.tid);
-      const neu = taskName(w && w.handle, a.titel || rohTitel(task.titel));
+      // Der Handle kommt aus der Markerzeile des Tasks, nie aus handleVon().
+      // Markerzeile schlaegt Name — und damit auch den Seitenspeicher, der
+      // aus Vorschautexten und Zeilentiteln lernt. Siehe handleMerken().
+      if (!task.handle) return;
+      const neu = taskName(task.handle, a.titel || rohTitel(task.titel));
       if (neu && neu !== task.titel) {
         await cuRequest('PUT', '/task/' + task.taskId, { name: neu });
         task.titel = neu;
@@ -3611,8 +3777,10 @@
         // Der Postfach-Knopf schaltet nichts um, er fuehrt woandershin.
         else if (chip.dataset.kind === 'postfach') {
           if (chip.dataset.ziel) {
-            window.open('https://www.instagram.com/direct/t/'
-              + encodeURIComponent(chip.dataset.ziel) + '/', '_blank', 'noopener');
+            // postfachLink statt einer fest gebauten instagram.com-Adresse:
+            // eine Kennung aus der Business Suite braucht die alte Adresse.
+            window.open(postfachLink(chip.dataset.ziel, chip.dataset.zielIg === '1'),
+              '_blank', 'noopener');
           }
         } else toggle(chip.dataset.kind, wrap.dataset.tid, wrap.dataset.title);
       }
@@ -3966,6 +4134,11 @@
     head.appendChild(actions);
 
     formEl = baueFormular();
+    // Beim Oeffnen im Hintergrund nachzaehlen, wenn der Stand alt ist. Die
+    // Zeile aktualisiert sich danach von allein.
+    if (lueckeVeraltet()) {
+      lueckeNachzaehlen().then(() => { if (formEl && formEl.isConnected) standAnzeigenGlobal(); });
+    }
     bodyEl = el('div', 'igfu-body');
     panel.append(head, formEl, bodyEl);
     document.body.appendChild(panel);
@@ -3980,6 +4153,9 @@
 
   // Der Token wird nur geschrieben, nie wieder ins Feld zurueckgeschrieben. Im
   // Formular steht deshalb nur, ob einer hinterlegt ist.
+  // Die Standzeile des gerade gebauten Formulars, von aussen aufrufbar.
+  let standAnzeigenGlobal = () => {};
+
   function baueFormular() {
     const f = el('div', 'igfu-form');
     f.hidden = true;
@@ -4026,10 +4202,25 @@
         : 'Meta-API nicht verbunden.');
       const funde = GM_getValue(META_FUNDE, null);
       if (funde && funde.liste) teile.push(funde.liste.length + ' Handles von Meta.');
+      // Die Luecke steht immer da, auch wenn sie null ist: „nichts offen" ist
+      // eine Auskunft, eine fehlende Zeile ist keine.
+      const l = lueckeStand();
+      if (l) {
+        teile.push(l.anzahl
+          ? l.anzahl + ' Affiliate(s) ohne Task'
+            + (l.ohneHandle ? ', davon ' + l.ohneHandle + ' ohne Handle' : '')
+            + ' (Stand ' + datumKurz(l.stand) + ').'
+          : 'Alle aktiven Affiliates haben einen Task (Stand ' + datumKurz(l.stand) + ').');
+      } else if (upToken()) {
+        teile.push('Affiliates ohne Task: noch nicht gezählt.');
+      }
       const offen = warteschlange().length;
       if (offen) teile.push(offen + ' Änderung(en) warten auf Übertragung.');
       hinweis.textContent = teile.join(' ');
     };
+    // Damit das Nachzaehlen im Hintergrund die Zeile erreicht, ohne das
+    // ganze Formular neu zu bauen.
+    standAnzeigenGlobal = standAnzeigen;
 
     knoepfe.append(
       button('igfu-done', 'Speichern', async () => {
@@ -5538,25 +5729,51 @@
   //
   // Ist die Art nachweislich dieselbe, gilt sie nicht als Treffer — ein
   // falsches Gruen waere immer noch schlimmer als ein Grau.
+  //
+  // Seit 9.2 zaehlt auch die *Welt* der Kennung. Eine Kennung aus der Business
+  // Suite neben einer von instagram.com ist meist dieselbe Unterhaltung unter
+  // der alten Adressform: der Marker igfu-thread entstand, als hier noch im
+  // alten Postfach gearbeitet wurde, igfu-ig kam beim Umzug dazu. Am
+  // 10.11.2026 an tborowsky geprueft — beide Adressen zeigten dieselben
+  // Nachrichten. Bewiesen ist das aber nur fuer diesen einen Fall, also wird
+  // die Kennung nicht verworfen; sie kommt nur hinter die aus derselben Welt
+  // und wird anders beschriftet.
   function andereUnterhaltung(tid) {
     const task = cuTasks[tid];
     if (!task) return null;
     const art = postfachVon(tid);
+    const welt = weltVon(task, tid);
     const fremde = (task.tids || []).filter((x) => x && x !== tid);
     if (!fremde.length) return null;
+    // Zuerst die Kennungen aus derselben Welt: nur dort ist eine zweite
+    // Kennung nachweislich eine zweite Unterhaltung.
+    const gleicheWelt = welt ? fremde.filter((x) => weltVon(task, x) === welt) : [];
+    const andereWelt = fremde.filter((x) => !gleicheWelt.includes(x));
+    return gegenstelleAus(task, art, welt, gleicheWelt)
+      || gegenstelleAus(task, art, welt, andereWelt);
+  }
+
+  function gegenstelleAus(task, art, welt, kandidaten) {
+    if (!kandidaten.length) return null;
+    const bauen = (fremd, fremdArt) => ({
+      tid: fremd,
+      art: fremdArt,
+      welt: weltVon(task, fremd),
+      alteForm: welt === 'ig' && weltVon(task, fremd) === 'bs',
+    });
     // Der sichere Fall: die Art steht im Speicher und ist die andere.
-    for (const fremd of fremde) {
+    for (const fremd of kandidaten) {
       const fremdArt = postfachVon(fremd);
-      if (art && fremdArt && fremdArt !== art) return { tid: fremd, art: fremdArt };
+      if (art && fremdArt && fremdArt !== art) return bauen(fremd, fremdArt);
     }
     // Sonst nur, wenn keine Wahl bleibt. Bei mehreren Kennungen waere nicht
     // entscheidbar, welche gemeint ist.
-    if (fremde.length !== 1) return null;
-    const fremdArt = postfachVon(fremde[0]);
+    if (kandidaten.length !== 1) return null;
+    const fremdArt = postfachVon(kandidaten[0]);
     if (art && fremdArt && fremdArt === art) return null;
     // Leerstring heisst: Gegenstelle ja, Postfach unbekannt. Die Beschriftung
     // behauptet dann nichts.
-    return { tid: fremde[0], art: fremdArt || '' };
+    return bauen(kandidaten[0], fremdArt || '');
   }
 
   // Ein kleines Menue unter einem Knopf. Dieselbe Mechanik fuer Status und
@@ -5614,9 +5831,25 @@
     const art = postfachVon(tid);
     const andere = andereUnterhaltung(tid);
     chip.dataset.ziel = andere ? andere.tid : '';
+    // Die Welt der Zielkennung entscheidet die Adressform. Bis 9.1 baute der
+    // Knopf immer eine instagram.com-Adresse — auch aus einer Kennung der
+    // Business Suite, und die kann Instagram nicht aufloesen. Der Knopf
+    // landete dann wieder im Postfach, scheinbar ohne Wirkung. Am 10.11.2026
+    // an tborowsky aufgefallen.
+    chip.dataset.zielIg = andere && andere.welt === 'bs' ? '' : '1';
     chip.classList.toggle('on', !!andere);
     chip.disabled = !andere;
     if (andere) {
+      // Die alte Adressform bekommt eine eigene Beschriftung. „Andere
+      // Unterhaltung" waere hier eine Behauptung: meist ist es dieselbe, nur
+      // anders adressiert.
+      if (andere.alteForm) {
+        chip.textContent = 'Alte Adresse';
+        chip.title = 'Dieselbe Person unter der alten Adresse der Business Suite. '
+          + 'Oft ist es dieselbe Unterhaltung, nur anders adressiert — bewiesen ist '
+          + 'das nicht. Öffnet einen neuen Tab im alten Postfach.';
+        return;
+      }
       chip.textContent = andere.art === 'partner' ? 'Partner-Postfach'
         : andere.art === 'normal' ? 'Normales Postfach' : 'Andere Unterhaltung';
       chip.title = andere.art
@@ -5728,8 +5961,10 @@
     wrap.dataset.title = String(h2.textContent || '').trim();
 
     const task = cuTasks[tid];
-    // Die Tags im Space einmal holen, damit das Menue sie anbieten kann.
-    if (task && !tagsAusCache().length && !tagsLaeuft) {
+    // Die Tags im Space holen, damit das Menue sie anbieten kann — auch wenn
+    // schon welche im Speicher liegen, sobald der Stand alt ist. Sonst fehlt
+    // ein in ClickUp neu angelegter Tag fuer immer.
+    if (task && (!tagsAusCache().length || tagsVeraltet()) && !tagsLaeuft) {
       tagsLaeuft = true;
       tagsLaden().catch(() => {}).finally(() => { tagsLaeuft = false; });
     }
@@ -5737,8 +5972,9 @@
     // Neu bauen nur, wenn sich etwas geaendert hat. Sonst verschwindet ein
     // gerade geoeffnetes Menue bei jedem Takt unter den Fingern.
     const eigene = (task ? task.tags || [] : []).filter((t) => !TAGS_AUTOMATIK[t]);
+    const gegen = andereUnterhaltung(tid) || {};
     const sig = [tid, task ? task.status : '', eigene.join(','), !!follow[tid],
-      postfachVon(tid), (andereUnterhaltung(tid) || {}).tid || ''].join('|');
+      postfachVon(tid), gegen.tid || '', gegen.alteForm ? 'alt' : ''].join('|');
     if (wrap.dataset.sig !== sig) {
       wrap.dataset.sig = sig;
       wrap.textContent = '';

@@ -3938,7 +3938,11 @@ gruppe('Kopfleiste: ohne Task legt die Pille einen an, statt ein Menue zu oeffne
     ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
     igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian Reichert' },
   });
-  await warte(w, 3000);
+  // Seit 9.2 uebernimmt der Kartenleser einen Handle erst, wenn er ihn zweimal
+  // gleich gelesen hat — Takt bei 3000, Bestaetigung 500 ms spaeter. Wird hier
+  // zu früh geklickt, kennt das Anlegen den Handle noch nicht und geht den
+  // langsamen Weg ueber die Nachfrage.
+  await warte(w, 3800);
   const pille = doc.querySelector('.igfu-kopf [data-kind="crm"]');
   pruefe('Sie laedt zum Anlegen ein', pille && pille.textContent === 'CRM +', pille && pille.textContent);
   if (pille) klick(w, pille);
@@ -4187,6 +4191,295 @@ gruppe('Zwei Tasks zu einer Person stehen als Dublette im Panel');
   // a4 bilden.
   pruefe('Genau zwei Paare', /Mögliche Dubletten \(2\)/.test(t), t.slice(0, 500));
   pruefe('Die Karteileiche wird nicht verlinkt', !/alter Account/.test(t), t.slice(0, 900));
+}
+
+
+gruppe('Postfach-Knopf: eine Kennung aus der Business Suite oeffnet die alte Adresse');
+{
+  // tborowsky, 10.11.2026: der Task traegt eine Instagram-Kennung und eine
+  // aus der alten Business Suite. Bis 9.1 baute der Knopf aus beiden eine
+  // instagram.com-Adresse — Instagram kann die alte Kennung nicht aufloesen
+  // und zeigte wieder die Liste.
+  const BS = '340282366841710301244259317334215410655';
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '109887317073277', titel: 'Tom', vorschau: 'a', zeit: '2h', postfach: 'normal' }],
+    igOffen: { tid: '109887317073277', handle: 'tborowsky', titel: 'Tom' },
+    tasks: [{ id: 'a1', name: 'tborowsky — Tom', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: 'x\nigfu-ig: 109887317073277\nigfu-thread: ' + BS }],
+  });
+  await warte(w, 3500);
+  const k = doc.querySelector('.igfu-kopf [data-kind="postfach"]');
+  pruefe('Der Knopf kennt die alte Kennung als Ziel', k && k.dataset.ziel === BS, k && k.dataset.ziel);
+  pruefe('Und merkt sich, dass sie nicht auf Instagram liegt',
+    k && k.dataset.zielIg === '', k && k.dataset.zielIg);
+  pruefe('Er behauptet keine andere Unterhaltung',
+    k && k.textContent === 'Alte Adresse', k && k.textContent);
+  klick(w, k);
+  await warte(w, 50);
+  const auf = (w.__geoeffnet || []).join(' ');
+  pruefe('Der Klick fuehrt ins alte Postfach', /business\.facebook\.com/.test(auf), auf);
+  pruefe('Mit der Kennung als selected_item_id',
+    auf.includes('selected_item_id=' + BS), auf);
+  pruefe('Und nicht nach instagram.com', !/instagram\.com\/direct\/t/.test(auf), auf);
+}
+
+gruppe('Postfach-Knopf: eine zweite Instagram-Kennung schlaegt die alte Adresse');
+{
+  // Drei Kennungen: die offene, eine zweite auf Instagram, eine alte aus der
+  // Business Suite. Gemeint ist die zweite Instagram-Kennung — nur dort ist
+  // nachweislich eine zweite Unterhaltung. Bis 9.1 gab es bei mehr als einer
+  // fremden Kennung gar keinen Knopf.
+  const BS = '340282366841710301244259317334215410655';
+  const { doc, w } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: '101925914541472', titel: 'Bella', vorschau: 'a', zeit: '2h', postfach: 'normal' }],
+    igOffen: { tid: '101925914541472', handle: 'bellaa_sophie', titel: 'Bella' },
+    tasks: [{ id: 'a1', name: 'bellaa_sophie — BELLA', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: 'x\nigfu-ig: 101925914541472\nigfu-ig: 1636057484698926\n'
+                + 'igfu-thread: ' + BS }],
+  });
+  await warte(w, 3500);
+  const k = doc.querySelector('.igfu-kopf [data-kind="postfach"]');
+  pruefe('Die Instagram-Kennung ist das Ziel',
+    k && k.dataset.ziel === '1636057484698926', k && k.dataset.ziel);
+  pruefe('Sie gilt als Instagram-Kennung', k && k.dataset.zielIg === '1', k && k.dataset.zielIg);
+  klick(w, k);
+  await warte(w, 50);
+  const auf = (w.__geoeffnet || []).join(' ');
+  pruefe('Der Klick fuehrt nach Instagram',
+    auf.includes('instagram.com/direct/t/1636057484698926'), auf);
+}
+
+gruppe('Name: ein fremder Handle aus dem Seitenspeicher kommt nicht in den Titel');
+{
+  // Der Schaden vom 10.11.2026: handleMerken() lernte einen Handle an der
+  // falschen Kennung, und der Namensauftrag trug ihn in den Task-Namen —
+  // waehrend igfu-handle richtig stehen blieb. Hier lernt der Speicher
+  // „fremde.person" an der Kennung, der Marker sagt etwas anderes.
+  const { doc, w, aufrufe } = await starte({
+    speicher: {
+      ...MIT_CLICKUP,
+      'clickup:handles:v1': { T1: { handle: 'fremde.person', quelle: 'karte' } },
+    },
+    tasks: [{ id: 'a1', name: 'leonie_zhn — Leonie', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1') + '\nigfu-handle: leonie_zhn' }],
+  });
+  await warte(w, 1500);
+  const umbenannt = aufrufe.filter((a) => a.methode === 'PUT' && a.data && a.data.name);
+  pruefe('Kein Umbenennen',
+    !umbenannt.some((a) => /fremde\.person/.test(a.data.name)),
+    JSON.stringify(umbenannt.map((a) => a.data.name)));
+  pruefe('Der Marker bleibt unberuehrt',
+    !aufrufe.some((a) => a.methode === 'PUT' && a.data && /igfu-handle:\s*fremde\.person/
+      .test(a.data.markdown_description || '')),
+    JSON.stringify(aufrufe.filter((a) => a.data && a.data.markdown_description).length));
+}
+
+gruppe('Name: ein beschaedigter Titel wird nach dem Marker geheilt');
+{
+  // Dieselbe Lage, nur ist der Schaden schon da: der Name traegt den fremden
+  // Handle, der Marker den richtigen. Der Namensauftrag richtet den Namen am
+  // Marker aus und heilt ihn damit von allein.
+  const { w, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: 'IG1', titel: 'Leonie', vorschau: 'hallo', zeit: '2h' }],
+    igOffen: { tid: 'IG1', handle: 'leonie_zhn', titel: 'Leonie' },
+    tasks: [{ id: 'a1', name: 'vroni.weiss — Leonie', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: 'x\nigfu-ig: IG1\nigfu-handle: leonie_zhn' }],
+  });
+  await warte(w, 4000);
+  const umbenannt = aufrufe.filter((a) => a.methode === 'PUT' && a.data && a.data.name);
+  pruefe('Der Name wird auf den Marker zurueckgesetzt',
+    umbenannt.some((a) => a.data.name === 'leonie_zhn — Leonie'),
+    JSON.stringify(umbenannt.map((a) => a.data.name)));
+}
+
+gruppe('Namen richtigstellen: ein Handle, der dem Marker widerspricht, weicht');
+{
+  const { doc, w, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [
+      { id: 'a1', name: 'tina_gerhard_on_bike — Bianca', status: 'ongeboardet', farbe: '#87909e',
+        beschreibung: 'x\nigfu-handle: bianca.beyondlimits' },
+      // Stimmt ueberein: bleibt unangetastet.
+      { id: 'a2', name: 'leonie_zhn — Leonie', status: 'ongeboardet', farbe: '#87909e',
+        beschreibung: 'x\nigfu-handle: leonie_zhn' },
+      // Kein Handle im Namen: wird nicht ergaenzt, das ist kein Schaden.
+      { id: 'a3', name: 'Sophie', status: 'ongeboardet', farbe: '#87909e',
+        beschreibung: 'x\nigfu-handle: sophie_1' },
+    ],
+  });
+  await warte(w, 900);
+  await klickKnopf(w, doc, 'Namen richtigstellen');
+  await warte(w, 2500);
+  const namen = aufrufe.filter((a) => a.methode === 'PUT' && a.data && a.data.name)
+    .map((a) => a.pfad + ' → ' + a.data.name);
+  pruefe('Der widersprechende Name wird ersetzt',
+    namen.some((x) => /a1/.test(x) && /bianca\.beyondlimits — Bianca/.test(x)),
+    JSON.stringify(namen));
+  pruefe('Der stimmige Name bleibt', !namen.some((x) => /a2/.test(x)), JSON.stringify(namen));
+  pruefe('Ein fehlender Handle wird nicht ergaenzt',
+    !namen.some((x) => /a3/.test(x)), JSON.stringify(namen));
+  pruefe('Die Markerzeile wird nicht angefasst',
+    !aufrufe.some((a) => a.methode === 'PUT' && a.data
+      && /igfu-handle/.test(a.data.markdown_description || '')
+      && !/bianca\.beyondlimits/.test(a.data.markdown_description || '')),
+    'Marker verändert');
+}
+
+gruppe('Kontaktkarte: ein Handle wird erst beim zweiten gleichen Takt uebernommen');
+{
+  // Beim Wechsel der Unterhaltung aendert sich die Adresszeile vor dem
+  // Profillink im Kopf. Fuer einen Takt stand die neue Kennung neben dem
+  // alten Handle — so kam am 10.11.2026 ein fremder Handle an eine
+  // Unterhaltung. Nach einem Takt darf noch nichts gespeichert sein.
+  const { w, store } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: 'IG9', titel: 'Nora', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: 'IG9', handle: 'nora_klee', titel: 'Nora' },
+  });
+  await warte(w, 400);
+  const frueh = store.get('clickup:handles:v1') || {};
+  pruefe('Nach dem ersten Takt ist nichts gelernt',
+    !(frueh.IG9 && frueh.IG9.handle), JSON.stringify(frueh.IG9 || null));
+  await warte(w, 3500);
+  const spaet = store.get('clickup:handles:v1') || {};
+  pruefe('Nach dem zweiten gleichen Takt steht er da',
+    spaet.IG9 && spaet.IG9.handle === 'nora_klee', JSON.stringify(spaet.IG9 || null));
+}
+
+gruppe('Handle-Auftrag: ein Widerspruch zum Marker aendert nichts');
+{
+  // Der Auftrag entsteht aus der Kontaktkarte und aus Josias Eingabe. Steht
+  // im Marker schon ein anderer Handle, waere eine der beiden Quellen falsch
+  // — und welche, kann das Skript nicht wissen. Also wird gemeldet, nicht
+  // entschieden.
+  const { doc, w, aufrufe } = await starte({
+    speicher: {
+      ...MIT_CLICKUP,
+      'clickup:queue:v1': [{ art: 'handle', tid: 'T1', titel: 'Mara',
+                             wert: 'fremde.person', zeit: Date.now(), versuche: 0 }],
+    },
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1') + '\nigfu-handle: marakell.runs' }],
+  });
+  await warte(w, 2000);
+  pruefe('Kein Umbenennen',
+    !aufrufe.some((a) => a.methode === 'PUT' && a.data && /fremde\.person/.test(a.data.name || '')),
+    JSON.stringify(aufrufe.filter((a) => a.data && a.data.name).map((a) => a.data.name)));
+  pruefe('Keine zweite Markerzeile',
+    !aufrufe.some((a) => a.methode === 'PUT' && a.data
+      && /fremde\.person/.test(a.data.markdown_description || '')), 'Marker geschrieben');
+}
+
+gruppe('Tag-Liste: ein in ClickUp neu angelegter Tag taucht auf');
+{
+  // „low potential", 10.11.2026: die Liste wurde nur geholt, *solange sie
+  // leer war*. Ein neuer Tag in ClickUp erschien danach nie. Hier liegt ein
+  // alter Stand im Speicher, und der Space kennt einen Tag mehr.
+  const { doc, w } = await starte({
+    speicher: {
+      ...MIT_CLICKUP,
+      'clickup:tagliste:v1': [{ name: 'follow-up', farbe: '#f5d90a' }],
+      'clickup:tagliste:stand:v1': Date.now() - 7200000,
+    },
+    tags: [TAG, 'low potential'],
+    ig: [{ id: 'IG1', titel: 'Nora', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: 'IG1', handle: 'nora_klee', titel: 'Nora' },
+    tasks: [{ id: 'a1', name: 'nora_klee — Nora', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: 'x\nigfu-ig: IG1' }],
+  });
+  await warte(w, 4000);
+  const menue = doc.querySelector('.igfu-kopf [data-kind="tagmenue"]');
+  pruefe('Das Tag-Menue ist da', !!menue);
+  if (menue) {
+    klick(w, menue);
+    await warte(w, 200);
+    const t = [...doc.querySelectorAll('.igfu-menue-text')].map((e) => e.textContent);
+    pruefe('Der neue Tag steht zur Auswahl', t.includes('low potential'), JSON.stringify(t));
+  }
+}
+
+gruppe('Tag-Liste: ein frischer Stand loest keine Abfrage aus');
+{
+  const stand = Date.now();
+  const { w, store } = await starte({
+    speicher: {
+      ...MIT_CLICKUP,
+      'clickup:tagliste:v1': [{ name: 'follow-up', farbe: '#f5d90a' }],
+      'clickup:tagliste:stand:v1': stand,
+    },
+    ig: [{ id: 'IG1', titel: 'Nora', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: 'IG1', handle: 'nora_klee', titel: 'Nora' },
+    tasks: [{ id: 'a1', name: 'nora_klee — Nora', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: 'x\nigfu-ig: IG1' }],
+  });
+  await warte(w, 4000);
+  // Nicht an den Anfragen gemessen: cuTagSichern() fragt denselben Endpunkt
+  // ab, um den Follow-up-Tag anzulegen. Der gespeicherte Stand aendert sich
+  // nur, wenn tagsLaden() gelaufen ist.
+  pruefe('Der Stand bleibt unberuehrt',
+    store.get('clickup:tagliste:stand:v1') === stand,
+    String(store.get('clickup:tagliste:stand:v1')) + ' statt ' + String(stand));
+  pruefe('Und die Liste im Speicher auch',
+    (store.get('clickup:tagliste:v1') || []).length === 1,
+    JSON.stringify(store.get('clickup:tagliste:v1')));
+}
+
+gruppe('Panel: die Zahl der Affiliates ohne Task steht dauerhaft da');
+{
+  // Der Import kann die Luecke nur nennen, wenn jemand ihn anstoesst — und
+  // das tat ein halbes Jahr niemand, waehrend 20 aktive Affiliates fehlten.
+  // Jetzt steht die Zahl im Panel, mit dem Datum ihrer Messung.
+  const { doc, w } = await starte({
+    speicher: { ...MIT_UP, 'uppromote:luecke:v1': { stand: Date.now(), anzahl: 7, ohneHandle: 2 } },
+  });
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 400);
+  const h = doc.querySelector('.igfu-form-hinweis');
+  pruefe('Die Standzeile ist da', !!h);
+  pruefe('Sie nennt die Zahl', !!h && /7 Affiliate\(s\) ohne Task/.test(h.textContent || ''),
+    h && h.textContent);
+  pruefe('Und die ohne Handle darunter',
+    !!h && /davon 2 ohne Handle/.test(h.textContent || ''), h && h.textContent);
+}
+
+gruppe('Panel: keine Luecke ist auch eine Auskunft');
+{
+  const { doc, w } = await starte({
+    speicher: { ...MIT_UP, 'uppromote:luecke:v1': { stand: Date.now(), anzahl: 0, ohneHandle: 0 } },
+  });
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 400);
+  const h = doc.querySelector('.igfu-form-hinweis');
+  pruefe('Sie sagt, dass nichts offen ist',
+    !!h && /Alle aktiven Affiliates haben einen Task/.test(h.textContent || ''),
+    h && h.textContent);
+}
+
+gruppe('Panel: ein alter Stand wird im Hintergrund nachgezaehlt');
+{
+  // Zwoelf Stunden alt: beim Oeffnen des Panels wird gezaehlt, ohne dass
+  // etwas angelegt wird.
+  const { doc, w, serverTasks } = await starte({
+    speicher: { ...MIT_UP, 'uppromote:luecke:v1': { stand: 1, anzahl: 99, ohneHandle: 0 } },
+    affiliates: [
+      { first_name: 'Ein', last_name: 'Affiliate', email: 'af@b.de', instagram: 'ein_affiliate',
+        program_name: PROG },
+      { first_name: 'Zwei', last_name: 'Affiliate', email: 'zw@b.de', instagram: 'zwei_affiliate',
+        program_name: PROG },
+    ],
+    tasks: [{ id: 'a1', name: 'ein_affiliate — Ein Affiliate', status: 'ongeboardet',
+              farbe: '#87909e', beschreibung: 'x\nigfu-handle: ein_affiliate' }],
+  });
+  await warte(w, 900);
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 3000);
+  const h = doc.querySelector('.igfu-form-hinweis');
+  pruefe('Der Zaehler ist auf dem Stand von jetzt',
+    !!h && /1 Affiliate\(s\) ohne Task/.test(h.textContent || ''), h && h.textContent);
+  pruefe('Und es wurde nichts angelegt', serverTasks.length === 1, String(serverTasks.length));
 }
 
 console.log('\n' + (fehlgeschlagen

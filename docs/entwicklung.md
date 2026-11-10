@@ -779,6 +779,37 @@ bleibt:
   eigenen Konto entsprechen. Sie sind wertlos und blockieren aktiv die Suche
   nach dem richtigen, weil `handleBeschaffen()` bei bekanntem Handle aufhört.
 
+##### Ein Handle wird erst beim zweiten gleichen Lesen übernommen
+
+`karteStabil()`, seit 9.2. Die Kennung kommt aus der **Adresszeile**, der Handle
+aus den **Profillinks des Dokuments** — und beides wechselt beim Öffnen einer
+anderen Unterhaltung nicht im selben Augenblick. Für einen Moment steht die neue
+Kennung neben dem alten Handle.
+
+Am 10.11.2026 ist genau das passiert, zweimal in einer Sitzung mit viel
+Navigation: ein fremder Handle landete an einer Kennung und von dort über den
+Namensauftrag in den Task-Namen. Betroffen waren `123kvxefaya` (Marker
+`leonie_zhn`, Name auf `vroni.weiss` gesetzt) und `123kvxegy2j` (Marker
+`bianca.beyondlimits`, Name auf `tina_gerhard_on_bike`). Die Markerzeilen
+blieben beide richtig — nur die Anzeige war falsch.
+
+Das Fenster schließt eine zweite, gleiche Lesung. Der Takt des Kartenlesers
+liegt bei drei Sekunden; darauf zu warten wäre unnötig lang, deshalb schiebt
+`karteStabil()` bei einer Änderung eine **Nachprobe nach 500 ms** nach. Beide
+Leser, `instagram.com` und das alte Postfach, laufen durch diese Prüfung.
+
+##### Ein Handle aus der Karte gehört in die Markerzeile
+
+`markerNachtragen()`. Bis 9.1 zog allein der Namensauftrag nach, und der nahm
+seinen Wert aus dem Seitenspeicher — über diesen Weg kam der Schaden oben
+zustande, während `igfu-handle` leer blieb. Seit 9.2 setzt der Auftrag
+`'handle'` **Marker und Name zusammen**, und nur dann, wenn der Task noch
+keinen Marker hat. Ein vorhandener Marker wird nie überschrieben.
+
+Widerspricht der gelesene Handle einem vorhandenen Marker, **ändert der Auftrag
+gar nichts** und meldet den Widerspruch. Welche der beiden Quellen falsch ist,
+kann das Skript nicht wissen; das ist eine Entscheidung für Josia.
+
 ##### Der Zeilentitel ist eine schwache Quelle
 
 Auf instagram.com steht in der Zeile häufig der Handle selbst. Übernommen wird
@@ -789,6 +820,17 @@ Schaden richtet das keinen an, solange die geöffnete Unterhaltung ihn
 überschreiben darf — siehe oben. Eine Schranke „nur übernehmen, wenn ein Task
 diesen Handle trägt" stand hier kurzzeitig und war falsch: beim Kaltstart ist
 die Task-Liste noch leer, und dann fielen auch richtige Handles weg.
+
+##### Der Namensauftrag richtet den Namen am Marker aus
+
+Der Auftrag `'name'` nimmt seinen Handle seit 9.2 aus `task.handle`, also aus
+der Markerzeile — nie aus `handleVon(tid)`. Die Regel „Markerzeile schlägt Name"
+gilt damit auch hier, und sie gilt in beide Richtungen: ein Handle, der nicht
+gut genug für die Markerzeile ist, hat im Namen nichts zu suchen.
+
+Nebenwirkung, und eine erwünschte: beschädigte Namen **heilen von allein**,
+sobald die Unterhaltung einmal offen war. `namenRichtigstellen()` erledigt
+dasselbe für den ganzen Bestand auf einen Knopfdruck.
 
 #### Die Brücke über den Zeitpunkt
 
@@ -1218,6 +1260,11 @@ Der Denkfehler war, die Art fürs Öffnen zu brauchen. Beide Postfächer liegen
 unter `/direct/t/<kennung>/` — **die Kennung allein genügt**, die Art nur für
 die Beschriftung. Seitdem:
 
+0. **Kennungen aus derselben Welt zuerst.** Welt heißt: `igfu-ig` oder
+   `igfu-thread`. Eine Kennung aus dem alten Postfach neben einer von Instagram
+   ist meist dieselbe Unterhaltung unter der alten Adressform — der alte Marker
+   entstand vor dem Umzug, der neue danach. Sie wird deshalb nicht verworfen,
+   kommt aber hinter die aus derselben Welt und heißt im Knopf „Alte Adresse".
 1. Steht zu einer fremden Kennung eine Art im Speicher und ist sie die andere,
    ist das der sichere Treffer.
 2. Sonst: bleibt **genau eine** fremde Kennung übrig, ist sie die Gegenstelle.
@@ -1226,8 +1273,18 @@ die Beschriftung. Seitdem:
    Treffer. Ein falsches Grün wäre immer noch schlimmer als ein Grau.
 4. Ist die fremde Art unbekannt, heißt der Knopf „Andere Unterhaltung".
 
-Bei mehr als einer fremden Kennung wird nichts erschlossen — dann wäre nicht
-entscheidbar, welche gemeint ist.
+Bei mehr als einer fremden Kennung **derselben Welt** wird nichts erschlossen —
+dann wäre nicht entscheidbar, welche gemeint ist. Eine zweite Instagram-Kennung
+neben einer alten ist dagegen entscheidbar, und zwar für die Instagram-Kennung.
+
+**Die Adressform folgt der Welt der Zielkennung**, nicht dem Ort, an dem das
+Skript läuft: `postfachLink(ziel, zielIstIG)`. Bis 9.1 baute der Knopf immer
+eine `instagram.com`-Adresse. Eine 39-stellige Kennung aus der Business Suite
+kann Instagram nicht auflösen — der neue Tab landete wieder in der Liste, und
+der Knopf sah aus, als sei er tot. Am 10.11.2026 an tborowsky gemessen: dessen
+beide Adressen zeigten **dieselben** Nachrichten. Bewiesen ist das nur für
+diesen Fall, deshalb behauptet der Knopf nichts darüber, sondern sagt bloß, wo
+er hinführt.
 
 **Warum nicht aus der eigenen Art erschlossen wird.** „Eine Person hat je
 Postfach höchstens eine Unterhaltung" klingt zwingend und war der erste
