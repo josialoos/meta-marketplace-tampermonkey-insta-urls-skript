@@ -4495,6 +4495,139 @@ gruppe('Panel: ein alter Stand wird im Hintergrund nachgezaehlt');
   pruefe('Und es wurde nichts angelegt', serverTasks.length === 1, String(serverTasks.length));
 }
 
+gruppe('Karteileiche: der gueltige Task behaelt die Unterhaltung');
+{
+  // Beide Tasks tragen T1. Bis 9.3 entschied allein der Follow-Tag, sonst der
+  // zuletzt gefundene — eine stillgelegte Dublette konnte den gueltigen Task
+  // also aus dem Register draengen. Danach merkt vormerken() fuer diese
+  // Unterhaltung nichts mehr vor, und die Person faellt still aus dem CRM,
+  // obwohl ihr gueltiger Task daneben steht.
+  const leiche = { id: 'a1', name: 'mara.alt — Mara Kell (alter Account)', status: 'ignore',
+                   farbe: '#87909e', beschreibung: beschreibungMit('T1'), tags: ['karteileiche'] };
+  const gueltig = { id: 'a2', name: 'marakell.runs — Mara Kell', status: 'angeschrieben',
+                    farbe: '#87909e', beschreibung: beschreibungMit('T1') };
+  {
+    const { doc, w } = await starte({ speicher: MIT_CLICKUP, tasks: [leiche, gueltig] });
+    await warte(w, 1200);
+    pruefe('Leiche zuerst gelesen: die Zeile zeigt den gueltigen Task',
+      chip(doc, 0, 'crm').textContent === 'angeschrieben', chip(doc, 0, 'crm').textContent);
+  }
+  {
+    // Andere Reihenfolge, gleiches Ergebnis. In welcher Reihenfolge ClickUp
+    // die Liste ausliefert, ist nicht zugesagt und nichts, worauf sich die
+    // Regel stuetzen darf — bis 9.3 entschied genau das mit.
+    const { doc, w } = await starte({ speicher: MIT_CLICKUP, tasks: [gueltig, leiche] });
+    await warte(w, 1200);
+    pruefe('Leiche zuletzt gelesen: ebenso',
+      chip(doc, 0, 'crm').textContent === 'angeschrieben', chip(doc, 0, 'crm').textContent);
+  }
+}
+
+
+gruppe('Karteileiche: steht sie allein, bleibt sie im Register');
+{
+  // Leichen ganz aussperren waere der naheliegende Fix — und falsch. cuTasks
+  // beantwortet auch „gibt es zu dieser Unterhaltung ueberhaupt einen Task",
+  // und uebernehmen() legt fuer jede Unterhaltung ohne Eintrag einen an. Eine
+  // ausgesperrte Leiche waere damit eine Wiederbelebungsmaschine.
+  const { doc, w, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'mara.alt — Mara Kell (alter Account)', status: 'ignore',
+              farbe: '#87909e', beschreibung: beschreibungMit('T1'), tags: ['karteileiche'] }],
+  });
+  await warte(w, 1200);
+  pruefe('Die Zeile zeigt die Leiche, nicht das Pluszeichen',
+    chip(doc, 0, 'crm').textContent === 'ignore', chip(doc, 0, 'crm').textContent);
+  pruefe('Und es wurde nichts angelegt', angelegte(aufrufe).length === 0,
+    JSON.stringify(angelegte(aufrufe)));
+}
+
+
+gruppe('Bild-Register: die Pille zeigt den gueltigen Task, nicht die Leiche');
+{
+  // Dasselbe Profilbild an einer Leiche und am gueltigen Task, die Leiche
+  // zuerst. Im Bild-Register gewann bis 9.3 der erste Fund.
+  const BILD = '707070707';
+  const { doc, w } = await starte({
+    pfad: '/creator_marketing_hub/creator_discovery/',
+    speicher: MIT_CLICKUP,
+    markt: [{ handle: 'mara.kell', bild: BILD }],
+    tasks: [
+      { id: 'a1', name: 'mara.alt — Mara (alter Account)', status: 'ignore', farbe: '#87909e',
+        beschreibung: 'stillgelegt\nigfu-bild: ' + BILD, tags: ['karteileiche'] },
+      { id: 'a2', name: 'mara.kell — Mara Kell', status: 'zugesagt', farbe: '#87909e',
+        beschreibung: 'x\nigfu-bild: ' + BILD },
+    ],
+  });
+  await warte(w, 1500);
+  const p = [...doc.querySelectorAll('.igfu-crm-pille')].find((x) => x.dataset.handle === 'mara.kell');
+  pruefe('Die Pille nennt den Status des gueltigen Tasks',
+    !!p && p.textContent === 'zugesagt', p && p.textContent);
+}
+
+
+gruppe('An eine Karteileiche wird keine Unterhaltung gehaengt');
+{
+  // Das dritte Loch, am 11.11.2026 gefunden: scanRows merkte 'verbinden' vor,
+  // sobald im Bild-Register ein Task ohne Unterhaltung stand — ohne zu schauen,
+  // ob er stillgelegt ist. Die Nachbarzeile fuer verbinden-handle prueft das
+  // seit laengerem, diese nicht. Die Leiche haette die Unterhaltung bekommen
+  // und mit ihr den Platz im Thread-Register.
+  //
+  // 111111111 ist das Profilbild der ersten Zeile im Pruefstand.
+  const { w, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    tasks: [{ id: 'a1', name: 'alt.konto — Mara (alter Account)', status: 'ignore',
+              farbe: '#87909e', beschreibung: 'stillgelegt\nigfu-bild: 111111111',
+              tags: ['karteileiche'] }],
+  });
+  await warte(w, 2500);
+  const ana1 = aufrufe.filter((x) => String(x.pfad).startsWith('/task/a1'));
+  pruefe('Keine einzige Anfrage an die Leiche', ana1.length === 0, JSON.stringify(ana1));
+}
+
+
+gruppe('Ein alter verbinden-Auftrag laeuft nicht gegen eine Leiche');
+{
+  // Auftraege liegen im GM-Speicher und ueberleben den Versionswechsel.
+  // Deshalb steht der Schutz auch hinten, in ausfuehren(), nicht nur beim
+  // Vormerken: einer, der unter 9.3 noch auf eine Leiche zeigte, laeuft sonst
+  // gleich nach dem Update los.
+  // Der Spiegel muss mit im Speicher liegen, nicht erst geladen werden.
+  // Sonst ist das Bild-Register leer, wenn die Warteschlange anlaeuft, der
+  // Auftrag faellt wegen „kein Ziel" heraus — und die Pruefung ginge durch,
+  // ohne die Leichen-Regel ueberhaupt zu beruehren. Genau so ist sie beim
+  // ersten Versuch durchgegangen, obwohl die Regel ausgebaut war.
+  const LEICHE = {
+    taskId: 'a1', titel: 'alt.konto — Mara (alter Account)', status: 'ignore',
+    farbe: '#87909e', tids: [], bild: '111111111', nutzer: '', handle: 'alt.konto',
+    leiche: true, tags: ['karteileiche'], url: 'https://app.clickup.com/t/a1',
+  };
+  const { w, store, aufrufe } = await starte({
+    speicher: Object.assign({}, MIT_CLICKUP, {
+      'clickup:tasks:v1': {
+        stand: Date.now(), geladen: Date.now(),
+        tasks: {}, bilder: { 111111111: LEICHE }, nutzer: {}, ohneThread: [LEICHE],
+      },
+      'clickup:queue:v1': [{ art: 'verbinden', tid: 'T1', titel: 'Mara Kell',
+                             bild: '111111111', zeit: Date.now(), versuche: 0 }],
+    }),
+    tasks: [{ id: 'a1', name: 'alt.konto — Mara (alter Account)', status: 'ignore',
+              farbe: '#87909e', beschreibung: 'stillgelegt\nigfu-bild: 111111111',
+              tags: ['karteileiche'] }],
+  });
+  await warte(w, 2500);
+  const ana1 = aufrufe.filter((x) => String(x.pfad).startsWith('/task/a1'));
+  pruefe('Die Leiche bleibt unberuehrt', ana1.length === 0, JSON.stringify(ana1));
+  // Verworfen, nicht liegengelassen: ein Auftrag, der stehen bleibt, blockiert
+  // die ganze Warteschlange.
+  pruefe('Und der Auftrag ist verworfen',
+    (store.get('clickup:queue:v1') || []).length === 0,
+    JSON.stringify(store.get('clickup:queue:v1')));
+}
+
+
+
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`
   : `Alle ${gelaufen} Prüfungen bestanden`));

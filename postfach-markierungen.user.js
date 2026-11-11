@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      9.3
+// @version      9.4
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -432,7 +432,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '9.3';
+  const VERSION = '9.4';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -2658,7 +2658,20 @@
       const d = await cuRequest('GET', '/list/' + liste + '/task?include_closed=true&subtasks=false&page=' + seite);
       for (const t of d.tasks || []) {
         const neu = taskAufbereiten(t);
-        if (neu.bild && !nachBild[neu.bild]) nachBild[neu.bild] = neu;
+        // Eine Karteileiche darf einen Registerplatz nur besetzen, solange ihn
+        // kein gueltiger Task beansprucht: sie weicht immer, und sie verdraengt
+        // nie. Sonst zieht eine stillgelegte Dublette die Unterhaltung an sich,
+        // und danach greift die Schranke in vormerken() fuer jeden Auftrag —
+        // die Person faellt still aus dem CRM, obwohl ihr gueltiger Task
+        // daneben steht.
+        //
+        // Ganz aussperren wie bei nachNutzer waere hier falsch: cuBilder treibt
+        // auch die Pille im Creator Hub. Steht dort nichts, bietet sie
+        // „ins CRM +" an und legt fuer eine stillgelegte Person einen neuen
+        // Task an. Als Rueckfallplatz bleibt die Leiche darum sichtbar.
+        if (neu.bild && (!nachBild[neu.bild] || (nachBild[neu.bild].leiche && !neu.leiche))) {
+          nachBild[neu.bild] = neu;
+        }
         // Karteileichen duerfen den Index nicht besetzen, sonst zieht eine
         // stillgelegte Dublette die Unterhaltung an sich.
         if (neu.nutzer && !neu.leiche && !nachNutzer[neu.nutzer]) nachNutzer[neu.nutzer] = neu;
@@ -2674,7 +2687,21 @@
           if (alt && alt.taskId !== neu.taskId && !alt.leiche && !neu.leiche) {
             doppeltMerken('thread', einzel, alt, neu);
           }
-          if (!alt || neu.follow || !alt.follow) gefunden[einzel] = neu;
+          // Dieselbe Regel wie beim Bild-Register, und sie steht vor der
+          // alten Entscheidung: die Leiche weicht, egal wer getaggt ist. Erst
+          // unter gleichrangigen Tasks entscheidet der Follow-Tag.
+          //
+          // Auch hier bleibt die Leiche Rueckfallplatz, denn cuTasks
+          // beantwortet nicht nur „welcher Task gehoert zu dieser
+          // Unterhaltung", sondern auch „gibt es ueberhaupt einen":
+          // uebernehmen() legt fuer jede Unterhaltung ohne Eintrag einen Task
+          // an, und die Schranke in vormerken() braucht die Leiche, um sie als
+          // solche zu erkennen.
+          if (alt && alt.leiche !== neu.leiche) {
+            if (alt.leiche) gefunden[einzel] = neu;
+          } else if (!alt || neu.follow || !alt.follow) {
+            gefunden[einzel] = neu;
+          }
         }
       }
       if (d.last_page || !(d.tasks || []).length) break;
@@ -2982,7 +3009,10 @@
       // Beschreibung wird nur ergaenzt, nicht ersetzt, damit eigene Notizen
       // darin erhalten bleiben.
       const ziel = cuBilder[a.bild];
-      if (!ziel || ziel.tid || cuTasks[a.tid]) return;
+      // Auch beim Ausfuehren, nicht nur beim Vormerken: Auftraege liegen im
+      // GM-Speicher und ueberleben den Versionswechsel. Einer, der unter 9.3
+      // noch auf eine Leiche zeigte, laeuft sonst nach dem Update los.
+      if (!ziel || ziel.tid || ziel.leiche || cuTasks[a.tid]) return;
       const voll = await cuRequest('GET', '/task/' + ziel.taskId + '?include_markdown_description=true');
       const bisher = voll.markdown_description || voll.description || '';
       if (!threadAusText(bisher)) {
@@ -3532,7 +3562,19 @@
 
       // Gibt es zu dieser Unterhaltung noch keinen Task, aber einen im
       // Marketplace erfassten mit demselben Profilbild, gehoeren sie zusammen.
-      if (!cuTasks[tid] && bild && cuBilder[bild] && !cuBilder[bild].tid) {
+      // Nicht an eine Karteileiche haengen. Im Bild-Register steht sie nur,
+      // wenn kein gueltiger Task dieselbe Bild-ID hat — dann gibt es hier
+      // nichts zu verbinden. Die Zeile fuer verbinden-handle weiter unten
+      // prueft das schon lange, diese nicht.
+      //
+      // Diese Schranke und die in ausfuehren() gehoeren zusammen, und zwar in
+      // dieser Richtung: ausfuehren() verwirft den Auftrag, abarbeiten() ruft
+      // danach scanRows() auf, und scanRows merkt ihn sofort wieder vor. Fehlt
+      // die Schranke hier, dreht das endlos — nachgemessen an der Mutation M3,
+      // die nicht rot lief, sondern nie fertig wurde. Dieselbe Falle wie beim
+      // Startdatum am 06.10.2026, siehe vormerken().
+      if (!cuTasks[tid] && bild && cuBilder[bild] && !cuBilder[bild].tid
+          && !cuBilder[bild].leiche) {
         vormerken({ art: 'verbinden', tid, titel: t.title, bild });
       }
 

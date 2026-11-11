@@ -614,6 +614,50 @@ ist, entscheidet Josia, und der andere wird über den Leichen-Tag stillgelegt �
 gelöscht holt ihn der nächste UpPromote-Import zurück (siehe
 [Der Tag `karteileiche`](#der-tag-karteileiche)).
 
+#### Eine Karteileiche darf keinen Registerplatz wegnehmen
+
+`cuTasksLaden()` baut drei Register auf: nach Unterhaltung (`cuTasks`), nach
+Profilbild (`cuBilder`) und nach Instagram-Benutzer-ID (`cuNutzer`). Bis 9.3
+nahm nur das letzte Karteileichen aus. Die anderen zwei entschieden nach
+Follow-Tag beziehungsweise erstem Fund — eine stillgelegte Dublette konnte den
+gültigen Task also aus seinem eigenen Register drängen.
+
+**Die Folge war still.** Danach greift in `vormerken()` die Schranke, die für
+einen stillgelegten Task gar keinen Auftrag mehr vormerkt, und die Person fällt
+aus jeder Automatik heraus — obwohl ihr gültiger Task unverändert daneben steht.
+Nichts bricht, nichts meldet sich.
+
+Seit 9.4 gilt in beiden Registern eine Regel:
+
+> Eine Karteileiche darf einen Registerplatz nur besetzen, solange ihn kein
+> gültiger Task beansprucht. Sie weicht immer, und sie verdrängt nie.
+
+**Warum nicht einfach aussperren**, so wie `cuNutzer` es tut? Weil die drei
+Register nicht dasselbe leisten:
+
+| Register | wer es liest | Leiche ganz heraus? |
+|---|---|---|
+| `cuNutzer` | nur `scanRows()`, zum Verknüpfen | ja — so ist es seit 7.5 |
+| `cuBilder` | Verknüpfen **und** die Pille im Creator Hub | nein: steht dort nichts, bietet die Pille „ins CRM +" an und legt für eine stillgelegte Person einen neuen Task an |
+| `cuTasks` | Verknüpfen, die Schranke in `vormerken()` **und** `uebernehmen()` | nein: `uebernehmen()` legt für jede Unterhaltung ohne Eintrag einen Task an — eine ausgesperrte Leiche wäre eine Wiederbelebungsmaschine |
+
+Deshalb bleibt die Leiche in beiden Fällen **Rückfallplatz** und verliert nur
+gegen einen gültigen Task.
+
+**Ein drittes Loch auf demselben Weg**, am 11.11.2026 gefunden: `scanRows()`
+merkte den Auftrag `verbinden` vor, sobald im Bild-Register ein Task ohne
+Unterhaltung stand — ohne zu prüfen, ob er stillgelegt ist. Die Nachbarzeile für
+`verbinden-handle` prüft das seit langem, diese nicht. Die Leiche hätte die
+Unterhaltung angehängt bekommen und mit ihr den Platz im Thread-Register. Die
+Prüfung steht jetzt an beiden Enden, auch in `ausfuehren()`: Aufträge liegen im
+GM-Speicher und überleben den Versionswechsel.
+
+**Für die Handarbeit heißt das:** Eine Dublette stillzulegen ist wieder ein
+einziger Schritt. Bis 9.3 mussten aus der Leiche zusätzlich die Zeilen mit
+Unterhaltungs-Kennung und Bild-ID heraus, sonst richtete der Tag allein nichts
+aus — genau deshalb wurden sie am 19.10. und am 30.10.2026 von Hand entfernt.
+Das ist ab 9.4 Sorgfalt, nicht Pflicht.
+
 #### Die Herkunft einer Kennung wird festgehalten, nicht geraten
 
 Bis 6.8 stand jede Unterhaltung unter `igfu-thread:`, und woher sie stammte,
@@ -914,6 +958,7 @@ lässt ihn vollständig in Ruhe:
 | Content, Tag `ad-code` | übersprungen |
 | Status, Frist, Priorität, Name | übersprungen |
 | Namensbrücke, Handle-Verbindung | übersprungen |
+| Platz im Thread- und Bild-Register | nur, wenn kein gültiger Task ihn beansprucht |
 | Dopplungs-Hinweis beim Anlegen | zählt nicht als vorhandener Task |
 | **Import: Handle und Mail gelten als vergeben** | **zählt mit** |
 

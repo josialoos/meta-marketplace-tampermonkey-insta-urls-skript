@@ -312,6 +312,14 @@ zurück.
 Karteileichen zählen in dem Abschnitt nicht mit — eine bewusst stillgelegte
 Dopplung soll dort nicht jeden Tag wieder auftauchen.
 
+**Seit Version 9.4 reicht der Tag allein.** Vorher musste aus der Beschreibung
+der Karteileiche auch die Zeile mit der Unterhaltungs-Kennung und die mit der
+Bild-ID heraus — sonst zog die stillgelegte Dublette die Unterhaltung an sich,
+und die Person fiel still aus dem CRM, obwohl ihr richtiger Task daneben stand.
+Das Skript übergeht die Leiche jetzt auch dann, wenn die Zeilen stehen bleiben.
+Rausnehmen schadet nicht, nötig ist es nicht mehr. Handle und Mailadresse
+bleiben ohnehin drin, die braucht der Import.
+
 ### Abgeschlossen: der Tag `ignore`
 
 `ignore` hängt an Profilen, mit denen wir fertig sind — aus welchem Grund auch
