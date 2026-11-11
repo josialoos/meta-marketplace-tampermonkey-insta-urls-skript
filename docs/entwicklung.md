@@ -829,8 +829,26 @@ gilt damit auch hier, und sie gilt in beide Richtungen: ein Handle, der nicht
 gut genug für die Markerzeile ist, hat im Namen nichts zu suchen.
 
 Nebenwirkung, und eine erwünschte: beschädigte Namen **heilen von allein**,
-sobald die Unterhaltung einmal offen war. `namenRichtigstellen()` erledigt
-dasselbe für den ganzen Bestand auf einen Knopfdruck.
+sobald die Unterhaltung in der Liste steht. `namenRichtigstellen()` erledigt
+dasselbe für den ganzen Bestand auf einen Knopfdruck — gebraucht wird es für
+Datensätze ohne Unterhaltung und für solche, deren Unterhaltung niemand mehr
+öffnet.
+
+Der Abgleich in `handleMerken()` steht dafür **vor** der Schranke `geaendert`.
+Dahinter lief er nur in dem Takt, in dem dieser Speicher zufällig auch etwas
+Neues lernte — bei einer Unterhaltung, zu der Bild, Datum und Handle längst
+bekannt sind, also nie. Aufgefallen ist das erst der Mutationsprüfung: der
+zugehörige Test war grün, obwohl die Regel ausgebaut war.
+
+Dafür steht er seit 9.3 hinter einer zweiten Schranke: `nameVersucht`, ein
+`Set` von Kennungen, lässt **einen Versuch je Seitenaufruf** zu. Der Abgleich
+läuft in jedem Takt des Kartenlesers, und kommen Name und Marker durch das
+Umbenennen nicht zur Deckung — der `PUT` scheitert still, ClickUp normalisiert
+den Namen —, legte sich der Auftrag sonst endlos nach. Genau diese Falle hat am
+06.10.2026 beim Startdatum das Laden blockiert, siehe `vormerken()`. Hilft der
+erste Versuch nicht, hilft der zweite auch nicht; beim nächsten Laden wird es
+ohnehin neu versucht. Auch das kam aus der Mutationsprüfung: der Mutant lief
+nicht rot, sondern nie fertig.
 
 #### Die Brücke über den Zeitpunkt
 

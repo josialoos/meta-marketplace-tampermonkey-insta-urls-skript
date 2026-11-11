@@ -366,7 +366,9 @@ Schaden, und ein Klick würde sonst die halbe Liste umbenennen.
 
 > Die Ursache ist seit 9.2 behoben: der Name folgt jetzt der Markerzeile, nicht
 > dem Browser-Speicher. Beschädigte Namen heilen deshalb auch von allein,
-> sobald die Unterhaltung einmal offen war.
+> sobald die Unterhaltung in der Liste auftaucht — der Knopf ist für die Fälle
+> da, deren Unterhaltung du nicht mehr aufmachst, und für Datensätze ohne
+> Unterhaltung.
 
 ### Alte Links aufräumen
 

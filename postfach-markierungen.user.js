@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      9.2
+// @version      9.3
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -432,7 +432,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '9.2';
+  const VERSION = '9.3';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -911,6 +911,21 @@
     return handle + ' — ' + t;
   }
 
+  // Je Seitenaufruf zieht das Skript einen Namen nur einmal nach.
+  //
+  // Der Abgleich unten laeuft in jedem Takt des Kartenlesers. Kommen Name
+  // und Markerzeile durch das Umbenennen nicht zur Deckung — der PUT
+  // scheitert still, ClickUp normalisiert den Namen, der Marker traegt ein
+  // Handle, das taskName() anders schreibt —, legte sich der Auftrag sonst
+  // endlos nach. Genau diese Falle hat am 06.10.2026 beim Startdatum das
+  // ganze Skript beim Laden haengen lassen, siehe vormerken(). Aufgefallen
+  // ist sie hier an der Mutationspruefung: der Mutant lief nicht rot,
+  // sondern nie fertig.
+  //
+  // Ein Versuch je Seitenaufruf reicht: hilft er nicht, hilft der zweite
+  // auch nicht, und beim naechsten Laden wird es ohnehin neu versucht.
+  const nameVersucht = new Set();
+
   function handleMerken(tid, handle, quelle, bild, letzte, nutzer) {
     if (!tid) return;
     const alle = handles();
@@ -933,9 +948,6 @@
     const besser = handle && (!alt.handle || g > gAlt || (quelle === 'karte' && gAlt <= GUETE.karte));
     if (besser && alt.handle !== handle) { alt.handle = handle; alt.quelle = quelle; geaendert = true; }
     else if (besser) { alt.quelle = quelle; geaendert = true; }
-    if (!geaendert) return;
-    alle[tid] = alt;
-    GM_setValue(CU_HANDLES, alle);
     // Hat die Unterhaltung schon einen Task, den Namen nachziehen — aber nach
     // dem *Marker* des Tasks, nicht nach dem gerade gelernten Handle.
     //
@@ -949,10 +961,23 @@
     //
     // Der Auftrag richtet den Namen also nur noch am Marker aus. Damit heilt
     // er die beschaedigten Namen beim naechsten Oeffnen von allein.
+    //
+    // Dieser Abgleich steht **vor** der Schranke `geaendert`, und zwar
+    // absichtlich: ob Name und Marker auseinanderlaufen, hat nichts damit zu
+    // tun, ob dieser Speicher gerade etwas Neues gelernt hat. Stand der
+    // Abgleich dahinter, heilte ein beschaedigter Name nur in dem Takt, in dem
+    // sich zufaellig auch ein Bild, ein Datum oder ein Handle aenderte — und
+    // bei einer Unterhaltung, zu der schon alles bekannt ist, nie. Ein
+    // Zeichenkettenvergleich je Takt kostet nichts.
     const task = cuTasks[tid];
-    if (task && task.handle && task.titel !== taskName(task.handle, rohTitel(task.titel))) {
+    if (task && task.handle && !nameVersucht.has(tid)
+        && task.titel !== taskName(task.handle, rohTitel(task.titel))) {
+      nameVersucht.add(tid);
       vormerken({ art: 'name', tid, titel: rohTitel(task.titel) });
     }
+    if (!geaendert) return;
+    alle[tid] = alt;
+    GM_setValue(CU_HANDLES, alle);
   }
 
   // Tag und Monat eines Zeitstempels, zweistellig. Fuer Stand-Angaben im

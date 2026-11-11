@@ -4255,23 +4255,31 @@ gruppe('Name: ein fremder Handle aus dem Seitenspeicher kommt nicht in den Titel
 {
   // Der Schaden vom 10.11.2026: handleMerken() lernte einen Handle an der
   // falschen Kennung, und der Namensauftrag trug ihn in den Task-Namen —
-  // waehrend igfu-handle richtig stehen blieb. Hier lernt der Speicher
-  // „fremde.person" an der Kennung, der Marker sagt etwas anderes.
+  // waehrend igfu-handle richtig stehen blieb.
+  //
+  // Entscheidend an dieser Lage: der Seitenspeicher traegt ein *anderes*
+  // Handle als die Markerzeile, und der Name braucht ohnehin eine Korrektur
+  // (er hat noch keinen Handle vorne). Nur so faellt auf, aus welcher der
+  // beiden Quellen der Auftrag seinen Wert nimmt. Stimmten beide ueberein,
+  // wuerde die Pruefung nichts pruefen.
   const { doc, w, aufrufe } = await starte({
     speicher: {
       ...MIT_CLICKUP,
-      'clickup:handles:v1': { T1: { handle: 'fremde.person', quelle: 'karte' } },
+      'clickup:handles:v1': { IG7: { handle: 'fremde.person', quelle: 'karte' } },
     },
-    tasks: [{ id: 'a1', name: 'leonie_zhn — Leonie', status: 'angeschrieben', farbe: '#87909e',
-              beschreibung: beschreibungMit('T1') + '\nigfu-handle: leonie_zhn' }],
+    ig: [{ id: 'IG7', titel: 'Leonie', vorschau: 'Hallo', zeit: '2h' }],
+    tasks: [{ id: 'a1', name: 'Leonie', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: 'x\nigfu-ig: IG7\nigfu-handle: leonie_zhn' }],
   });
-  await warte(w, 1500);
-  const umbenannt = aufrufe.filter((a) => a.methode === 'PUT' && a.data && a.data.name);
-  pruefe('Kein Umbenennen',
-    !umbenannt.some((a) => /fremde\.person/.test(a.data.name)),
-    JSON.stringify(umbenannt.map((a) => a.data.name)));
+  await warte(w, 2000);
+  const umbenannt = aufrufe.filter((a) => a.methode === 'PUT' && a.data && a.data.name)
+    .map((a) => a.data.name);
+  pruefe('Der Name wird nach dem Marker gesetzt',
+    umbenannt.includes('leonie_zhn — Leonie'), JSON.stringify(umbenannt));
+  pruefe('Nicht nach dem Seitenspeicher',
+    !umbenannt.some((n) => /fremde\.person/.test(n)), JSON.stringify(umbenannt));
   pruefe('Der Marker bleibt unberuehrt',
-    !aufrufe.some((a) => a.methode === 'PUT' && a.data && /igfu-handle:\s*fremde\.person/
+    !aufrufe.some((a) => a.methode === 'PUT' && a.data && /fremde\.person/
       .test(a.data.markdown_description || '')),
     JSON.stringify(aufrufe.filter((a) => a.data && a.data.markdown_description).length));
 }
@@ -4334,18 +4342,23 @@ gruppe('Kontaktkarte: ein Handle wird erst beim zweiten gleichen Takt uebernomme
   // Profillink im Kopf. Fuer einen Takt stand die neue Kennung neben dem
   // alten Handle — so kam am 10.11.2026 ein fremder Handle an eine
   // Unterhaltung. Nach einem Takt darf noch nichts gespeichert sein.
+  //
+  // Gemessen wird *zwischen* dem ersten Takt des Kartenlesers (3000 ms) und
+  // seiner Nachprobe (500 ms spaeter). Eine Messung vor 3000 ms wuerde nichts
+  // beweisen: dann hat der Leser ueberhaupt nicht gelaufen, und die Pruefung
+  // waere auch ohne Bestaetigung gruen.
   const { w, store } = await starte({
     speicher: MIT_CLICKUP,
     ig: [{ id: 'IG9', titel: 'Nora', vorschau: 'a', zeit: '2h' }],
     igOffen: { tid: 'IG9', handle: 'nora_klee', titel: 'Nora' },
   });
-  await warte(w, 400);
+  await warte(w, 3200);
   const frueh = store.get('clickup:handles:v1') || {};
-  pruefe('Nach dem ersten Takt ist nichts gelernt',
+  pruefe('Nach dem ersten Lesen ist der Handle noch nicht uebernommen',
     !(frueh.IG9 && frueh.IG9.handle), JSON.stringify(frueh.IG9 || null));
-  await warte(w, 3500);
+  await warte(w, 700);
   const spaet = store.get('clickup:handles:v1') || {};
-  pruefe('Nach dem zweiten gleichen Takt steht er da',
+  pruefe('Nach der Bestaetigung steht er da',
     spaet.IG9 && spaet.IG9.handle === 'nora_klee', JSON.stringify(spaet.IG9 || null));
 }
 
