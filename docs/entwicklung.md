@@ -394,6 +394,80 @@ man ihn dort sieht und danach suchen kann. Und als Markerzeile, weil die die
 dann den Namen. Eine Umbenennung in ClickUp kann die Zuordnung damit nicht mehr
 stillschweigend zerreißen.
 
+#### Der Partner-Ordner hat eine eigene Adressform
+
+```
+/direct/t/<kennung>                 aus der normalen Liste
+/direct/partnerships/t/<kennung>    aus dem Partner-Ordner
+```
+
+Bis 9.5 stand das Muster `^/direct/t/…` an **zwei** Stellen im Skript — in
+`igOffenerThread()` für die Kopfleiste und noch einmal in
+`igOffeneUnterhaltung()` für den Kartenleser. Eine aus dem Partner-Ordner
+geöffnete Unterhaltung galt damit als „keine offen":
+
+- keine Kopfleiste, keine ClickUp-Karte,
+- **der Handle wurde nie aus der Kontaktkarte gelesen** — Partner-Unterhaltungen
+  lernten nur, was Titel und Vorschau hergaben,
+- und `postfachMerken()` lief nicht.
+
+Seit 9.5 steht das Muster genau einmal da, als `IG_OFFEN` bei den anderen
+Pfad-Konstanten. **Achtung bei den Klammergruppen:** Gruppe 1 ist
+`partnerships`, die Kennung steht in Gruppe 2.
+
+**Die Adresse beweist nur den Partner-Ordner, nicht das Gegenteil.** Instagram
+liefert eine Partner-Unterhaltung auch unter `/direct/t/<kennung>` aus — und
+genau so baut das Skript seine eigenen Links, solange das Postfach unbekannt
+ist. Würde das Fehlen von `partnerships` als `normal` gelernt, machte jeder
+Klick auf einen solchen Link den richtigen Eintrag kaputt. Deshalb liefert
+`igPostfachAusAdresse()` entweder `'partner'` oder gar nichts.
+
+**Und `postfachLink()` fragt das Postfach.** Bis 9.5 schrieb es für jede
+Unterhaltung die normale Adresse, auch für die im Partner-Ordner — am
+11.11.2026 an `hiking_caro` gemeldet. Ist das Postfach unbekannt, bleibt es bei
+der normalen Form; die öffnet auch Partner-Unterhaltungen, nur im falschen
+Ordner.
+
+#### ClickUp gibt die Beschreibung nie so zurück, wie sie geschrieben wurde
+
+Die Beschreibung ist **Markdown**, und ClickUp liefert sie in drei Fassungen,
+von denen keine der geschriebene Text ist:
+
+| Feld | was drinsteht |
+|---|---|
+| `markdown_description` | escaped — `igfu-handle: \_deneazy\_`, E-Mails als `[a@b.de](mailto:a@b.de)` |
+| `description` | gerendert — `igfu-handle: deneazy` |
+| `text_content` | gerendert, wie `description` |
+
+Ein Paar **umschließender** Unterstriche ist in Markdown Kursivschrift. Beim
+Rendern verschwinden sie, der Handle `_deneazy_` wird zu `deneazy`. Unterstriche
+**innerhalb** eines Wortes sind keine Auszeichnung — `monique_reinhardt` und
+`branded_content_ad` kommen heil durch. Betroffen sind also die Handles mit
+führendem oder schließendem Unterstrich.
+
+Daraus folgen zwei Regeln, beide seit 9.5 im Code:
+
+- **Gelesen wird `markdown_description` zuerst**, und jeder `…AusText()`-Leser
+  geht durch `markerText()`, das Escapes und Linkklammern auflöst. Die
+  gerenderten Fassungen bleiben nur als Rückfall.
+- **Geschrieben wird escaped**: `markerWert()` setzt vor jeden Unterstrich einen
+  Backslash, damit ClickUp ihn als Zeichen speichert statt als Auszeichnung.
+
+> **Warum das lange unbemerkt blieb.** Der Prüfstand legte bis 9.4 dieselbe
+> Zeichenkette in `description` und `text_content` und lieferte
+> `markdown_description` gar nicht. Damit war der Rundlauf durch ClickUp im Test
+> buchstabengleich — eine Eigenschaft, die die echte Schnittstelle nie hatte.
+> 635 Prüfungen waren grün, während im Bestand Handles verstümmelt wurden.
+> Seit 9.5 bildet `alsApiTask()` im Prüfstand alle drei Fassungen nach,
+> einschließlich der Kursiv-Regel.
+>
+> Gemeldet wurde es am 11.11.2026 als „`_deneazy_` wird nicht erkannt". Ihr Task
+> hatte keine `igfu-ig`-Zeile, der Handle war der einzige Schlüssel — und der
+> wurde als `deneazy` gelesen. Zusätzlich hatte das Skript aus dem verstümmelten
+> Handle schon einen falschen Anschreib-Link gebaut (`ig.me/m/deneazy`). Weil
+> seit 9.2 der Name der Markerzeile folgt, wanderte der Schaden außerdem in
+> Task-Namen: `_joh_annanas_` stand am selben Tag als `joh_annanas` da.
+
 ### Wie ein importierter Task seine Unterhaltung findet
 
 Aus UpPromote importierte Tasks haben beim Anlegen keine `igfu-thread`-Zeile,

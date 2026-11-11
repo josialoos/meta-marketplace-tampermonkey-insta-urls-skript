@@ -10,6 +10,10 @@ const pruefe = (name, bedingung, extra = '') => {
 const gruppe = (t) => console.log('\n' + t);
 const MIT_CLICKUP = { 'clickup:token:v1': 'pk_geheim_123', 'clickup:list:v1': LISTE };
 const angelegte = (a) => a.filter((x) => x.methode === 'POST' && /^\/list\/[^/]+\/task$/.test(x.pfad));
+// Seit 9.5 gehen Markerwerte escaped nach ClickUp, damit ein Unterstrich dort
+// als Zeichen und nicht als Kursivschrift ankommt. Pruefungen, denen es um den
+// Wert geht und nicht um die Schreibweise, vergleichen durch diesen Filter.
+const ohneEscape = (s) => String(s || '').replace(/\\([\\`*_{}\[\]()#+\-.!~>])/g, '$1');
 
 gruppe('Ohne ClickUp bleibt alles wie vorher');
 {
@@ -786,7 +790,7 @@ gruppe('Fehlender Handle wird aus der Kontaktkarte geholt');
     serverTasks[0] && serverTasks[0].name === 'timo__83 — Timo',
     serverTasks[0] && serverTasks[0].name);
   pruefe('Markerzeile ist gesetzt',
-    /igfu-handle:\s*timo__83/.test((serverTasks[0] || {}).beschreibung || ''),
+    /igfu-handle:\s*timo__83/.test(ohneEscape((serverTasks[0] || {}).beschreibung)),
     ((serverTasks[0] || {}).beschreibung || '').slice(-80));
 }
 
@@ -960,8 +964,8 @@ gruppe('Import: zweiter Klick legt an');
   pruefe('Name ist handle — Name', eins && eins.name === 'neu_eins — Neu Eins', eins && eins.name);
   pruefe('Ohne Umsatz ongeboardet', eins && eins.status === 'ongeboardet', eins && eins.status);
   pruefe('Mit Umsatz hat sales', zwei && zwei.status === 'hat sales', zwei && zwei.status);
-  pruefe('Handle als Marker', /igfu-handle:\s*neu_eins/.test((eins || {}).beschreibung || ''));
-  pruefe('E-Mail klein als Marker', /igfu-mail:\s*n1@b\.de/.test((eins || {}).beschreibung || ''),
+  pruefe('Handle als Marker', /igfu-handle:\s*neu_eins/.test(ohneEscape((eins || {}).beschreibung)));
+  pruefe('E-Mail klein als Marker', /igfu-mail:\s*n1@b\.de/.test(ohneEscape((eins || {}).beschreibung)),
     ((eins || {}).beschreibung || '').slice(-70));
 }
 
@@ -4627,6 +4631,201 @@ gruppe('Ein alter verbinden-Auftrag laeuft nicht gegen eine Leiche');
 }
 
 
+gruppe('Marker: ein Handle mit Unterstrichen uebersteht den Weg durch ClickUp');
+{
+  // Der Schaden vom 11.11.2026: „_deneazy_ wird nicht erkannt".
+  //
+  // ClickUp speichert die Beschreibung als Markdown. „_deneazy_" ist dort
+  // Kursivschrift, also liefert die gerenderte Fassung „igfu-handle: deneazy"
+  // — die Unterstriche sind weg. taskAufbereiten() las diese Fassung zuerst
+  // und lernte den verstuemmelten Handle. Damit findet der Handle-Schluessel
+  // die Unterhaltung nicht mehr, und weil seit 9.2 der Name dem Marker folgt,
+  // wandert der Schaden zusaetzlich in den Task-Namen.
+  //
+  // Der Pruefstand liefert die drei Fassungen jetzt so, wie ClickUp sie
+  // liefert; „beschreibung" ist das Markdown, die gerenderte Fassung wird
+  // daraus gebildet.
+  // Genommen wird die Fassung, die ClickUp am 11.11.2026 fuer „_joh_annanas_"
+  // wirklich geliefert hat — da steckt in *beiden* Feldern ein Schaden, und
+  // zwar ein verschiedener:
+  //
+  //   markdown_description  igfu-handle: _joh\_annanas_   (teils escaped)
+  //   text_content          igfu-handle: joh_annanas      (kursiv gefressen)
+  //
+  // Die markdown-Fassung ist nur dann die richtige, wenn der Backslash vorher
+  // aufgeloest wird. Ohne das liest die Zeichenklasse [a-z0-9._] bis zum
+  // Backslash und bricht bei „_joh" ab — also nicht der gefressene, sondern
+  // ein abgeschnittener Handle. Beide Wege sind falsch, auf verschiedene Art.
+  const { w, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: 'IG1', titel: 'Johanna', vorschau: 'Hallo', zeit: '2h' }],
+    igOffen: { tid: 'IG1', handle: '_joh_annanas_', titel: 'Johanna' },
+    tasks: [{ id: 'a1', name: 'Johanna', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: 'x\nigfu-ig: IG1\nigfu-handle: _joh\\_annanas_',
+              beschreibungRoh: 'x\nigfu-ig: IG1\nigfu-handle: joh_annanas' }],
+  });
+  await warte(w, 4000);
+  const namen = aufrufe.filter((a) => a.methode === 'PUT' && a.data && a.data.name)
+    .map((a) => a.data.name);
+  pruefe('Der Name traegt den vollstaendigen Handle',
+    namen.includes('_joh_annanas_ — Johanna'), JSON.stringify(namen));
+  pruefe('Nicht den kursiv gefressenen',
+    !namen.some((n) => /^joh_annanas —/.test(n)), JSON.stringify(namen));
+  pruefe('Und nicht den am Backslash abgeschnittenen',
+    !namen.some((n) => /^_joh —/.test(n)), JSON.stringify(namen));
+}
+
+gruppe('Marker: die gerenderte Fassung allein verstuemmelt den Handle nicht mehr');
+{
+  // Gegenprobe zur Lage oben, diesmal mit der Fassung, die ClickUp heute im
+  // Bestand hat: markdown traegt „_simone.k_", die gerenderte Fassung traegt
+  // „simone.k". Gelesen werden muss die erste.
+  const { w, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: 'IG2', titel: 'Simone', vorschau: 'Hallo', zeit: '2h' }],
+    igOffen: { tid: 'IG2', handle: '_simone.k_', titel: 'Simone' },
+    tasks: [{ id: 'a1', name: 'Simone', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: 'x\nigfu-ig: IG2\nigfu-handle: _simone.k_',
+              beschreibungRoh: 'x\nigfu-ig: IG2\nigfu-handle: simone.k' }],
+  });
+  await warte(w, 4000);
+  const namen = aufrufe.filter((a) => a.methode === 'PUT' && a.data && a.data.name)
+    .map((a) => a.data.name);
+  pruefe('Der Marker schlaegt die gerenderte Fassung',
+    namen.includes('_simone.k_ — Simone'), JSON.stringify(namen));
+}
+
+gruppe('Marker: beim Schreiben wird der Unterstrich escaped');
+{
+  // Die andere Haelfte: schreibt das Skript „igfu-handle: _deneazy_" roh,
+  // macht ClickUp daraus wieder Kursivschrift und der naechste Lauf liest
+  // erneut einen verstuemmelten Handle. Der Marker muss escaped rausgehen.
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    karte: { handle: '_deneazy_' },
+  });
+  await warte(w, 600);
+  klick(w, chip(doc, 2, 'followup'));   // Timo, der Thread ohne Handle
+  await warte(w, 2500);
+  const b = (serverTasks[0] || {}).beschreibung || '';
+  pruefe('Der angelegte Task traegt den escapten Marker',
+    /igfu-handle:\s*\\_deneazy\\_/.test(b), b.slice(-90));
+  pruefe('Roh steht er nirgends',
+    !/igfu-handle:\s*_deneazy_/.test(b), b.slice(-90));
+  // Entscheidend ist nicht die Schreibweise, sondern dass der Wert den
+  // Rundlauf uebersteht: zurueckgefuehrt muss wieder der ganze Handle dastehen.
+  pruefe('Zurueckgefuehrt steht der ganze Handle da',
+    /igfu-handle:\s*_deneazy_/.test(ohneEscape(b)), ohneEscape(b).slice(-90));
+}
+
+gruppe('Handle: die Markerzeile geht vor dem Namen raus');
+{
+  // Name und Marker sind zwei Anfragen. Bricht es dazwischen ab, bleibt einer
+  // der beiden Halbzustaende stehen — und nur einer davon heilt wieder:
+  //
+  //   Marker ohne Namen  heilt, der Namensauftrag liest den Marker.
+  //   Name ohne Marker   bleibt. Der Namensauftrag steigt bei fehlendem
+  //                      task.handle sofort aus, „handle-fehlt" bleibt dran,
+  //                      und die Zusammenfuehrung mit dem UpPromote-Zwilling
+  //                      laeuft ueber den Marker, findet also nichts.
+  //
+  // So stand „schonachsarah — Sarah🧊" (123kvxedt6y) am 11.11.2026 da, mit
+  // einem zweiten Task derselben Person daneben. Deshalb zuerst der Marker.
+  const { doc, w, aufrufe } = await starte({
+    speicher: MIT_CLICKUP,
+    karte: { handle: 'timo__83' },
+  });
+  await warte(w, 600);
+  klick(w, chip(doc, 2, 'followup'));   // Timo, der Thread ohne Handle
+  await warte(w, 2500);
+  const puts = aufrufe
+    .map((a, i) => ({ a, i }))
+    .filter(({ a }) => a.methode === 'PUT' && a.data);
+  const marker = puts.find(({ a }) => /igfu-handle/.test(a.data.markdown_description || ''));
+  const name = puts.find(({ a }) => a.data.name);
+  pruefe('Beide Anfragen gehen raus', !!marker && !!name,
+    JSON.stringify(puts.map(({ a }) => Object.keys(a.data))));
+  pruefe('Der Marker zuerst', marker && name && marker.i < name.i,
+    JSON.stringify({ marker: marker && marker.i, name: name && name.i }));
+}
+
+gruppe('Partner-Ordner: eine dort geoeffnete Unterhaltung wird erkannt');
+{
+  // Der Partner-Ordner hat eine eigene Adressform, /direct/partnerships/t/…
+  // Das Muster in igOffenerThread() kannte bis 9.5 nur /direct/t/… — damit
+  // galt jede aus dem Partner-Ordner geoeffnete Unterhaltung als „keine
+  // offen": keine Kopfleiste, keine ClickUp-Karte, kein Handle aus der Karte,
+  // und das Postfach wurde nicht festgehalten.
+  //
+  // Am 11.11.2026 an „stocki_w" (4628076714140747) aufgefallen: die
+  // Unterhaltung war offen und hatte als einzige von zwoelf keinen
+  // Kopf-Eintrag.
+  const { doc, w, store } = await starte({
+    speicher: MIT_CLICKUP,
+    ig: [{ id: 'IGP', titel: 'Stocki', vorschau: 'Hallo', zeit: '2h' }],
+    igOffen: { tid: 'IGP', handle: 'stocki_w', titel: 'Stocki', partner: true },
+    tasks: [{ id: 'a1', name: 'stocki_w — Stocki', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: 'x\nigfu-ig: IGP\nigfu-handle: stocki_w' }],
+  });
+  await warte(w, 2500);
+  pruefe('Die Adresse des Partner-Ordners zaehlt als geoeffnet',
+    /\/direct\/partnerships\/t\//.test(w.location.pathname), w.location.pathname);
+  pruefe('Die Kopfleiste steht da',
+    !!doc.querySelector('.igfu-kopf'),
+    [...doc.querySelectorAll('.igfu-tags')].map((e) => e.dataset.tid).join(','));
+  // Die Adresse ist die einzige Quelle, die ohne die Zeile in der Liste
+  // auskommt — genau darum ging es bei stocki_w.
+  pruefe('Das Partner-Postfach ist hinterlegt',
+    (store.get('igfu:postfachart:v1') || {}).IGP === 'partner',
+    JSON.stringify(store.get('igfu:postfachart:v1') || {}));
+}
+
+gruppe('Partner-Ordner: die normale Adresse laesst das Postfach in Ruhe');
+{
+  // Der Umkehrschluss gilt nicht. Instagram liefert eine Partner-Unterhaltung
+  // auch unter /direct/t/<kennung> aus — und genau so baut das Skript seine
+  // eigenen Links, solange das Postfach unbekannt ist. Wuerde daraus „normal"
+  // gelernt, machte jeder Klick auf einen solchen Link den richtigen Eintrag
+  // kaputt.
+  const { w, store } = await starte({
+    speicher: Object.assign({}, MIT_CLICKUP, { 'igfu:postfachart:v1': { IGQ: 'partner' } }),
+    ig: [{ id: 'IGQ', titel: 'Stocki', vorschau: 'Hallo', zeit: '2h' }],
+    igOffen: { tid: 'IGQ', handle: 'stocki_w', titel: 'Stocki' },   // normale Adresse
+    tasks: [{ id: 'a1', name: 'stocki_w — Stocki', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: 'x\nigfu-ig: IGQ\nigfu-handle: stocki_w' }],
+  });
+  await warte(w, 2500);
+  pruefe('„partner" bleibt stehen',
+    (store.get('igfu:postfachart:v1') || {}).IGQ === 'partner',
+    JSON.stringify(store.get('igfu:postfachart:v1') || {}));
+}
+
+gruppe('Partner-Ordner: der geschriebene Link zeigt in den Partner-Ordner');
+{
+  // Gemeldet am 11.11.2026 an hiking_caro (123kvxecqha): in der Beschreibung
+  // stand fuer jede Unterhaltung die normale Adresse, auch fuer die im
+  // Partner-Ordner. Das Postfach war dem Skript bekannt — es wurde beim
+  // Schreiben des Links nur nicht gefragt.
+  const { w, aufrufe } = await starte({
+    speicher: Object.assign({}, MIT_CLICKUP, { 'igfu:postfachart:v1': { IGR: 'partner' } }),
+    ig: [{ id: 'IGR', titel: 'Stocki', vorschau: 'Hallo', zeit: '2h' }],
+    igOffen: { tid: 'IGR', handle: 'stocki_w', titel: 'Stocki', partner: true },
+    // Handle ja, Unterhaltung nein — das Skript haengt sie ueber den Handle an
+    // und schreibt dabei den Link.
+    tasks: [{ id: 'a1', name: 'stocki_w — Stocki', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: 'x\nigfu-handle: stocki_w' }],
+  });
+  await warte(w, 4000);
+  const texte = aufrufe
+    .filter((a) => a.methode === 'PUT' && a.data && a.data.markdown_description)
+    .map((a) => a.data.markdown_description);
+  const mitLink = texte.filter((t) => /instagram\.com\/direct\/[^)]*t\/IGR/.test(t));
+  pruefe('Ein Link auf die Unterhaltung wird geschrieben', mitLink.length > 0,
+    JSON.stringify(texte).slice(0, 200));
+  pruefe('Und er zeigt in den Partner-Ordner',
+    mitLink.every((t) => /direct\/partnerships\/t\/IGR/.test(t)),
+    JSON.stringify(mitLink).slice(0, 200));
+}
 
 console.log('\n' + (fehlgeschlagen
   ? `${fehlgeschlagen} von ${gelaufen} Prüfungen fehlgeschlagen`

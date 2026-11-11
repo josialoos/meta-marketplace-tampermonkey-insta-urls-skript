@@ -138,8 +138,15 @@ export async function starte({
     + igVerfassen + '</body>';
 
   const dom = new JSDOM(ig ? igBody : body, {
+    // Der Partner-Ordner hat eine eigene Adressform, /direct/partnerships/t/…
+    // Bis 9.5 lief jede Pruefung mit `partner: true` trotzdem unter der
+    // normalen Adresse — die Lage, in der das Skript die offene Unterhaltung
+    // gar nicht erkennt, kam im Pruefstand also nicht vor.
     url: ig
-      ? ('https://www.instagram.com/direct/' + (igOffen ? 't/' + igOffen.tid + '/' : 'inbox/'))
+      ? ('https://www.instagram.com/direct/'
+         + (igOffen
+            ? (igOffen.partner ? 'partnerships/' : '') + 't/' + igOffen.tid + '/'
+            : 'inbox/'))
       : ('https://business.facebook.com' + pfad),
     runScripts: 'outside-only',
     pretendToBeVisual: true,
@@ -282,6 +289,27 @@ export async function starte({
   }
   let naechste = 100;
 
+  // ClickUp speichert Markdown und liefert drei Fassungen zurueck, von denen
+  // keine der geschriebene Text ist. `markdown_description` traegt die
+  // Escapes, `description` und `text_content` sind gerendert — und beim
+  // Rendern verschwinden die Unterstriche eines Handles wie „_deneazy_",
+  // weil ein Unterstrich-Paar Kursivschrift bedeutet.
+  //
+  // Bis 9.4 gab der Pruefstand dieselbe Zeichenkette in alle Felder. Damit
+  // war der Rundlauf durch ClickUp buchstabengleich, und der Fehler, der am
+  // 11.11.2026 „_deneazy_" unauffindbar machte, konnte hier nicht auffallen:
+  // 635 Pruefungen waren gruen und keine einzige hat den Fall beruehrt.
+  //
+  // Ein Test setzt `beschreibung` wie bisher (dann wird sie als Markdown
+  // verstanden und gerendert dazugelegt) oder `beschreibungRoh`, wenn er die
+  // gerenderte Fassung ausdruecklich selbst bestimmen will.
+  const alsGerendert = (md) => String(md || '')
+    // Ein Paar *unescapter* Unterstriche ist Kursivschrift; die Zeichen
+    // dazwischen bleiben, die Unterstriche selbst fallen weg.
+    .replace(/(?<!\\)_((?:[^_\n]|\\_)+?)(?<!\\)_/g, '$1')
+    .replace(/\[([^\]\n]*)\]\([^)\n]*\)/g, '$1')
+    .replace(/\\([\\`*_{}\[\]()#+\-.!~>])/g, '$1');
+
   const alsApiTask = (t) => ({
     id: t.id,
     name: t.name,
@@ -289,8 +317,9 @@ export async function starte({
     status: { status: t.status, color: t.farbe },
     due_date: t.due || null,
     start_date: t.start || null,
-    description: t.beschreibung || '',
-    text_content: t.beschreibung || '',
+    markdown_description: t.beschreibung || '',
+    description: t.beschreibungRoh !== undefined ? t.beschreibungRoh : alsGerendert(t.beschreibung),
+    text_content: t.beschreibungRoh !== undefined ? t.beschreibungRoh : alsGerendert(t.beschreibung),
     tags: (t.tags || []).map((n) => ({ name: n })),
     priority: t.prio ? { priority: t.prio, color: '#f50000' } : null,
     custom_fields: t.custom_fields || [],

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      9.4
+// @version      9.5
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -432,7 +432,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '9.4';
+  const VERSION = '9.5';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -446,6 +446,20 @@
   // sind.
   const IG_HOST = 'www.instagram.com';
   const IG_PATH = /^\/direct(\/|$)/;
+  // Die geoeffnete Unterhaltung, in zwei Adressformen — beide sind in Gebrauch:
+  //
+  //     /direct/t/<kennung>                 aus der normalen Liste
+  //     /direct/partnerships/t/<kennung>    aus dem Partner-Ordner
+  //
+  // Bis 9.5 stand das Muster ohne die zweite Form an *zwei* Stellen im Skript,
+  // in igOffenerThread() und noch einmal in igOffeneUnterhaltung(). Eine aus
+  // dem Partner-Ordner geoeffnete Unterhaltung galt damit als „keine offen":
+  // keine Kopfleiste, keine ClickUp-Karte, kein Handle aus der Kontaktkarte —
+  // Partner-Unterhaltungen lernten also nie ihren echten Handle, sondern nur
+  // das, was Titel und Vorschau hergaben. Am 11.11.2026 an „stocki_w"
+  // (4628076714140747) aufgefallen. Deshalb steht das Muster jetzt genau
+  // einmal da.
+  const IG_OFFEN = /^\/direct\/(?:(partnerships)\/)?t\/([A-Za-z0-9_-]+)\/?$/;
   const isIG = () => location.hostname === IG_HOST && IG_PATH.test(location.pathname);
   // „Postfach" meint ab hier beide Listen. Alles darauf — Chips, Pillen, Panel,
   // Uebertragung — ist in beiden gleich.
@@ -854,7 +868,19 @@
   // Beim Schreiben entscheidet, wo das Skript gerade laeuft, nicht wie die
   // Kennung aussieht.
   function postfachLink(tid, aufInstagram) {
-    if (aufInstagram) return 'https://www.instagram.com/direct/t/' + encodeURIComponent(tid) + '/';
+    if (aufInstagram) {
+      // In welchem Ordner die Unterhaltung liegt, weiss das Skript — es zeigt
+      // es an der Pille „Nur Partner" an. Beim Schreiben des Links wurde es
+      // bis 9.5 nicht gefragt, und so stand in jeder Beschreibung die normale
+      // Adresse, auch fuer Partner-Unterhaltungen. Am 11.11.2026 an
+      // hiking_caro (123kvxecqha) gemeldet.
+      //
+      // Ist das Postfach unbekannt — auf einem frischen Rechner, solange die
+      // Listen nicht offen waren —, bleibt es bei der normalen Form. Die
+      // oeffnet auch Partner-Unterhaltungen, nur eben im falschen Ordner.
+      const ordner = postfachVon(tid) === 'partner' ? 'partnerships/' : '';
+      return 'https://www.instagram.com/direct/' + ordner + 't/' + encodeURIComponent(tid) + '/';
+    }
     const p = new URLSearchParams();
     const jetzt = new URLSearchParams(location.search);
     for (const k of ['asset_id', 'business_id']) {
@@ -874,7 +900,7 @@
     if (handle) z.push('Instagram: [@' + handle + '](https://www.instagram.com/' + handle + '/)', '');
     z.push('---', 'Vom Postfach-Skript verwaltet. Die folgenden Zeilen bitte nicht ändern.',
       (ig ? 'igfu-ig: ' : 'igfu-thread: ') + tid);
-    if (handle) z.push('igfu-handle: ' + handle);
+    if (handle) z.push('igfu-handle: ' + markerWert(handle));
     // Die Bild-ID des Profilfotos ist der Schluessel, ueber den sich ein im
     // Marketplace angelegter Task spaeter mit dieser Unterhaltung verbinden laesst.
     if (bildID) z.push('igfu-bild: ' + bildID);
@@ -1281,7 +1307,7 @@
   }
 
   function igOffeneUnterhaltung() {
-    const m = /^\/direct\/t\/([A-Za-z0-9_-]+)\/?$/.exec(location.pathname);
+    const m = IG_OFFEN.exec(location.pathname);
     if (!m) return null;
     const nach = igProfilLinks();
     // Das eigene Konto faellt zweifach raus: strukturell ueber die
@@ -1298,7 +1324,8 @@
     // eigene Konto.
     if (kandidaten.length !== 1) return null;
     const [handle, daten] = kandidaten[0];
-    return { tid: m[1], handle, titel: daten.titel || handle };
+    // Gruppe 1 ist „partnerships", die Kennung steht in Gruppe 2.
+    return { tid: m[2], handle, titel: daten.titel || handle };
   }
 
   // Das zuletzt gelesene Paar aus Kennung und Handle. Siehe karteStabil().
@@ -1390,11 +1417,29 @@
   // Dieselbe Person kann zwei Unterhaltungen haben — eine als Partner-Nachricht,
   // eine als normale DM. Beide gehoeren in denselben Task, also stehen dort auch
   // zwei Markerzeilen. Darum werden immer alle gelesen.
-  const threadsAusText = (text) => [...String(text || '')
+  // ClickUp gibt die Beschreibung nie so zurueck, wie sie geschrieben wurde.
+  // Die gerenderte Fassung (description, text_content) hat Unterstriche als
+  // Kursivschrift verschluckt, die markdown-Fassung hat sie escaped und
+  // E-Mails in Linkklammern gesetzt. Beide Fassungen muessen vor dem Auslesen
+  // zurueckgefuehrt werden, sonst lernt das Skript einen verstuemmelten Wert.
+  //
+  // Am 11.11.2026 gemeldet an „_deneazy_", das als „deneazy" im Marker stand
+  // und die Unterhaltung deshalb nicht mehr fand. Weil seit 9.2 der Task-Name
+  // dem Marker folgt, wandert so ein Schaden ausserdem in den Namen.
+  const markerText = (text) => String(text || '')
+    .replace(/\[([^\]\n]*)\]\([^)\n]*\)/g, '$1')
+    .replace(/\\([\\`*_{}\[\]()#+\-.!~>])/g, '$1');
+  // Beim Schreiben der Gegenweg: ein Unterstrich muss escaped sein, sonst
+  // macht ClickUp daraus Kursivschrift und beim naechsten Lesen ist er weg.
+  // Nur der Unterstrich — Handles bestehen laut HANDLE_MUSTER sonst nur aus
+  // Buchstaben, Ziffern und Punkt, und ein escapter Punkt waere unnoetiger
+  // Ballast in einer Zeile, die Josia auch von Hand liest.
+  const markerWert = (wert) => String(wert == null ? '' : wert).replace(/_/g, '\\_');
+  const threadsAusText = (text) => [...markerText(text)
     .matchAll(/igfu-thread:\s*([A-Za-z0-9_-]+)/g)].map((m) => m[1]);
   // Unterhaltungen auf instagram.com. Eigene Zeile, damit die Herkunft
   // eindeutig ist und nicht aus der Kennung geraten werden muss.
-  const igsAusText = (text) => [...String(text || '')
+  const igsAusText = (text) => [...markerText(text)
     .matchAll(/igfu-ig:\s*([A-Za-z0-9_-]+)/g)].map((m) => m[1]);
 
   // Mittag als Uhrzeit, damit ein Datum nicht durch Zeitzonen auf den Vortag rutscht
@@ -1652,8 +1697,8 @@
     const bisher = voll.markdown_description || voll.description || '';
     const muster = new RegExp('^' + feld + ':.*$', 'mi');
     const neu = muster.test(bisher)
-      ? bisher.replace(muster, feld + ': ' + wert)
-      : bisher.replace(/\s*$/, '') + '\n' + feld + ': ' + wert;
+      ? bisher.replace(muster, feld + ': ' + markerWert(wert))
+      : bisher.replace(/\s*$/, '') + '\n' + feld + ': ' + markerWert(wert);
     await cuRequest('PUT', '/task/' + task.taskId, { markdown_description: neu });
   }
 
@@ -1662,7 +1707,7 @@
     const bisher = voll.markdown_description || voll.description || '';
     if (new RegExp(feld + ':\\s*\\S').test(bisher)) return false;
     await cuRequest('PUT', '/task/' + task.taskId, {
-      markdown_description: bisher.replace(/\s*$/, '') + '\n' + feld + ': ' + wert,
+      markdown_description: bisher.replace(/\s*$/, '') + '\n' + feld + ': ' + markerWert(wert),
     });
     return true;
   }
@@ -1803,8 +1848,8 @@
     }
     z.push('---', 'Aus UpPromote übernommen. Die folgenden Zeilen bitte nicht ändern.');
     if (tid) z.push((igJetzt ? 'igfu-ig: ' : 'igfu-thread: ') + tid);
-    if (a.handle) z.push('igfu-handle: ' + a.handle);
-    if (a.email) z.push('igfu-mail: ' + a.email);
+    if (a.handle) z.push('igfu-handle: ' + markerWert(a.handle));
+    if (a.email) z.push('igfu-mail: ' + markerWert(a.email));
     const t = await cuRequest('POST', '/list/' + encodeURIComponent(cuListe()) + '/task', {
       name: taskName(a.handle, a.name || a.email || 'Unbekannt'),
       status: a.umsatz > 0 ? CU_STATUS_SALES : CU_STATUS_ONBOARD,
@@ -2197,8 +2242,12 @@
           if (neu.handleRaus) {
             const voll = await cuRequest('GET', '/task/' + t.taskId + '?include_markdown_description=true');
             const bisher = voll.markdown_description || voll.description || '';
+            // Nicht roh vergleichen: im gespeicherten Text steht der Handle
+            // escaped („\\_deneazy\\_"), ein roher Vergleich trifft ihn nie und
+            // der ueberholte Marker bliebe stehen. handleAusText() fuehrt die
+            // Zeile zurueck, bevor verglichen wird.
             const ohne = bisher.split('\n')
-              .filter((z) => !new RegExp('^\\s*igfu-handle:\\s*' + neu.handleRaus + '\\s*$').test(z))
+              .filter((z) => !(/^\s*igfu-handle:/.test(z) && handleAusText(z) === neu.handleRaus))
               .join('\n');
             if (ohne !== bisher) await cuRequest('PUT', '/task/' + t.taskId, { markdown_description: ohne });
           }
@@ -2542,22 +2591,22 @@
     await cuRequest('POST', '/task/' + taskId + '/tag/' + encodeURIComponent(name));
   }
 
-  const bildAusText = (text) => (String(text || '').match(/igfu-bild:\s*([0-9]{6,})/) || [])[1] || '';
+  const bildAusText = (text) => (markerText(text).match(/igfu-bild:\s*([0-9]{6,})/) || [])[1] || '';
   // Die Instagram-Benutzer-ID des Affiliates. Der einzige Schluessel, der eine
   // Person wirklich festhaelt: der Anzeigename aendert sich und wird aus der
   // Liste falsch gelesen, der Handle laesst sich umbenennen und steht in der
   // Zeilenliste gar nicht, die Thread-Kennung ist je Postfach eine andere. Die
   // ID ist fuer dieselbe Person in Partner-Nachrichten und DMs dieselbe.
-  const nutzerAusText = (text) => (String(text || '').match(/igfu-iguser:\s*([0-9]{3,})/) || [])[1] || '';
+  const nutzerAusText = (text) => (markerText(text).match(/igfu-iguser:\s*([0-9]{3,})/) || [])[1] || '';
   // Die E-Mail ist die Bruecke zu Shopify. An der Geschenkbestellung dort steht
   // nur die Adresse des Affiliates, kein Instagram-Handle.
-  const mailAusText = (text) => String((String(text || '')
+  const mailAusText = (text) => String((markerText(text)
     .match(/igfu-mail:\s*([^\s<>()]+@[^\s<>()]+)/) || [])[1] || '').toLowerCase();
   // Der Handle steht weiterhin im Task-Namen, zusaetzlich aber als eigene
   // Markerzeile. Die ist die massgebliche Bezugsstelle: eine Umbenennung in
   // ClickUp kann die Zuordnung damit nicht mehr stillschweigend zerreissen.
   const handleAusText = (text) => {
-    const h = (String(text || '').match(/igfu-handle:\s*([a-z0-9._]{2,30})/i) || [])[1] || '';
+    const h = (markerText(text).match(/igfu-handle:\s*([a-z0-9._]{2,30})/i) || [])[1] || '';
     return HANDLE_MUSTER.test(h.toLowerCase()) ? h.toLowerCase() : '';
   };
   // Kurze Pruefsumme, damit dieselbe Notiz nicht bei jedem Lauf erneut als
@@ -2569,13 +2618,17 @@
     for (let i = 0; i < t.length; i++) { h = ((h * 31) + t.charCodeAt(i)) | 0; }
     return (h >>> 0).toString(36);
   }
-  const notizAusText = (text) => (String(text || '').match(/igfu-notiz:\s*([a-z0-9]+)/i) || [])[1] || '';
+  const notizAusText = (text) => (markerText(text).match(/igfu-notiz:\s*([a-z0-9]+)/i) || [])[1] || '';
 
   // Versanddatum der Warenprobe, vom geplanten Shopify-Lauf eingetragen.
-  const wareAusText = (text) => (String(text || '').match(/igfu-ware:\s*(\d{4}-\d{2}-\d{2})/) || [])[1] || '';
+  const wareAusText = (text) => (markerText(text).match(/igfu-ware:\s*(\d{4}-\d{2}-\d{2})/) || [])[1] || '';
 
   function taskAufbereiten(t) {
-    const texte = [t.description, t.text_content, t.markdown_description];
+    // markdown_description zuerst: nur sie traegt den Wert noch vollstaendig,
+    // sobald markerText() die Escapes aufgeloest hat. Die beiden gerenderten
+    // Fassungen bleiben als Rueckfall fuer Tasks, die ClickUp ohne
+    // markdown_description liefert.
+    const texte = [t.markdown_description, t.description, t.text_content];
     const tidsIG = [];
     const tidsBS = [];
     for (const x of texte) {
@@ -3082,13 +3135,29 @@
         // wuerde den Namen aus UpPromote ueberschreiben. Genau darueber sind am
         // 14.10.2026 Vorschautexte und fremde Zeilennamen in die Titel geraten.
         // Ergaenzt wird hier nur der Handle davor.
+        // Erst der Marker, dann der Name. Das sind zwei Anfragen, und zwischen
+        // ihnen kann es schiefgehen — Netz weg, Rate-Limit, Token abgelaufen.
+        // Von den beiden moeglichen Halbzustaenden ist nur einer harmlos:
+        //
+        //   Marker ohne Namen  — der Namensauftrag holt den Namen beim
+        //                        naechsten Lauf nach, er liest ja den Marker.
+        //   Name ohne Marker   — bleibt fuer immer. Der Namensauftrag steigt
+        //                        bei `if (!task.handle) return;` sofort aus,
+        //                        der Tag „handle-fehlt" bleibt haengen, und
+        //                        der Task findet seinen UpPromote-Zwilling
+        //                        nie, weil die Zusammenfuehrung ueber den
+        //                        Marker laeuft.
+        //
+        // Genau so stand „schonachsarah — Sarah🧊" (123kvxedt6y) am
+        // 11.11.2026 da: Handle im Namen, keine Markerzeile, daneben ein
+        // zweiter Task mit demselben Handle aus UpPromote.
+        await markerEintragen(task, 'igfu-handle', h);
+        task.handle = h;
         const neuerName = taskName(h, rohTitel(task.titel));
         if (neuerName && neuerName !== task.titel) {
           await cuRequest('PUT', '/task/' + task.taskId, { name: neuerName });
           task.titel = neuerName;
         }
-        await markerEintragen(task, 'igfu-handle', h);
-        task.handle = h;
       }
     } else if (a.art === 'prio') {
       const urgent = a.wert === 'urgent';
@@ -4536,13 +4605,16 @@
   // Fuer Tasks ohne Unterhaltung: Name und Markerzeile direkt schreiben.
   async function handleDirektSetzen(task, h) {
     try {
+      // Marker vor Name, aus demselben Grund wie im 'handle'-Auftrag oben:
+      // „Name ohne Marker" ist der Halbzustand, der nicht mehr von allein
+      // weggeht.
+      await markerEintragen(task, 'igfu-handle', h);
+      task.handle = h;
       const neuerName = taskName(h, rohTitel(task.titel));
       if (neuerName && neuerName !== task.titel) {
         await cuRequest('PUT', '/task/' + task.taskId, { name: neuerName });
         task.titel = neuerName;
       }
-      await markerEintragen(task, 'igfu-handle', h);
-      task.handle = h;
       cuSpeichern();
       if (panelOpen) renderPanel();
       updateLauncher();
@@ -5694,8 +5766,22 @@
   // deshalb regelmaessig nachsetzen statt einmalig beim Laden.
   // ---------- Die geoeffnete Unterhaltung ----------
 
-  const igOffenerThread = () =>
-    (/^\/direct\/t\/([A-Za-z0-9_-]+)\/?$/.exec(location.pathname) || [])[1] || '';
+  const igOffenerThread = () => (IG_OFFEN.exec(location.pathname) || [])[2] || '';
+  // Die Adresse beweist das Partner-Postfach — und *nur* das.
+  //
+  // „partnerships" im Pfad kommt nur im Partner-Ordner vor, das ist ein
+  // sicherer Befund und die einzige Quelle, die ohne die Zeile in der Liste
+  // auskommt. Der Umkehrschluss gilt nicht: Instagram liefert eine
+  // Partner-Unterhaltung auch unter /direct/t/<kennung> aus. Am 11.11.2026
+  // nachgemessen an Nina Koch (1152747407315293) — Pille „Nur Partner", unter
+  // der normalen Adresse geoeffnet, und sie oeffnete sich anstandslos. Genau
+  // so baut das Skript seine eigenen Links auch heute noch. Wuerde das
+  // Fehlen von „partnerships" als „normal" gelernt, ueberschriebe jeder Klick
+  // auf einen alten Link das richtige Postfach mit dem falschen.
+  const igPostfachAusAdresse = () => {
+    const m = IG_OFFEN.exec(location.pathname);
+    return m && m[2] && m[1] ? 'partner' : '';
+  };
 
   // Die Ueberschrift mit dem Namen des Gegenuebers im Kopf der Unterhaltung.
   //
@@ -6014,6 +6100,10 @@
     if (!isIG() || !cuEingerichtet()) { if (alt) alt.remove(); return; }
     const tid = igOffenerThread();
     if (!tid) { if (alt) alt.remove(); return; }
+    // Die offene Unterhaltung verraet ihr Postfach ueber die Adresse, auch
+    // wenn ihre Zeile in keiner Liste steht. Genau der Fall von „stocki_w".
+    const ausAdresse = igPostfachAusAdresse();
+    if (ausAdresse) postfachMerken(tid, ausAdresse);
     const h2 = kopfUeberschrift();
     if (!h2) { if (alt) alt.remove(); return; }
 

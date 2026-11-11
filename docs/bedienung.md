@@ -363,6 +363,34 @@ Dazu kam am 10.11.2026 ein dritter Fehler:
   Wechsel der Unterhaltung an der falschen Kennung gelandet war. Betroffen
   waren zwei Datensätze; die Markerzeile blieb in beiden Fällen richtig.
 
+Und am 11.11.2026 ein vierter, der anders funktioniert als die drei darüber:
+
+- **Ein Handle mit umschließenden Unterstrichen verlor sie.** `_deneazy_` stand
+  in der Markerzeile richtig, aber ClickUp liest `_…_` als Kursivschrift und
+  gab beim Auslesen `deneazy` zurück. Das Skript lernte den verstümmelten
+  Handle, fand die Unterhaltung nicht mehr — und baute daraus auch noch einen
+  Anschreib-Link ins Leere. Unterstriche **mitten** im Handle sind harmlos;
+  betroffen sind nur führende und schließende.
+
+> Seit 9.5 liest das Skript die Markdown-Fassung zuerst und schreibt
+> Unterstriche escaped. Datensätze, deren Markerzeile noch heil ist, erholen
+> sich damit von allein. War der Handle schon in der Markerzeile selbst
+> beschädigt, muss er einmal von Hand zurückgesetzt werden — in dem Fall weiß
+> niemand mehr, wo die Unterstriche standen.
+
+Und ein fünfter, der nichts mit Namen zu tun hat, sondern mit dem Ordner:
+
+- **Im Partner-Ordner geöffnete Unterhaltungen wurden gar nicht gesehen.** Der
+  Partner-Ordner hat eine eigene Adresse (`/direct/partnerships/t/…`), und das
+  Skript kannte nur die normale. Folge: keine Pillen im Kopf, keine
+  ClickUp-Karte — und der **Handle wurde dort nie aus der Kontaktkarte
+  gelesen**. Partner bekamen nur, was Titel und Vorschau hergaben. Das erklärt
+  einen Teil der Tasks unter „Handles nachtragen".
+- **Die geschriebenen Links zeigten immer in das normale Postfach**, auch bei
+  Partner-Unterhaltungen. Seit 9.5 fragt das Skript das Postfach, bevor es den
+  Link baut. Ist es auf diesem Rechner noch nicht bekannt, bleibt es bei der
+  normalen Adresse — die öffnet die Unterhaltung auch, nur im anderen Ordner.
+
 Der Menüpunkt **„Namen richtigstellen"** schneidet den Vorschautext heraus,
 entfernt falsche Handles — auch aus der Beschreibung — und **setzt einen Namen,
 der der Markerzeile widerspricht, auf die Markerzeile zurück**. Die Tasks mit
