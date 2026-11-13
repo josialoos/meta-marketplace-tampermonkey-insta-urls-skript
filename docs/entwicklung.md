@@ -232,6 +232,50 @@ bestehenden Task passt. Tasks ohne Handle und ohne `igfu-mail` sind damit nicht
 erkennbar — die würden doppelt angelegt. Vor einem Import also erst die Lücken
 füllen.
 
+#### Unsichtbare Tasks sichtbar machen (9.7)
+
+`importLuecke()` ordnet ausschließlich über `handleVonTask(t)` und `t.mail` zu.
+Ein Task, dem **beides** fehlt, gilt als nicht vorhanden — auch auf einem
+Endstatus wie `ignore`, auch als `karteileiche`. `upImport()` legt die Person
+dann neu an, und in ClickUp sieht das aus, als wäre ein abgeschlossener Task
+wieder herausgeholt worden. Am 13.11.2026 im Prüfstand nachgemessen: ein Task
+„Mara Kell" auf `ignore` ohne Markerzeilen, dazu ein aktiver Affiliate
+`marakell.runs` — und der Import erzeugt einen zweiten Task.
+
+**Der Tag `karteileiche` ändert daran nichts.** Die Schleife in `importLuecke()`
+sammelt Handles und Mails über `alleTasks()`, ohne `t.leiche` zu prüfen. Eine
+Leiche zählt deshalb nur dann als vergeben, wenn sie einen der beiden Schlüssel
+trägt — der Tag allein ist für den Import unsichtbar. Wer in der Doku etwas
+anderes liest, liest eine Fassung vor 9.7.
+
+**Über den Namen zuzuordnen ist ausgeschlossen.** Das ist seit 7.5 bewusst
+abgeschafft (siehe `handleAusTaskname` weiter oben), und es bleibt abgeschafft.
+Gebaut wurde deshalb **Sichtbarkeit statt Raten**, an drei Stellen:
+
+| Stelle | Was sie zeigt |
+|---|---|
+| `ohneSchluessel()` | alle Tasks ohne Handle **und** ohne Mail |
+| `ohneSchluesselStill()` | davon die auf Endstatus oder mit `karteileiche` — die, die in keiner anderen Liste stehen |
+| Vorschau in `upImport()` | beide Zahlen in derselben Meldung wie die Lücke |
+| Standzeile `standAnzeigen()` | `ohneSchluessel().length`, ohne Zähllauf |
+| Panel `zeigeOhneSchluessel()` | Abschnitt „Weder Handle noch Mail", direkt unter „Handles nachtragen" |
+
+`ohneHandle()` und `ohneSchluesselStill()` überschneiden sich nicht: die erste
+filtert Endstatus und Leichen heraus, die zweite zeigt genau die. Ein Task ohne
+Handle, aber mit Mail steht nur unter „Handles nachtragen" — er ist ja
+zuzuordnen.
+
+`ohneSchluessel()` hat bewusst **keine `cuEingerichtet()`-Schranke**: ohne
+Einrichtung ist `cuTasks` ohnehin leer, und eine Schranke hätte nur einen
+stillen Weg zu einer falschen Null geschaffen. Die Standzeile zeigt die Zahl
+deshalb auch ohne UpPromote-Token — sie kommt aus dem Task-Spiegel, nicht aus
+UpPromote.
+
+Der Abschnitt im Panel ist **Liste ohne Eingabefeld**. Diese Tasks sind
+abgeschlossen; was dort nachgetragen wird, entscheidet Josia im Task selbst.
+Mehr als 20 Einträge werden abgeschnitten („und N weitere"), damit das Panel
+nicht zur Tapete wird.
+
 Neue Tasks bekommen Titel `handle — Name`, Status nach der Leiter
 (`ongeboardet`, bei Provision `hat sales`), die Instagram-Zeile und die Marker
 `igfu-handle` und `igfu-mail`. Ohne Handle zusätzlich den Tag `handle-fehlt`.

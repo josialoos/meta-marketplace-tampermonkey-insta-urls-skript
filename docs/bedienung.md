@@ -643,6 +643,12 @@ dabei nichts an.
 > außerhalb des CRM lagen. Aufgefallen ist es erst, als eine davon sich selbst
 > gemeldet hat.
 
+Daneben steht seit 9.7 die Gegenrichtung: **wie viele Tasks weder Handle noch
+Mailadresse tragen** und deshalb beim Zuordnen unsichtbar sind. Diese Zahl
+braucht keinen Zähllauf — sie steht im gespiegelten Task-Stand — und sie
+erklärt, warum die Lücke darüber zu groß aussehen kann: jeder dieser Tasks kann
+einen der angeblich fehlenden Affiliates in Wahrheit schon abdecken.
+
 ---
 
 ## Notizen aus UpPromote
@@ -697,9 +703,27 @@ der Status spielt dabei keine Rolle. Ein Task auf `ignore` mit Handle oder
 Mailadresse gilt als vergeben und bleibt in Ruhe. Fehlt ihm **beides**, kann
 der Import ihn nicht erkennen und legt die Person als neuen Task an, mit
 `ongeboardet` oder `hat sales`. Das ist kein Herausholen — der alte Task steht
-unverändert auf `ignore` —, es sieht in ClickUp aber genauso aus. Gegenmittel:
-Handle nachtragen oder den Tag `karteileiche` dranhängen. (Nachgemessen am
-13.11.2026.)
+unverändert auf `ignore` —, es sieht in ClickUp aber genauso aus. (Nachgemessen
+am 13.11.2026.)
+
+**Der Tag `karteileiche` allein hilft dagegen nicht.** Auch eine Leiche hält
+den Affiliate nur zurück, wenn sie einen Handle oder eine Mailadresse trägt —
+der Import liest beide Felder, nicht den Tag. Das einzige Gegenmittel ist also,
+**Handle oder Mailadresse im Task nachzutragen**.
+
+**Seit 9.7 sagt die Vorschau es dir.** Der erste Klick auf „Affiliates
+importieren" nennt zusätzlich, wie viele Tasks im CRM weder Handle noch
+Mailadresse tragen und deshalb beim Zuordnen unsichtbar sind — und wie viele
+davon auf einem Endstatus stehen oder `karteileiche` sind. Die erste Gruppe
+findest du unter „Handles nachtragen", die zweite unter dem neuen Abschnitt
+**„Weder Handle noch Mail"** ganz oben im Panel.
+
+**Der Abschnitt „Weder Handle noch Mail"** steht direkt unter „Handles
+nachtragen" und listet genau die Tasks, die sonst nirgends auftauchen: „Handles
+nachtragen" lässt Endstatus und Karteileichen bewusst aus, weil dort der Handle
+für die Arbeit nicht mehr gebraucht wird — für den Import aber sehr wohl. Jeder
+Eintrag ist ein Link in den Task; was dort nachgetragen wird, entscheidest du.
+Ein Eingabefeld gibt es hier absichtlich nicht.
 
 **Nicht jeder bekommt einen Unterhaltungs-Link.** Viele Affiliates wurden nie
 über das Partner-Postfach angeworben — dann gibt es keine Unterhaltung, und

@@ -1152,20 +1152,42 @@ gruppe('Panel: unsichtbare Tasks auf Endstatus stehen in einer eigenen Liste');
       { id: 'a1', name: 'Mara Kell', status: 'ignore', farbe: '#e5484d',
         beschreibung: 'Von Hand angelegt, keine Markerzeilen.', tags: [] },
       { id: 'a2', name: 'Eine Leiche', status: 'ongeboardet', farbe: '#b660e0',
-        beschreibung: 'ohne Marker', tags: [{ name: 'karteileiche' }] },
+        beschreibung: 'ohne Marker', tags: ['karteileiche'] },
       { id: 'a3', name: 'Nur per Mail', status: 'ongeboardet', farbe: '#b660e0',
         beschreibung: 'x\nigfu-mail: nm@b.de', tags: [] },
+      // Der entscheidende Gegenfall: weder Handle noch Mail, aber auf einem
+      // offenen Status. Er gehoert nach „Handles nachtragen" und *nicht* in
+      // die neue Liste — ohne ihn merkt keine Pruefung, wenn der Filter auf
+      // Endstatus und Karteileiche wegfaellt.
+      { id: 'a4', name: 'Noch Offen', status: 'angeschrieben', farbe: '#87909e',
+        beschreibung: 'ohne Marker', tags: [] },
     ],
   });
   await warte(w, 900);
   klick(w, doc.querySelector('#igfu-launch'));
   await warte(w, 600);
+  // Gezielt die Liste unter der Ueberschrift lesen, nicht das ganze Panel:
+  // „Nur per Mail" steht zu Recht unter „Handles nachtragen", und eine
+  // Suche ueber das ganze Panel koennte die beiden nicht auseinanderhalten.
+  const unterTitel = (text) => {
+    const h = [...doc.querySelectorAll('.igfu-section-title')].find((x) => x.textContent === text);
+    let n = h && h.nextElementSibling;
+    while (n && n.tagName !== 'OL') n = n.nextElementSibling;
+    return (n && n.textContent) || '';
+  };
   const titel = [...doc.querySelectorAll('.igfu-section-title')].map((x) => x.textContent);
   const panel = (doc.querySelector('#igfu-panel') || {}).textContent || '';
+  const liste = unterTitel('Weder Handle noch Mail');
   pruefe('Der Abschnitt ist da', titel.includes('Weder Handle noch Mail'), JSON.stringify(titel));
-  pruefe('Mara Kell steht darin', /Mara Kell/.test(panel), panel.slice(0, 300));
-  pruefe('Die Karteileiche auch', /Eine Leiche/.test(panel), panel.slice(0, 300));
-  pruefe('Der Task mit Mail nicht', !/Nur per Mail/.test(panel), panel.slice(0, 300));
+  pruefe('Mara Kell steht darin', /Mara Kell/.test(liste), liste.slice(0, 300));
+  pruefe('Die Karteileiche auch', /Eine Leiche/.test(liste), liste.slice(0, 300));
+  pruefe('Der Task mit Mail nicht', !/Nur per Mail/.test(liste), liste.slice(0, 300));
+  pruefe('Der offene Task ohne beides auch nicht',
+    !/Noch Offen/.test(liste), liste.slice(0, 300));
+  pruefe('Beide stehen weiter unter „Handles nachtragen"',
+    /Nur per Mail/.test(unterTitel('Handles nachtragen'))
+      && /Noch Offen/.test(unterTitel('Handles nachtragen')),
+    unterTitel('Handles nachtragen').slice(0, 300));
   pruefe('Und der Hinweis sagt, dass karteileiche allein nicht reicht',
     /karteileiche-Tag allein genügt nicht/.test(panel), panel.slice(0, 400));
 }
