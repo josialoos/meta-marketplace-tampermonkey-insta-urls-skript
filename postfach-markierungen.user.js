@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      9.5
+// @version      9.6
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -432,7 +432,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '9.5';
+  const VERSION = '9.6';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -579,6 +579,10 @@
   // Handles, die von UpPromote abweichen. Ergebnis der Gegenprobe, nicht mehr —
   // geaendert wird nichts automatisch.
   const HANDLE_ZWEIFEL = 'clickup:handle-zweifel:v1';
+  // Unterhaltungen, die am falschen Task haengen. Ergebnis des Prueflaufs aus
+  // 9.6, der nur liest. Geloest wird jeder Fall von Hand — das Skript kann
+  // nicht wissen, welche der beiden Seiten die richtige ist.
+  const CU_WIDERSPRUECHE = 'clickup:widersprueche:v1';
   // Was der letzte volle Durchlauf gesehen hat. Die Diagnosezeile im Panel
   // zaehlt nur die Zeilen, die Meta gerade im Dokument haelt — nach einem
   // Durchlauf sind das wieder ein Dutzend, und damit sagt sie nichts darueber,
@@ -2221,6 +2225,144 @@
       updateLauncher();
     } catch (e) {
       toast('Handle-Prüfung: ' + e.message);
+    } finally {
+      cuLaeuft = false;
+    }
+  }
+
+  // ---------- Falsch verbundene Unterhaltungen ----------
+  //
+  // Name und Markerzeile eines Tasks sind seit 9.2 und 9.5 gegeneinander
+  // abgesichert. Die Verbindung Unterhaltung↔Task ist es nicht: sie entsteht
+  // einmal — beim Anlegen, beim Verbinden, ueber Bild-ID oder Benutzer-ID —
+  // und danach korrigiert sie niemand mehr. Einmal falsch gehaengt, bleibt sie
+  // fuer immer, und der Task traegt dann die UpPromote-Daten der einen und die
+  // Unterhaltung der anderen Person. Drei belegte Faelle:
+  //
+  //   limit_dani (𝓓𝓪𝓷𝓲𝓮𝓵𝓪) hing an „livingwithcrazydogs — Michelle Mehnen"
+  //     (123kvxecqjt). Am 13.11.2026 getrennt, Daniela hat jetzt 123kvxehk0z.
+  //   tina_gerhard_on_bike haengt an Biancas Task 123kvxegy2j
+  //     (igfu-ig: 100750761324067) — am 13.11.2026 noch offen.
+  //   branded_content_ad, Instagrams System-Konto, hing an Opel
+  //     (123kvxeh85t). Am 11.11.2026 entfernt.
+  //
+  // Diese Pruefung ist die Bulk-Fassung des Widerspruchs, den der Auftrag
+  // 'handle' schon fuer den Einzelfall meldet („Handle-Widerspruch bei …").
+  // Dessen Vorsicht wird mit uebernommen: gemeldet, nicht geloest. Welche der
+  // beiden Seiten stimmt, kann das Skript nicht wissen — bei Daniela war die
+  // Unterhaltung richtig und der Task falsch, bei einem von Hand
+  // richtiggestellten Handle ist es umgekehrt.
+  //
+  // Drei Gruende, und zwei Signale, die ausdruecklich *nicht* gewertet werden:
+  //
+  //   'nutzer'  Die Benutzer-ID der Unterhaltung (users[0].id aus den Props
+  //             der Zeile) weicht von igfu-iguser des Tasks ab. Das ist der
+  //             harteste Befund, den es hier gibt: die ID kommt nie aus
+  //             gelesenem Text, sie ist in beiden Postfaechern dieselbe, und
+  //             handleMerken() ueberschreibt sie nie. Weichen zwei IDs
+  //             voneinander ab, sind es zwei Personen. Punkt.
+  //
+  //   'handle'  Der Handle der Unterhaltung weicht von der Markerzeile ab.
+  //             Gewichtet nach `quelle`: 'karte', 'api' und 'hand' sind
+  //             ausgelesen oder eingetragen und zaehlen. 'vorschau' und
+  //             'titel' sind geraten — „flo" ist handle-foermig und doch der
+  //             Anzeigename von flo.auf.zeit (siehe scanRows). Aus denen
+  //             entstuende ein Fehlalarm je Vorname, und eine Liste mit
+  //             Fehlalarmen liest niemand zweimal.
+  //
+  //             Ein schwacher Handle zaehlt aber doch, wenn er die
+  //             Markerzeile eines *anderen* lebenden Tasks ist. Dann ist er
+  //             nicht geraten, sondern in ClickUp als Tatsache hinterlegt,
+  //             und die Unterhaltung haengt beweisbar am falschen der beiden.
+  //             Genau diese Lage ist tina_gerhard_on_bike: ihr Handle steht
+  //             auf instagram.com im Zeilentitel, also schwach, und trotzdem
+  //             soll der Fall auftauchen.
+  //
+  //             Eine Karteileiche belegt dabei nichts. Sie ist absichtlich
+  //             stillgelegt, und ihr Handle ist ueblicherweise derselbe wie
+  //             der ihres lebenden Zwillings — der den Beweis dann ohnehin
+  //             traegt. Sie mitzuzaehlen bringt also nichts dazu und oeffnet
+  //             nur eine zweite Quelle fuer Fehlalarme.
+  //
+  //   'doppelt' Zwei lebende Tasks tragen dieselbe Benutzer-ID. Dann ist
+  //             entweder einer eine Dublette oder einer haengt an der
+  //             falschen Person; beides gehoert hierher. Die vorhandene
+  //             Dubletten-Erkennung in cuTasksLaden deckt das nicht ab, sie
+  //             kennt nur Unterhaltung und Handle — und ein Task ohne Handle
+  //             faellt dort durch.
+  //
+  // Nicht gewertet wird igfu-bild. Die Bild-ID wechselt, sobald jemand sein
+  // Profilfoto aendert, und das tun Creator oft. Eine Abweichung dort heisst
+  // „neues Foto", nicht „falsche Person" — als Befund waere sie fast immer
+  // falsch und wuerde die echten drei zudecken.
+  //
+  // Nicht gewertet wird auch die Abwesenheit: fehlt im Seitenspeicher der
+  // Handle oder die ID zu einer Kennung, ist das kein Befund. Der Speicher
+  // lernt nur, was die Liste gerade gezeigt hat — Abwesenheit beweist dort
+  // nichts.
+  function widersprueche() {
+    const funde = [];
+    const alle = alleTasks();
+    // Welche Handles in ClickUp als Markerzeile hinterlegt sind. Nur lebende
+    // Tasks: eine Karteileiche ist absichtlich stillgelegt, ihr Handle darf
+    // keinen Befund tragen.
+    const markerHandles = new Set();
+    for (const t of alle) { if (!t.leiche && t.handle) markerHandles.add(t.handle); }
+    const starkGenug = (w) => (GUETE[w.quelle] || 0) >= GUETE.karte
+      || markerHandles.has(w.handle);
+    for (const t of alle) {
+      if (t.leiche) continue;
+      const imTask = handleVonTask(t);
+      for (const tid of (t.tids || [])) {
+        const w = handleVon(tid) || {};
+        // Der Link wird nach der Markerzeile gebaut, nicht danach, wo das
+        // Skript gerade laeuft: der Befund soll auch nachsehbar sein, wenn
+        // Josia ihn im alten Postfach aufruft.
+        const link = postfachLink(tid, (t.tidsIG || []).includes(tid));
+        if (t.nutzer && w.nutzer && String(w.nutzer) !== String(t.nutzer)) {
+          funde.push({ grund: 'nutzer', taskId: t.taskId, titel: t.titel, url: t.url,
+            tid, link, imTask: String(t.nutzer), imPostfach: String(w.nutzer) });
+        }
+        if (imTask && w.handle && w.handle !== imTask && starkGenug(w)) {
+          funde.push({ grund: 'handle', taskId: t.taskId, titel: t.titel, url: t.url,
+            tid, link, imTask, imPostfach: w.handle, quelle: w.quelle || '' });
+        }
+      }
+    }
+    const nachNutzer = {};
+    for (const t of alle) {
+      if (t.leiche || !t.nutzer) continue;
+      const id = String(t.nutzer);
+      const schon = nachNutzer[id];
+      if (schon && schon.taskId !== t.taskId) {
+        funde.push({ grund: 'doppelt', taskId: t.taskId, titel: t.titel, url: t.url,
+          imPostfach: id, andere: { taskId: schon.taskId, titel: schon.titel, url: schon.url } });
+      } else if (!schon) {
+        nachNutzer[id] = t;
+      }
+    }
+    return funde;
+  }
+
+  // Der Prueflauf selbst. Er liest den Stand aus ClickUp neu — ein GET, damit
+  // der Spiegel nicht von vorgestern ist — und schreibt das Ergebnis in den
+  // GM-Speicher. Kein PUT, kein POST, kein Tag, kein Name: das ist der ganze
+  // Zweck dieses Knopfes. Entschieden wird jeder Fall von Hand.
+  async function verbindungenPruefen() {
+    if (!cuEingerichtet()) { toast('Bitte erst ClickUp einrichten.'); return; }
+    if (cuLaeuft) { toast('Es läuft gerade eine Übertragung, bitte kurz warten.'); return; }
+    cuLaeuft = true;
+    try {
+      await cuTasksLaden();
+      const funde = widersprueche();
+      GM_setValue(CU_WIDERSPRUECHE, { stand: Date.now(), liste: funde });
+      toast(funde.length
+        ? funde.length + ' Unterhaltung(en) passen nicht zu ihrem Task — die Liste steht im Panel.'
+        : 'Keine falsch verbundene Unterhaltung gefunden.');
+      if (panelOpen) renderPanel();
+      updateLauncher();
+    } catch (e) {
+      toast('Verbindungen: ' + e.message);
     } finally {
       cuLaeuft = false;
     }
@@ -4400,6 +4542,12 @@
         async () => { await handlesPruefen(); standAnzeigen(); },
         'Vergleicht den Handle jedes Tasks mit dem, der bei UpPromote hinterlegt ist — '
         + 'zugeordnet über die Mailadresse. Ändert nichts, listet nur die Abweichungen.'),
+      button('igfu-link', 'Falsch verbundene Unterhaltungen finden',
+        async () => { await verbindungenPruefen(); standAnzeigen(); },
+        'Sucht Tasks, an denen die Unterhaltung einer anderen Person hängt — so wie '
+        + 'Danielas Unterhaltung an Michelles Task. Verglichen werden Benutzer-ID und '
+        + 'Handle. Es wird nur gelesen: nichts umbenannt, nichts abgehängt, kein Tag '
+        + 'gesetzt. Jeder Fund steht als Liste im Panel, entschieden wird von Hand.'),
       button('igfu-link', 'Namen richtigstellen',
         async () => { await namenReparieren(); standAnzeigen(); },
         'Schneidet den Vorschautext aus Task-Namen heraus („… PersonYou: Hi Beispiel,") und '
@@ -4835,6 +4983,53 @@
     bodyEl.appendChild(ul);
   }
 
+  // Befunde des Prueflaufs „Falsch verbundene Unterhaltungen finden".
+  //
+  // Hier steht ausdruecklich kein Knopf, der etwas richtet. Zum Loesen gehoert
+  // bei jedem Fall eine Entscheidung, die das Skript nicht treffen kann: bei
+  // Daniela musste die Unterhaltung weg vom Task und an einen neuen, bei
+  // branded_content_ad musste sie nur weg. Ein „Reparieren" haette am
+  // 13.11.2026 in beiden Faellen das Falsche getan.
+  function zeigeWidersprueche() {
+    const d = GM_getValue(CU_WIDERSPRUECHE, null);
+    if (!d || !d.liste || !d.liste.length) return;
+    bodyEl.appendChild(el('h3', 'igfu-section-title',
+      'Unterhaltung passt nicht zum Task (' + d.liste.length + ')'));
+    bodyEl.appendChild(el('p', 'igfu-empty',
+      'Diese Unterhaltungen hängen vermutlich am falschen Task. Öffne beides und '
+      + 'entscheide, welche Seite stimmt: war der Task von Anfang an eine andere Person, '
+      + 'gehört die Unterhaltung abgehängt und an den richtigen Task — hast du den Handle '
+      + 'von Hand richtiggestellt, stimmt der Task und der Seitenspeicher ist veraltet. '
+      + 'Das Skript ändert hier nichts, auch nicht auf Klick.'));
+    const ul = el('ol', 'igfu-list');
+    for (const f of d.liste.slice(0, 30)) {
+      const li = el('li', 'igfu-item');
+      const top = el('div', 'igfu-item-top');
+      top.appendChild(button('igfu-name', rohTitel(f.titel || 'Ohne Namen'),
+        () => window.open(f.url, '_blank', 'noopener'), 'Task in ClickUp öffnen'));
+      if (f.grund === 'doppelt') {
+        top.append(
+          el('span', 'igfu-meta', 'teilt Benutzer-ID ' + f.imPostfach + ' mit'),
+          button('igfu-name', rohTitel((f.andere && f.andere.titel) || 'Ohne Namen'),
+            () => window.open(f.andere && f.andere.url, '_blank', 'noopener'),
+            'Den anderen Task in ClickUp öffnen'),
+        );
+      } else {
+        top.append(
+          el('span', 'igfu-meta', f.grund === 'nutzer'
+            ? 'Unterhaltung: Benutzer-ID ' + f.imPostfach + '  →  im Task steht ' + f.imTask
+            : 'Unterhaltung: @' + f.imPostfach + '  →  im Task steht @' + f.imTask),
+          button('igfu-link', 'Unterhaltung öffnen',
+            () => window.open(f.link, '_blank', 'noopener'),
+            'Öffnet die Unterhaltung, die an diesem Task hängt'),
+        );
+      }
+      li.appendChild(top);
+      ul.appendChild(li);
+    }
+    bodyEl.appendChild(ul);
+  }
+
   // Der Stand des Umzugs von der Business Suite auf instagram.com.
   function zeigeUmzug() {
     const offen = nurAltlink();
@@ -4934,6 +5129,7 @@
 
     if (isInbox()) {
       zeigeHandleZweifel();
+      zeigeWidersprueche();
       zeigeDubletten();
       zeigeUmzug();
       zeigeOhneTask();

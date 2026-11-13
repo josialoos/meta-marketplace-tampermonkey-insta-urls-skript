@@ -2687,6 +2687,119 @@ gruppe('Ohne Abweichung steht im Panel nichts davon');
   pruefe('Kein Abschnitt', !/Handle weicht von UpPromote ab/.test(doc.querySelector('.igfu-body').textContent || ''));
 }
 
+// Der Prueflauf aus 9.6. Der Bestand hier bildet die drei belegten Faelle nach:
+// a3 ist Danielas Unterhaltung an Michelles Task (Handle aus der Kontaktkarte),
+// a2 ist tina_gerhard_on_bike an Biancas Task (Handle nur aus dem Zeilentitel,
+// also schwach — und doch ein Befund, weil ClickUp den Handle als Markerzeile
+// von a9 kennt), a5 ist die abweichende Benutzer-ID wie bei branded_content_ad
+// an Opel. a1 und a10 sind die Gegenprobe: geratene Handles, die nichts belegt.
+const WIDER_TASKS = [
+  // Schwach geraten, und ClickUp kennt den Handle nirgends: kein Befund.
+  { id: 'a1', name: 'nora.schmitt — Nora', status: 'ongeboardet', farbe: '#87909e',
+    beschreibung: 'x\nigfu-ig: W1\nigfu-handle: nora.schmitt' },
+  { id: 'a2', name: 'bianca.beyondlimits — Bianca', status: 'ongeboardet', farbe: '#87909e',
+    beschreibung: 'x\nigfu-ig: W2\nigfu-handle: bianca.beyondlimits' },
+  // Traegt den Handle, der a2 ueberfuehrt — ohne eigene Unterhaltung.
+  { id: 'a9', name: 'tina_gerhard_on_bike — Tina', status: 'angeschrieben', farbe: '#87909e',
+    beschreibung: 'x\nigfu-handle: tina_gerhard_on_bike' },
+  { id: 'a3', name: 'livingwithcrazydogs — Michelle Mehnen', status: 'ongeboardet', farbe: '#87909e',
+    beschreibung: 'x\nigfu-thread: W3\nigfu-handle: livingwithcrazydogs' },
+  // Stimmt ueberein. Der Handle ist absichtlich keiner aus THREADS, sonst
+  // haengt die normale Zuordnungsautomatik hier eine Unterhaltung an.
+  { id: 'a4', name: 'zoe.radelt — Zoe', status: 'ongeboardet', farbe: '#87909e',
+    beschreibung: 'x\nigfu-thread: W4\nigfu-handle: zoe.radelt' },
+  { id: 'a5', name: 'opel — Opel', status: 'ongeboardet', farbe: '#87909e',
+    beschreibung: 'x\nigfu-thread: W5\nigfu-handle: opel\nigfu-iguser: 100000000001' },
+  { id: 'a6', name: 'alt.konto — Alt', status: 'ongeboardet', farbe: '#87909e',
+    beschreibung: 'x\nigfu-thread: W6\nigfu-handle: alt.konto', tags: ['karteileiche'] },
+  { id: 'a7', name: 'eins.person — Eins', status: 'ongeboardet', farbe: '#87909e',
+    beschreibung: 'x\nigfu-thread: W7\nigfu-handle: eins.person\nigfu-iguser: 100000000009' },
+  { id: 'a8', name: 'zwei.person — Zwei', status: 'ongeboardet', farbe: '#87909e',
+    beschreibung: 'x\nigfu-thread: W8\nigfu-handle: zwei.person\nigfu-iguser: 100000000009' },
+  // Der geratene Handle steht nur an einer Karteileiche: kein Befund.
+  { id: 'a10', name: 'rena.kls — Rena', status: 'ongeboardet', farbe: '#87909e',
+    beschreibung: 'x\nigfu-ig: W10\nigfu-handle: rena.kls' },
+  { id: 'a11', name: 'geist.konto — Geist', status: 'ongeboardet', farbe: '#87909e',
+    beschreibung: 'x\nigfu-handle: geist.konto', tags: ['karteileiche'] },
+];
+const WIDER_HANDLES = {
+  W1: { handle: 'nowhere.person', quelle: 'titel' },
+  W2: { handle: 'tina_gerhard_on_bike', quelle: 'titel' },
+  W3: { handle: 'limit_dani', quelle: 'karte' },
+  W4: { handle: 'zoe.radelt', quelle: 'karte' },
+  W5: { nutzer: '100750761324067' },
+  W6: { handle: 'limit_dani', quelle: 'karte' },
+  W10: { handle: 'geist.konto', quelle: 'titel' },
+};
+
+gruppe('Falsch verbundene Unterhaltungen finden');
+{
+  const { doc, w, store, aufrufe } = await starte({
+    speicher: { ...MIT_CLICKUP, 'clickup:handles:v1': WIDER_HANDLES },
+    tasks: WIDER_TASKS,
+  });
+  // Nur was dieser Knopf selbst ausloest, zaehlt. Vorher laeuft die normale
+  // Zuordnung, und die darf schreiben.
+  const vorher = aufrufe.length;
+  await klickKnopf(w, doc, 'Falsch verbundene Unterhaltungen finden');
+  await warte(w, 2000);
+  const d = store.get('clickup:widersprueche:v1') || { liste: [] };
+  const art = (g) => d.liste.filter((x) => x.grund === g);
+  pruefe('Vier Befunde', d.liste.length === 4,
+    JSON.stringify(d.liste.map((x) => x.grund + ':' + x.taskId)));
+  pruefe('Der starke Handle-Widerspruch wird gefunden',
+    art('handle').some((x) => x.taskId === 'a3' && x.imPostfach === 'limit_dani'
+      && x.imTask === 'livingwithcrazydogs'), JSON.stringify(art('handle')));
+  pruefe('tina_gerhard_on_bike wird gefunden, obwohl der Handle nur aus dem Zeilentitel stammt',
+    art('handle').some((x) => x.taskId === 'a2' && x.imPostfach === 'tina_gerhard_on_bike'),
+    JSON.stringify(art('handle')));
+  pruefe('Ein geratener Handle, den ClickUp nicht kennt, löst keinen Fehlalarm aus',
+    !d.liste.some((x) => x.taskId === 'a1'), JSON.stringify(d.liste.map((x) => x.taskId)));
+  pruefe('Die abweichende Benutzer-ID wird gefunden',
+    art('nutzer').length === 1 && art('nutzer')[0].taskId === 'a5'
+    && art('nutzer')[0].imPostfach === '100750761324067', JSON.stringify(art('nutzer')));
+  pruefe('Zwei Tasks mit derselben Benutzer-ID werden gemeldet',
+    art('doppelt').length === 1 && art('doppelt')[0].imPostfach === '100000000009'
+    && [art('doppelt')[0].taskId, art('doppelt')[0].andere.taskId].sort().join(',') === 'a7,a8',
+    JSON.stringify(art('doppelt')));
+  pruefe('Der übereinstimmende Task bleibt außen vor', !d.liste.some((x) => x.taskId === 'a4'));
+  pruefe('Die Karteileiche bleibt außen vor', !d.liste.some((x) => x.taskId === 'a6'));
+  pruefe('Eine Karteileiche belegt keinen geratenen Handle',
+    !d.liste.some((x) => x.taskId === 'a10'), JSON.stringify(d.liste.map((x) => x.taskId)));
+  const link = (art('handle').find((x) => x.taskId === 'a2') || {}).link || '';
+  pruefe('Der Link einer igfu-ig-Unterhaltung zeigt auf instagram.com',
+    link === 'https://www.instagram.com/direct/t/W2/', link);
+  const schreibend = aufrufe.slice(vorher)
+    .filter((a) => a.methode === 'PUT' || a.methode === 'POST');
+  pruefe('Der Prüflauf schreibt nichts nach ClickUp', schreibend.length === 0,
+    JSON.stringify(schreibend.map((a) => a.methode + ' ' + a.pfad)));
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  const t = doc.querySelector('.igfu-body').textContent || '';
+  pruefe('Die Liste steht im Panel', /Unterhaltung passt nicht zum Task \(4\)/.test(t), t.slice(0, 300));
+  const ab = t.split('Unterhaltung passt nicht zum Task')[1] || '';
+  pruefe('Beide Handles werden genannt',
+    /@limit_dani/.test(ab) && /@livingwithcrazydogs/.test(ab), ab.slice(0, 600));
+  pruefe('Kein Knopf repariert etwas',
+    ![...doc.querySelectorAll('.igfu-body button')]
+      .some((b) => /Reparieren|Richtigstellen|Abhängen|Lösen|Trennen/i.test(b.textContent)),
+    [...doc.querySelectorAll('.igfu-body button')].map((b) => b.textContent).join('|'));
+}
+
+gruppe('Ohne falsche Verbindung steht im Panel nichts davon');
+{
+  const { doc, w } = await starte({
+    speicher: { ...MIT_CLICKUP, 'clickup:handles:v1': { W4: { handle: 'zoe.radelt', quelle: 'karte' } } },
+    tasks: [WIDER_TASKS[4]],
+  });
+  await klickKnopf(w, doc, 'Falsch verbundene Unterhaltungen finden');
+  await warte(w, 1800);
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 300);
+  pruefe('Kein Abschnitt',
+    !/Unterhaltung passt nicht zum Task/.test(doc.querySelector('.igfu-body').textContent || ''));
+}
+
 gruppe('Kurze Namen werden vorgeschlagen, nicht verbunden');
 {
   const { doc, w, serverTasks } = await starte({

@@ -320,6 +320,69 @@ Das Skript übergeht die Leiche jetzt auch dann, wenn die Zeilen stehen bleiben.
 Rausnehmen schadet nicht, nötig ist es nicht mehr. Handle und Mailadresse
 bleiben ohnehin drin, die braucht der Import.
 
+### Falsch verbundene Unterhaltungen finden
+
+Name und Markerzeile eines Tasks halten sich seit 9.2 und 9.5 gegenseitig
+gerade. Die **Verbindung zwischen Unterhaltung und Task** tut das nicht. Sie
+entsteht einmal — beim Anlegen, beim Verbinden, über die Bild-ID oder die
+Benutzer-ID — und danach korrigiert sie niemand mehr. Hängt eine Unterhaltung
+am falschen Task, bleibt das so, bis du es von Hand löst. Der Task trägt dann
+die UpPromote-Daten der einen und die Unterhaltung der anderen Person, und
+jede Automatik darauf arbeitet still an der falschen Person.
+
+Dreimal belegt:
+
+* `limit_dani` (𝓓𝓪𝓷𝓲𝓮𝓵𝓪) hing an **„livingwithcrazydogs — Michelle Mehnen"**.
+  Am 13.11.2026 getrennt, Daniela hat jetzt einen eigenen Task.
+* `tina_gerhard_on_bike` hängt an **Biancas** Task. Am 13.11.2026 noch offen.
+* `branded_content_ad`, Instagrams System-Konto, hing an **Opel**. Am
+  11.11.2026 entfernt.
+
+Im Menü unter ClickUp liegt dafür **„Falsch verbundene Unterhaltungen
+finden"**. Der Knopf **liest nur**: er benennt nichts um, hängt nichts ab,
+setzt keinen Tag und schreibt überhaupt nichts nach ClickUp. Er sucht und
+listet, entschieden wird von Hand.
+
+Verglichen werden zwei Dinge:
+
+* **Die Benutzer-ID.** Steht an einem Task `igfu-iguser` und hat die
+  Unterhaltung, die daran hängt, eine andere, sind es zwei Personen. Das ist
+  der verlässlichste Befund hier: die ID kommt aus den Daten der Zeile, nie
+  aus gelesenem Text, und sie ist in beiden Postfächern dieselbe.
+* **Der Handle.** Der Handle der Unterhaltung gegen die Markerzeile des Tasks.
+  Dabei zählt, **woher** der Handle der Unterhaltung kommt: aus der
+  Kontaktkarte, aus der Meta-API oder von deiner Eingabe zählt er. Nur aus dem
+  Vorschautext oder dem Zeilentitel geraten zählt er nicht — „flo" sieht aus
+  wie ein Handle und ist der Anzeigename von flo.auf.zeit. Sonst stünde hier
+  ein Fehlalarm je Vorname.
+
+  Ein geratener Handle zählt aber doch, wenn er in ClickUp als Markerzeile
+  eines **anderen** Tasks steht. Dann ist er nicht geraten, sondern belegt.
+  Genau so taucht `tina_gerhard_on_bike` auf: ihr Handle steht auf
+  instagram.com nur im Zeilentitel.
+
+Dazu meldet der Lauf, wenn **zwei Tasks dieselbe Benutzer-ID** tragen. Dann
+ist entweder einer eine Dublette oder einer hängt an der falschen Person. Der
+Abschnitt „Mögliche Dubletten" findet das nicht, der schaut nur auf
+Unterhaltung und Handle.
+
+Die Befunde stehen im Panel unter **„Unterhaltung passt nicht zum Task"**, mit
+einem Link auf den Task und einem auf die Unterhaltung. Dort gibt es
+**absichtlich keinen Knopf, der etwas richtet**: bei Daniela musste die
+Unterhaltung weg und an einen neuen Task, bei `branded_content_ad` musste sie
+nur weg. Ein „Reparieren" hätte in beiden Fällen das Falsche getan.
+
+Zwei Dinge wertet der Lauf bewusst nicht:
+
+* **Die Bild-ID.** Sie wechselt, sobald jemand sein Profilfoto ändert, und das
+  tun Creator oft. Eine Abweichung dort heißt „neues Foto", nicht „falsche
+  Person".
+* **Fehlendes.** Kennt das Skript zu einer Unterhaltung weder Handle noch
+  Benutzer-ID, ist das kein Befund. Es weiß nur, was die Liste ihm gezeigt
+  hat — Abwesenheit beweist dort nichts.
+
+Karteileichen bleiben außen vor, und ihr Handle belegt auch nichts.
+
 ### Abgeschlossen: der Tag `ignore`
 
 `ignore` hängt an Profilen, mit denen wir fertig sind — aus welchem Grund auch
@@ -544,6 +607,7 @@ tragen. Im zweiten Fall wäre jede Zuordnung geraten.
 | UpPromote abgleichen | Nur den UpPromote-Teil, ohne Listendurchlauf |
 | Inhalte-Seite öffnen | Metas Inhalte, datumssortiert, richtiges Konto |
 | Affiliates importieren | Legt aktive Affiliates aus UpPromote als Tasks an, aus dem Affiliate- **und** dem Ambassador-Programm. **Erster Klick zählt nur**, zweiter legt an. |
+| Falsch verbundene Unterhaltungen finden | Sucht Tasks, an denen die Unterhaltung einer anderen Person hängt. Liest nur, ändert nichts — siehe oben. |
 | Ganze Liste durchgehen | Kompletter Durchlauf statt nur bis zum letzten Lauf |
 | Token löschen | Trennt die ClickUp-Verbindung. Follow-ups bleiben lokal erhalten. |
 

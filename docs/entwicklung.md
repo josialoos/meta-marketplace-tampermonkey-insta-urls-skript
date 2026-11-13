@@ -988,6 +988,88 @@ und von da an greift die vorhandene Handle-Brücke — am Rest ändert sich nich
 In `GUETE` steht `api` zwischen `karte` und `hand`: verlässlicher als alles
 Ausgelesene, aber Josias eigene Eingabe steht darüber.
 
+### Falsch verbundene Unterhaltungen (9.6)
+
+`widersprueche()` und `verbindungenPruefen()`, Menüpunkt **„Falsch verbundene
+Unterhaltungen finden"**, Abschnitt im Panel **„Unterhaltung passt nicht zum
+Task"**, Ergebnis im GM-Speicher unter `clickup:widersprueche:v1`
+(`{ stand, liste }`).
+
+**Warum es das braucht.** Name und Markerzeile sind seit 9.2 und 9.5
+gegeneinander abgesichert — die Kante Unterhaltung↔Task ist es nicht. Sie
+entsteht genau einmal (beim Anlegen, in `threadAnhaengen()`, über das
+Bild- oder das Benutzer-Register) und wird danach von keiner Regel mehr
+nachgerechnet. Ein Fehlgriff ist damit dauerhaft. Drei belegte Fälle:
+`limit_dani` an `livingwithcrazydogs` (123kvxecqjt, am 13.11.2026 getrennt),
+`tina_gerhard_on_bike` an Biancas Task 123kvxegy2j (Kennung
+100750761324067, am 13.11.2026 noch offen), `branded_content_ad` an Opel
+(123kvxeh85t, am 11.11.2026 entfernt).
+
+**Es ist die Bulk-Fassung einer vorhandenen Prüfung.** Der Auftrag `'handle'`
+in `ausfuehren()` meldet denselben Widerspruch schon für den Einzelfall
+(„Handle-Widerspruch bei …") und löst ihn ausdrücklich nicht.
+`widersprueche()` übernimmt diese Logik samt Vorsicht für den ganzen Bestand.
+Das Lesen ist die ganze Leistung: `cuTasksLaden()` ist ein `GET`, danach
+`GM_setValue`. Kein `PUT`, kein `POST`, kein Tag, kein Name — ein Test prüft,
+dass nach dem Klick keine schreibende Anfrage mehr kommt.
+
+**Drei Gründe, je Fund in `grund`:**
+
+| `grund` | Was verglichen wird | Felder |
+|---|---|---|
+| `nutzer` | `handleVon(tid).nutzer` gegen `task.nutzer` (`igfu-iguser`) | `tid`, `link`, `imPostfach`, `imTask` |
+| `handle` | `handleVon(tid).handle` gegen `handleVonTask(task)` | dazu `quelle` |
+| `doppelt` | zwei lebende Tasks mit derselben `igfu-iguser` | `imPostfach`, `andere: { taskId, titel, url }` |
+
+`nutzer` ist der harte Befund. Die Benutzer-ID kommt aus `users[0].id` in den
+Props der Zeile, nie aus gelesenem Text, sie ist in beiden Postfächern
+dieselbe, und `handleMerken()` überschreibt sie nie. Zwei verschiedene IDs
+heißen zwei Personen.
+
+`doppelt` fehlte bisher ganz: die Dubletten-Erkennung in `cuTasksLaden()`
+kennt nur Unterhaltung und Handle, ein Task ohne Handle fällt dort durch.
+
+**Die Gewichtung nach `quelle`.** Ein Handle mit `GUETE[quelle] >=
+GUETE.karte` — also `karte`, `api`, `hand` — zählt. `vorschau` und `titel`
+zählen nicht: sie sind geraten, und aus ihnen entstünde ein Fehlalarm je
+Vorname (siehe „Der Zeilentitel ist eine schwache Quelle").
+
+Dafür zählt ein schwacher Handle, wenn er die Markerzeile eines **anderen
+lebenden** Tasks ist. Dann steht er in ClickUp als Tatsache, ist also nicht
+geraten, und die Unterhaltung hängt beweisbar am falschen der beiden. Ohne
+diesen Rückfall fiele `tina_gerhard_on_bike` durch — ihr Handle steht auf
+instagram.com nur im Zeilentitel. Karteileichen tragen diesen Beweis nicht:
+sie sind stillgelegt, und ihr Handle ist üblicherweise derselbe wie der ihres
+lebenden Zwillings, der ihn dann ohnehin trägt.
+
+**Zwei Signale werden bewusst nicht gewertet.** `igfu-bild` nicht, weil die
+Bild-ID wechselt, sobald jemand sein Profilfoto ändert — eine Abweichung
+heißt dort „neues Foto", nicht „falsche Person", und als Befund wäre sie fast
+immer falsch. Und Abwesenheit nicht: fehlt im Seitenspeicher Handle oder ID,
+ist das kein Befund, denn der Speicher lernt nur, was die Liste gezeigt hat.
+
+**Kein Reparier-Knopf, und zwar absichtlich.** Bei Daniela musste die
+Unterhaltung weg vom Task und an einen neuen, bei `branded_content_ad` musste
+sie nur weg. Welche der beiden Seiten stimmt, kann das Skript nicht wissen:
+bei einem von Hand richtiggestellten Handle ist der Task richtig und der
+Seitenspeicher veraltet. Ein Test prüft, dass im Abschnitt kein Knopf steht,
+der etwas richtet.
+
+**Der Link auf die Unterhaltung** wird nach der Markerzeile gebaut
+(`postfachLink(tid, task.tidsIG.includes(tid))`), nicht danach, wo das Skript
+gerade läuft — sonst zeigte ein Befund ins falsche Postfach, wenn Josia den
+Lauf in der Business Suite aufruft.
+
+**Mutationsprüfung.** Sechs Mutationen, jede von einer benannten Prüfung
+gefangen: `starkGenug` ganz entfernt → „Ein geratener Handle, den ClickUp
+nicht kennt, löst keinen Fehlalarm aus"; der Rückfall über die Markerzeilen
+entfernt → „tina_gerhard_on_bike wird gefunden …"; der Benutzer-ID-Vergleich
+ausgeschaltet → „Die abweichende Benutzer-ID wird gefunden"; `if (t.leiche)
+continue` entfernt → „Die Karteileiche bleibt außen vor"; `doppelt` nicht
+gemeldet → „Zwei Tasks mit derselben Benutzer-ID werden gemeldet";
+Karteileichen als Beleg zugelassen → „Eine Karteileiche belegt keinen
+geratenen Handle".
+
 ### Welche Tags es gibt
 
 | Tag | Farbe | Wer setzt ihn | Was das Skript damit macht |
