@@ -501,6 +501,28 @@ Daraus folgen zwei Regeln, beide seit 9.5 im Code:
 - **Geschrieben wird escaped**: `markerWert()` setzt vor jeden Unterstrich einen
   Backslash, damit ClickUp ihn als Zeichen speichert statt als Auszeichnung.
 
+> **Ein Fall, in dem das Escape beim Anlegen nicht gehalten hat.** Am
+> 13.11.2026 wurden alle Handles des CRM mit Unterstrich an einer Wortgrenze
+> durchgesehen. Einer war schwerer beschädigt als die `_deneazy_`-Klasse:
+> `__lauwarm__` stand in der **Markdown**-Fassung als `**lauwarm**`. Ein
+> doppelter Unterstrich ist Fettschrift, und ClickUp hat sie beim Anlegen in
+> die eigene Schreibweise überführt — der Unterstrich war damit auch dort weg,
+> wo `markerText()` ihn sonst zurückholt.
+>
+> Die Folge ist härter als ein verstümmelter Handle: `handleAusText()` sucht
+> `igfu-handle:` gefolgt von `[a-z0-9._]`, und ein `*` passt da nicht. Die Zeile
+> liefert **gar keinen** Handle, und `handleAusTaskname()` scheitert am selben
+> Zeichen im Namen. Der Task war für das Skript handle-los, ohne dass er in der
+> Liste „Handles nachtragen" aufgetaucht wäre — er trug ja einen.
+>
+> Ein erneutes Schreiben derselben Zeile in der `markerWert()`-Form
+> (`igfu-handle: \_\_lauwarm\_\_`) hat gehalten, nachgelesen an
+> `markdown_description`. Auch `dariia\_\_melnychenko`, `julia\_\_bds`,
+> `miitchel\_\_` und `\_\_alpenmaedchen` stehen heil im Bestand. Das Escape
+> trägt also; verloren ging es nur in diesem einen Fall beim Anlegen, und nur
+> dort, wo ein Paar **vorne und hinten** steht. `__lauwarm__` ist der einzige
+> Handle im CRM mit dieser Form.
+
 > **Warum das lange unbemerkt blieb.** Der Prüfstand legte bis 9.4 dieselbe
 > Zeichenkette in `description` und `text_content` und lieferte
 > `markdown_description` gar nicht. Damit war der Rundlauf durch ClickUp im Test

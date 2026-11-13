@@ -459,6 +459,13 @@ Und am 11.11.2026 ein vierter, der anders funktioniert als die drei darüber:
 > beschädigt, muss er einmal von Hand zurückgesetzt werden — in dem Fall weiß
 > niemand mehr, wo die Unterstriche standen.
 
+> **Durchgesehen am 13.11.2026.** Acht Datensätze haben einen Handle mit
+> Unterstrich vorne und hinten. Zwei trugen einen Anschreib-Link ins Leere
+> (`_deneazy_`, `_papaglueck_`) — beide repariert, der Tag `bug` ist weg. Einer,
+> `__lauwarm__`, hatte überhaupt keinen lesbaren Handle mehr, weil der doppelte
+> Unterstrich als Fettschrift gespeichert war; die Markerzeile ist neu
+> geschrieben. Die übrigen fünf waren heil.
+
 Und ein fünfter, der nichts mit Namen zu tun hat, sondern mit dem Ordner:
 
 - **Im Partner-Ordner geöffnete Unterhaltungen wurden gar nicht gesehen.** Der
