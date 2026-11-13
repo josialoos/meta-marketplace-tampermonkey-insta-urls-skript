@@ -340,6 +340,10 @@ Profile, mit denen abgeschlossen ist. Er steht in `STATUS_ENDE` und ist damit
 für die Statusleiter gesperrt — ohne diesen Eintrag hätte der UpPromote-Abgleich
 solche Tasks beim nächsten Lauf wieder auf `hat sales` gezogen.
 
+Dass `STATUS_ENDE` den Eintrag hat, war aber nur die halbe Absicherung: wo
+*geprüft* wird, entscheidet mit. Seit 13.11.2026 sitzt die Prüfung in
+`cuRequest` und liest ClickUp selbst, siehe Abschnitt 5, „Regel 2".
+
 Nicht zu verwechseln mit dem **Tag** `ignore`, den das Skript bewusst nicht
 auswertet. Der Status wirkt, das Tag nicht.
 
@@ -1093,9 +1097,10 @@ nicht gelöscht werden, weil der Import ihn sonst wieder anlegt". Das erste ist
 eine inhaltliche Einschätzung, das zweite eine technische Notwendigkeit. Wer
 beides zugleich will, hängt beide Tags an.
 
-Für „abgeschlossen" gibt es außerdem die drei Endstatus `abgesagt`,
-`keine antwort` und `beendet`, die die Statusleiter sperren (Abschnitt 5). `ignore`
-ist davon unabhängig und trägt eine Einschätzung, die ein Status nicht ausdrückt.
+Für „abgeschlossen" gibt es außerdem die vier Endstatus `abgesagt`, `ignore`,
+`keine antwort` und `beendet`, die jede Statusautomatik sperren (Abschnitt 5,
+„Regel 2"). Der **Status** `ignore` wirkt also, das gleichnamige **Tag** nicht —
+eine Verwechslung, die hier schon zweimal Zeit gekostet hat.
 
 ### Der Tag `karteileiche`
 
@@ -1164,16 +1169,97 @@ Warenzuordnung.
  6 erster content           ← Creator Marketing Hub: nutzbarer Content
  7 hat sales                ← UpPromote: Provision > 0
 
- 8 abgesagt   9 keine antwort   10 beendet     ← für die Automatik tabu
+ 8 abgesagt   9 ignore   10 keine antwort   11 beendet   ← für die Automatik tabu
 ```
 
-**Regel: Automatik schiebt nur nach vorn.** Jeder automatische Statuswechsel
+(`ignore` kam am 12.10.2026 dazu, `beendet` ist dadurch Rang 11. Die vier
+rechten stehen in `STATUS_ENDE`, nicht in `STATUS_LEITER` — einen Rang haben
+sie nur in ClickUps `orderindex`.)
+
+**Regel 1: Automatik schiebt nur nach vorn.** Jeder automatische Statuswechsel
 geht durch `darfSetzen(alt, neu)`.
 
 Ohne diese Regel nehmen sich die Prüfungen gegenseitig das Ergebnis weg: der
 UpPromote-Abgleich setzt jeden aktiven Affiliate auf `ongeboardet` und würde
 `erste ware versendet` und `hat sales` bei jedem Lauf wieder einkassieren. Ein
 Mutationstest reproduziert genau das, wenn man die Schranke entfernt.
+
+### Regel 2: Endstatus sind für jede Automatik tabu — die Schranke in `cuRequest`
+
+`abgesagt`, `ignore`, `keine antwort`, `beendet`: dort hat Josia von Hand
+einsortiert, und **keine** Automatik ändert den Status noch. Seit 13.11.2026
+steht diese Regel an **einer** Stelle, und zwar der tiefsten, durch die jeder
+Schreibzugriff ohnehin läuft — und weil Regel 1 dieselbe Frage stellt, prüft
+die Schranke gleich beide, nämlich mit `darfSetzen`:
+
+```
+cuRequest(methode, pfad, rumpf, optionen)
+  │  PUT auf /task/<id> mit `status` im Rumpf?
+  │  und kein { vonHand: true }?
+  │     → statusJetzt(<id>)  = GET /task/<id>, der Status aus ClickUp selbst
+  │     → darfSetzen(jetzt, neu) sagt nein?
+  │          throw { schranke: true, endstatus: <ist jetzt ein Endstatus> }
+  ↓
+cuSenden(...)   ← schickt wirklich
+```
+
+**Warum tief und nicht beim Aufrufer.** Bis 9.5 stand die Regel ausschließlich
+bei den Aufrufern, als `darfSetzen(t.status, ziel)`. Das hat aus zwei Gründen
+nicht gehalten:
+
+1. **`t.status` ist der Spiegel, nicht ClickUp.** Der Spiegel (`cuTasks`,
+   `cuBilder`, `cuNutzer`, `cuOhneThread`) liegt im GM-Speicher, überlebt das
+   Neuladen und wird nur alle zwei Minuten erneuert — während `cuLaeuft` gar
+   nicht. Am 13.11.2026 im Prüfstand nachgestellt: im Spiegel stand noch
+   `recherchiert`, in ClickUp hatte Josia längst `ignore` gesetzt. Der Auftrag
+   `verbinden` lief gegen den alten Stand, `darfSetzen` sagte ja, und der Task
+   stand wieder auf `angeschrieben`. **Das war das gemeldete Loch — nicht der
+   UpPromote-Abgleich**, der prüft seit 3.4 richtig (und seine Prüfung ist auch
+   durch Tests belegt).
+2. **Jede neue Automatik musste von sich aus daran denken.** Verstreute `if`
+   sind verstreute Gelegenheiten, es zu vergessen.
+
+**Die Ausnahme ist genau eine:** `{ vonHand: true }`. Nur `statusSetzen()`
+(Josias Statusmenü) und `vorlageStilllegen()` (andere Liste, Josias Klick)
+geben das mit. Eine neue Automatik gibt es nicht mit und ist damit abgesichert,
+ohne dass jemand daran denken muss. Nur über diesen Weg kommt ein Task auch
+wieder **aus** einem Endstatus heraus.
+
+**Dieselbe Lücke hatte Regel 1.** Mit einem Spiegel auf `angeschrieben` und
+ClickUp auf `hat sales` hat der UpPromote-Abgleich den Task zwei Stufen
+zurückgezogen: „nur nach vorn" galt eben nur gegenüber dem Spiegel. Beides ist
+jetzt mit einer Prüfung erledigt.
+
+**Was die Aufrufer noch tun.** Sie prüfen weiter mit `darfSetzen` gegen den
+Spiegel — als billiger Vorfilter, der die meisten Anfragen gar nicht erst
+entstehen lässt. Lehnt die Schranke trotzdem ab, fangen sie `e.schranke` ab
+und machen weiter:
+
+| Stelle | Verhalten bei Ablehnung |
+|---|---|
+| `upAbgleichen` | zählt mit, Lauf geht weiter, Meldung sagt „… n Endstatus unangetastet, n standen schon weiter …" |
+| `inhalteAnwenden` | Tag `ad-code` bleibt gesetzt (Tatsache), Status bleibt liegen |
+| `ausfuehren('verbinden')` | Verknüpfung läuft durch, nur der Status bleibt liegen |
+
+Ein `throw`, das niemand fängt, ist dabei die Vorgabe und kein Unfall: eine
+neue Automatik, die `e.schranke` nicht kennt, bricht ab, statt zu schreiben.
+
+Beim `verbinden` gehen Name und Status deshalb **getrennt** raus, obwohl eine
+Anfrage reichen würde: zusammen wäre mit dem abgelehnten Status auch der Name
+verloren. Und der Auftrag darf nicht scheitern — `scanRows` würde ihn sofort
+wieder vormerken, `abarbeiten` ruft `scanRows` auf, und das dreht endlos
+(dieselbe Falle wie beim Startdatum am 06.10.2026, siehe `vormerken`).
+
+**Der Spiegel wird dabei berichtigt.** `statusJetzt` schreibt den gelesenen
+Status in *jede* Kopie des Tasks. Kopien, weil `GM_setValue` serialisiert: in
+`cuTasksLaden` ist je Task ein Objekt in allen Registern, nach einem Neuladen
+sind es mehrere. Ohne die Berichtigung fragt die nächste Runde mit demselben
+alten Status wieder an.
+
+**Kosten.** Ein zusätzlicher Lesezugriff je automatischem Statuswechsel, nicht
+je Task — und nur dort, wo der Vorfilter schon zugestimmt hat. Fünf Sekunden
+Gedächtnis (`STATUS_FRISCH`), damit UpPromote-Abgleich und Content-Lauf
+innerhalb eines Aktualisieren-Laufs denselben Task nicht zweimal nachfragen.
 
 Dieselbe Logik gilt für die Priorität `urgent`: sie wird **nur bei Status
 `angeschrieben`** angefasst. Sobald jemand den Task von Hand einsortiert hat,
@@ -1775,6 +1861,30 @@ vorhandenen Task *nicht* kennen. Ein vorbelegter Speicher allein genügt nicht,
 weil der Start sofort `cuTasksLaden()` ruft. Also lässt die Prüfung den **ersten**
 Listenabruf am Netz scheitern: danach steht im Spiegel nichts, `cuGeladen` bleibt
 alt, und `cuAktualisieren()` versucht es zwei Minuten lang nicht erneut.
+
+**Der Spiegel darf auch direkt vorbelegt werden.** Für die Endstatus-Schranke
+braucht es den umgekehrten Fall: der Spiegel kennt den Task, aber mit dem
+falschen Status. Dafür genügt `speicher: { 'clickup:tasks:v1': { … } }` mit
+einem fertigen Task-Objekt in `bilder` und `ohneThread` — der Start ruft zwar
+`cuTasksLaden()`, aber `scanRows()` und die Warteschlange laufen davor, und
+genau das ist der Fall aus der Wirklichkeit.
+
+**Josias Hand mitten im Lauf** stellt die Prüfung „Sortiert Josia während des
+Abgleichs ein" nach: `verzoegerung` bremst den Listenabruf, und direkt danach
+ändert die Prüfung `serverTasks[0].status`. Die Antwort auf den Listenabruf war
+zu diesem Zeitpunkt schon berechnet — der Abgleich rechnet also mit dem alten
+Status, ClickUp meldet den neuen. Ohne diesen Trick lässt sich das Zeitfenster
+zwischen Lesen und Schreiben nicht treffen.
+
+**`include_closed` bildet der Prüfstand nach** (seit 13.11.2026). Die
+Listen-Abfrage lässt Tasks weg, deren Status vom Typ „closed" ist, solange
+nicht `include_closed=true` mitkommt — in der Liste „Affiliate CRM" ist das
+genau `beendet`; `abgesagt`, `ignore` und `keine antwort` sind Typ „done" und
+kommen immer mit. Vorher lieferte der Prüfstand immer alles, und ein
+vergessenes `include_closed` wäre nie aufgefallen: in ClickUp wird dadurch
+jeder beendete Task für das Skript unsichtbar, und der Import legt ihn als
+neuen Datensatz an. `ECHTE_STATI` in der Testdatei trägt die Typen der echten
+Liste, Stand 13.11.2026.
 
 **Zwei Zahlen, die leicht verwechselt werden.** `threadRows()` liefert die
 Zeilen, die Meta gerade im Dokument hält — bei einer virtualisierten Liste immer

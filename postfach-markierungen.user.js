@@ -617,6 +617,11 @@
   // beim naechsten Lauf wieder auf „hat sales" gezogen.
   const STATUS_ENDE = ['abgesagt', 'ignore', 'keine antwort', 'beendet'];
   const statusRang = (s) => STATUS_LEITER.indexOf(String(s || '').toLowerCase().trim());
+  // Achtung: `alt` ist nur so gut wie seine Quelle. Aus dem Spiegel gelesen
+  // kann es veraltet sein, und dann sagt diese Pruefung ja, obwohl in ClickUp
+  // „ignore" steht. Bei den Aufrufern ist sie deshalb nur noch der billige
+  // Vorfilter; maßgeblich ist dieselbe Pruefung in der Schranke in cuRequest,
+  // die den Status aus ClickUp selbst holt. Begruendung dort.
   function darfSetzen(alt, neu) {
     const a = String(alt || '').toLowerCase().trim();
     if (STATUS_ENDE.includes(a)) return false;
@@ -1499,7 +1504,10 @@
   }
 
   // Der Token wird pro Anfrage frisch gelesen und nirgends zwischengespeichert.
-  function cuRequest(methode, pfad, rumpf) {
+  //
+  // cuSenden schickt wirklich. Davor sitzt cuRequest, und dort sitzt die
+  // Endstatus-Schranke — alles, was nach ClickUp geht, nimmt diesen Weg.
+  function cuSenden(methode, pfad, rumpf) {
     return new Promise((erfuellen, ablehnen) => {
       const token = String(GM_getValue(CU_TOKEN, '') || '').trim();
       if (!token) return ablehnen(Object.assign(new Error('Kein ClickUp-Token hinterlegt.'), { blockierend: true }));
@@ -1543,6 +1551,113 @@
         ontimeout: () => fehler('ClickUp hat zu lange gebraucht.', 'wiederholbar'),
       });
     });
+  }
+
+  // ---------- Die Endstatus-Schranke ----------
+  // Steht ein Task auf „abgesagt", „ignore", „keine antwort" oder „beendet",
+  // darf keine Automatik seinen Status mehr anfassen. Nur Josia von Hand.
+  // Dasselbe gilt fuer die Leiter: zurueck geht es nur von Hand. Beides ist
+  // dieselbe Frage — „darf diese Automatik hier schreiben?" —, deshalb
+  // beantwortet sie `darfSetzen` an einer einzigen Stelle.
+  //
+  // Bis 9.5 stand diese Regel ausschliesslich bei den Aufrufern, als
+  // `darfSetzen(t.status, ziel)`. Das hat aus zwei Gruenden nicht gehalten:
+  //
+  //   1. `t.status` ist der *Spiegel*, nicht ClickUp. Der Spiegel liegt im
+  //      GM-Speicher, ueberlebt das Neuladen und wird nur alle zwei Minuten
+  //      erneuert — waehrend `cuLaeuft` gar nicht. Am 13.11.2026 im Pruefstand
+  //      nachgestellt: im Spiegel stand noch „recherchiert", in ClickUp hatte
+  //      Josia laengst „ignore" gesetzt. Der Auftrag „verbinden" lief gegen den
+  //      alten Stand, `darfSetzen` sagte ja, und der Task stand wieder auf
+  //      „angeschrieben". Das ist der Fall, den Josia mehrfach gemeldet hat:
+  //      der UpPromote-Abgleich war es nicht, der prueft seit 3.4 richtig.
+  //   2. Jede neue Automatik muss von sich aus daran denken. Verstreute `if`
+  //      sind verstreute Gelegenheiten, es zu vergessen.
+  //
+  // Deshalb sitzt die Schranke jetzt in cuRequest — da kommt jeder
+  // Schreibzugriff ohnehin durch — und sie fragt ClickUp selbst, nicht den
+  // Spiegel. Vorbei kommt nur, wer ausdruecklich `{ vonHand: true }` mitgibt.
+  // Eine neue Automatik gibt das nicht mit und ist damit abgesichert, ohne
+  // dass jemand daran denken muss.
+  const taskIdAusPfad = (pfad) => {
+    const m = String(pfad || '').match(/^\/task\/([^/?]+)/);
+    return m ? m[1] : '';
+  };
+  const istEndstatus = (s) => STATUS_ENDE.includes(String(s || '').toLowerCase().trim());
+  // Wie lange die Antwort auf „welcher Status steht jetzt in ClickUp" gilt.
+  // Im Aktualisieren-Lauf fassen UpPromote-Abgleich und Content-Lauf denselben
+  // Task kurz hintereinander an; ohne dieses Gedaechtnis waere das jedes Mal
+  // ein eigener Lesezugriff. Fuenf Sekunden sind kurz genug, um Josias Hand
+  // nicht zu verpassen — und immer noch frischer als der Spiegel, der zwei
+  // Minuten alt sein darf.
+  const STATUS_FRISCH = 5000;
+  const statusGedaechtnis = new Map();
+
+  // Der Status, der *jetzt* in ClickUp steht. Zieht den Spiegel gleich nach:
+  // sonst merkt scanRows denselben Auftrag sofort wieder vor, abarbeiten ruft
+  // scanRows auf, und das dreht im Kreis — dieselbe Falle wie beim Startdatum
+  // am 06.10.2026, siehe vormerken().
+  async function statusJetzt(task) {
+    const taskId = String((task && task.taskId) || task || '');
+    if (!taskId) return '';
+    const gemerkt = statusGedaechtnis.get(taskId);
+    if (gemerkt && gemerkt.zeit > Date.now() - STATUS_FRISCH) return gemerkt.status;
+    const voll = await cuSenden('GET', '/task/' + taskId);
+    const status = String((voll && voll.status && voll.status.status) || '').toLowerCase().trim();
+    statusGedaechtnis.set(taskId, { status, zeit: Date.now() });
+    if (status) {
+      const farbe = (voll && voll.status && voll.status.color) || '';
+      // Jede Kopie, nicht nur die erste. cuTasksLaden legt je Task ein Objekt
+      // an und traegt dasselbe in alle Register ein — nach einem Neuladen aber
+      // nicht mehr: GM_setValue serialisiert, und aus dem einen Objekt werden
+      // beim Lesen mehrere. Nur eine zu berichtigen hiesse, die anderen
+      // behalten den alten Status.
+      let geaendert = false;
+      const register = Object.values(cuTasks).concat(Object.values(cuBilder),
+        Object.values(cuNutzer), cuOhneThread);
+      for (const t of register) {
+        if (!t || t.taskId !== taskId) continue;
+        if (String(t.status || '').toLowerCase().trim() === status) continue;
+        t.status = status;
+        if (farbe) t.farbe = farbe;
+        geaendert = true;
+      }
+      if (geaendert) cuSpeichern();
+    }
+    return status;
+  }
+
+  async function cuRequest(methode, pfad, rumpf, optionen) {
+    const setztStatus = methode === 'PUT' && !!rumpf && rumpf.status !== undefined;
+    const taskId = setztStatus ? taskIdAusPfad(pfad) : '';
+    if (setztStatus && !(optionen && optionen.vonHand) && taskId) {
+      const jetzt = await statusJetzt(taskId);
+      if (!darfSetzen(jetzt, rumpf.status)) {
+        // Weder „wiederholbar" noch „blockierend": der Auftrag ist nicht
+        // gescheitert, er ist unerwuenscht. abarbeiten() verwirft ihn damit,
+        // statt ihn stehen zu lassen oder zu wiederholen.
+        //
+        // Geprueft wird die ganze Regel, nicht nur der Endstatus: die Leiter
+        // hing an derselben unzuverlaessigen Quelle. Mit einem Spiegel auf
+        // „angeschrieben" und ClickUp auf „hat sales" hat der Abgleich den
+        // Task zwei Stufen zurueckgezogen — „nur nach vorn" galt nur gegenueber
+        // dem Spiegel.
+        const ende = istEndstatus(jetzt);
+        throw Object.assign(new Error(ende
+          ? '„' + jetzt + '" ist ein Endstatus. Daran ändert keine Automatik etwas, nur du von Hand.'
+          : '„' + jetzt + '" steht in ClickUp schon weiter als „' + rumpf.status + '".'),
+        { schranke: true, endstatus: ende });
+      }
+    }
+    const antwort = await cuSenden(methode, pfad, rumpf);
+    // Was gerade geschrieben wurde, ist ab jetzt der Stand. Ohne diese Zeile
+    // antwortete das Gedaechtnis fuenf Sekunden lang mit dem alten Status —
+    // auch dann, wenn Josia von Hand gerade auf „ignore" gestellt hat.
+    if (setztStatus && taskId) {
+      statusGedaechtnis.set(taskId,
+        { status: String(rumpf.status || '').toLowerCase().trim(), zeit: Date.now() });
+    }
+    return antwort;
   }
 
   function upRequest(pfad) {
@@ -2585,12 +2700,26 @@
       let mails = 0;
       let notizen = 0;
       let getagged = 0;
+      // Wie viele der Schranke zum Opfer gefallen sind. Das gehoert in die
+      // Meldung: sonst sagt der Abgleich „0 Status gesetzt" und Josia weiss
+      // nicht, ob nichts anlag oder ob etwas bewusst liegen geblieben ist.
+      let liegen = 0;    // Endstatus, tabu
+      let weiter = 0;    // stand in ClickUp schon weiter als das Ziel
       for (const x of treffer) {
         if (x.statusNoetig) {
           toast('Setze auf „' + x.ziel + '" …');
-          await cuRequest('PUT', '/task/' + x.t.taskId, { status: x.ziel });
-          x.t.status = x.ziel;
-          fertig++;
+          try {
+            await cuRequest('PUT', '/task/' + x.t.taskId, { status: x.ziel });
+            x.t.status = x.ziel;
+            fertig++;
+          } catch (e) {
+            // Die Schranke hat abgelehnt: `x.t.status` kam aus dem Spiegel, in
+            // ClickUp steht inzwischen etwas anderes. Das ist kein Fehler,
+            // sondern Josias Entscheidung — der Rest des Abgleichs laeuft
+            // weiter.
+            if (!e.schranke) throw e;
+            if (e.endstatus) liegen++; else weiter++;
+          }
         }
         if (x.mailNoetig) { await mailEintragen(x.t, x.mail); mails++; }
         if (await notizUebertragen(x.t, x.notiz)) notizen++;
@@ -2602,6 +2731,8 @@
       }
       cuSpeichern();
       toast(fertig + ' Status gesetzt'
+        + (liegen ? ', ' + liegen + ' Endstatus unangetastet' : '')
+        + (weiter ? ', ' + weiter + (weiter === 1 ? ' stand' : ' standen') + ' schon weiter' : '')
         + (mails ? ', ' + mails + ' E-Mail(s) nachgetragen' : '')
         + (notizen ? ', ' + notizen + ' Notiz(en) als Kommentar' : '')
         + (getagged ? ', ' + getagged + ' Tag(s) aus dem Programm' : '')
@@ -3220,13 +3351,28 @@
       }
       const w = handleVon(a.tid);
       const neuerName = taskName((w && w.handle) || ziel.titel, a.titel);
-      const aenderung = {};
-      if (darfSetzen(ziel.status, CU_STATUS_NEU)) aenderung.status = CU_STATUS_NEU;
-      if (neuerName && neuerName !== ziel.titel) aenderung.name = neuerName;
-      if (Object.keys(aenderung).length) await cuRequest('PUT', '/task/' + ziel.taskId, aenderung);
+      // Name und Status gehen getrennt raus, obwohl eine Anfrage reichen
+      // wuerde. Der Grund ist die Endstatus-Schranke: `ziel` kommt aus
+      // cuBilder, und das steht im GM-Speicher — nach einem Neuladen also mit
+      // dem Stand von vorgestern. Genau hierueber ist am 13.11.2026 im
+      // Pruefstand ein Task auf „ignore" wieder auf „angeschrieben" gelandet.
+      // Lehnt die Schranke den Status ab, soll die Verknuepfung trotzdem
+      // durchlaufen: ein Auftrag, der scheitert, wird von scanRows sofort
+      // wieder vorgemerkt und dreht im Kreis. Zusammen in einer Anfrage waere
+      // mit dem Status auch der Name verloren.
+      if (neuerName && neuerName !== ziel.titel) {
+        await cuRequest('PUT', '/task/' + ziel.taskId, { name: neuerName });
+        ziel.titel = neuerName;
+      }
+      if (darfSetzen(ziel.status, CU_STATUS_NEU)) {
+        try {
+          await cuRequest('PUT', '/task/' + ziel.taskId, { status: CU_STATUS_NEU });
+          ziel.status = CU_STATUS_NEU;
+        } catch (e) {
+          if (!e.schranke) throw e;
+        }
+      }
       ziel.tid = a.tid;
-      if (aenderung.status) ziel.status = aenderung.status;
-      if (aenderung.name) ziel.titel = aenderung.name;
       cuTasks[a.tid] = ziel;
       cuSpeichern();
       return;
@@ -4168,9 +4314,15 @@
           t.adcode = true;
         }
         if (!darfSetzen(t.status, CU_STATUS_CONTENT)) continue;
-        await cuRequest('PUT', '/task/' + t.taskId, { status: CU_STATUS_CONTENT });
-        t.status = CU_STATUS_CONTENT;
-        fertig++;
+        try {
+          await cuRequest('PUT', '/task/' + t.taskId, { status: CU_STATUS_CONTENT });
+          t.status = CU_STATUS_CONTENT;
+          fertig++;
+        } catch (e) {
+          // Schranke: der Tag oben ist gesetzt, der Status bleibt liegen. Der
+          // Tag ist eine Tatsache, der Status Josias Entscheidung.
+          if (!e.schranke) throw e;
+        }
       }
       if (fertig) cuSpeichern();
       return fertig;
@@ -5732,7 +5884,11 @@
   // Stilllegen statt loeschen: In ClickUp bleibt der Text auffindbar, falls
   // sich jemand vertut. Dieselbe Haltung wie bei den Karteileichen.
   async function vorlageStilllegen(id) {
-    await cuRequest('PUT', '/task/' + id, { status: 'closed' });
+    // `vonHand`, weil hier Josia auf „Stilllegen" geklickt hat — und weil eine
+    // Vorlage in der Liste „Standardnachrichten" liegt, nicht im CRM. Die
+    // Endstatus-Schranke wuerde dort sonst einen Status lesen, der mit der
+    // Pipeline nichts zu tun hat.
+    await cuRequest('PUT', '/task/' + id, { status: 'closed' }, { vonHand: true });
     return vorlagenLaden();
   }
 
@@ -6224,7 +6380,12 @@
     const wert = String(neu || '').toLowerCase().trim();
     if (!task || !wert || wert === String(task.status || '').toLowerCase()) return;
     try {
-      await cuRequest('PUT', '/task/' + task.taskId, { status: wert });
+      // `vonHand` ist der einzige Weg an der Endstatus-Schranke vorbei, und er
+      // gehoert genau hierher: dieser Aufruf entsteht aus einem Klick von
+      // Josia im Statusmenue. Nur so kommt ein Task auch wieder *aus* einem
+      // Endstatus heraus — eine Automatik kann das nicht, weil sie das Kennwort
+      // nicht mitgibt.
+      await cuRequest('PUT', '/task/' + task.taskId, { status: wert }, { vonHand: true });
       task.status = wert;
       const treffer = stati().find((x) => x.name === wert);
       if (treffer && treffer.farbe) task.farbe = treffer.farbe;

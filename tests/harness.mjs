@@ -434,7 +434,23 @@ export async function starte({
     }
     if (methode === 'GET' && pf.includes('/task?')) {
       const seite = Number((pf.match(/page=(\d+)/) || [])[1] || 0);
-      return ok({ tasks: seite === 0 ? serverTasks.map(alsApiTask) : [], last_page: true });
+      // ClickUp laesst Tasks, deren Status vom Typ „closed" ist, aus der
+      // Abfrage heraus, solange nicht include_closed=true mitkommt. In der
+      // Liste „Affiliate CRM" ist das genau „beendet"; „abgesagt", „ignore"
+      // und „keine antwort" sind Typ „done" und kommen immer mit.
+      //
+      // Bis 9.5 hat der Pruefstand das verschwiegen und immer alles
+      // geliefert. Ein vergessenes include_closed waere damit nie
+      // aufgefallen — in ClickUp wird dadurch jeder beendete Task fuer das
+      // Skript unsichtbar, und der Import legt ihn als neuen Datensatz an.
+      const geschlossen = (name) => {
+        const s = (stati || []).find((x) => x.status === name);
+        return s ? s.type === 'closed' : name === 'beendet';
+      };
+      const sichtbar = /include_closed=true/.test(pf)
+        ? serverTasks
+        : serverTasks.filter((t) => !geschlossen(t.status));
+      return ok({ tasks: seite === 0 ? sichtbar.map(alsApiTask) : [], last_page: true });
     }
     if (methode === 'POST' && /^\/list\/[^/]+\/task$/.test(pf)) {
       const k = JSON.parse(data);
