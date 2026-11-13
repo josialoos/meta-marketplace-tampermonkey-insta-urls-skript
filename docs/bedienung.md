@@ -186,16 +186,30 @@ geschrieben hast, und auch Antworten vom Handy.
 recherchiert → angeschrieben → kommunikation → zugesagt
      → ongeboardet → erste ware versendet → erster content → hat sales
 
-     abgesagt     keine antwort     beendet
+     abgesagt     ignore     keine antwort     beendet
 ```
 
 Die ersten acht sind eine Leiter, und **die Automatik schiebt nur nach vorn.**
 Wer schon bei „hat sales" steht, wird nicht wieder auf „ongeboardet"
 zurückgezogen.
 
-Die drei rechten sind deine Entscheidung. **Sobald ein Task auf `abgesagt`,
-`keine antwort` oder `beendet` steht, fasst das Skript ihn nicht mehr an** —
-weder Status noch Priorität.
+Die vier rechten sind deine Entscheidung. **Sobald ein Task auf `abgesagt`,
+`ignore`, `keine antwort` oder `beendet` steht, ändert keine Automatik seinen
+Status mehr** — kein UpPromote-Abgleich, kein Content-Lauf, kein Verknüpfen,
+auch keine Automatik, die später dazukommt. Herausholen kannst nur du, von
+Hand: im Statusmenü der Kopfleiste oder direkt in ClickUp.
+
+Das gilt seit 13.11.2026 ohne Wenn und Aber. Vorher hat das Skript dafür in
+seinen eigenen Zwischenspeicher geschaut, und der war manchmal Stunden alt:
+hattest du einen Task gerade auf `ignore` gestellt, stand dort noch die alte
+Stufe, und die nächste Automatik hob ihn wieder heraus. Jetzt fragt es
+unmittelbar vor dem Schreiben bei ClickUp nach, wo der Task **wirklich** steht.
+Hat jemand ihn in der Zwischenzeit einsortiert, bleibt er liegen, und die
+Meldung sagt es dir: „… 2 Endstatus unangetastet …".
+
+Dieselbe Nachfrage schützt auch die Leiter: schiebst du einen Task von Hand
+nach vorn, während ein Abgleich läuft, zieht der ihn nicht mehr zurück. In der
+Meldung steht dann „… 1 stand schon weiter …".
 
 Was die Automatik setzt:
 
@@ -328,7 +342,11 @@ immer wird dort kein positives Ergebnis mehr erwartet.
 Der Tag ist eine Notiz für euch, **kein Schalter**: das Skript kennt ihn nicht
 und zieht Status, Frist und Priorität dort weiter mit. Soll ein Task wirklich
 nicht mehr angefasst werden, braucht er zusätzlich `karteileiche` oder einen der
-Endstatus `abgesagt`, `keine antwort`, `beendet`.
+Endstatus.
+
+**Nicht verwechseln:** den **Status** `ignore` beachtet das Skript, den
+gleichnamigen **Tag** nicht. Wer in der Liste auf dem Status `ignore` steht, ist
+für jede Automatik tabu — wer nur den Tag trägt, nicht.
 
 ### Anschreib-Links
 
@@ -523,8 +541,8 @@ jeden Task, der noch **keine** Fälligkeit hat — nach Status:
 **Tasks, die schon eine Frist haben, werden nicht angefasst** — auch nicht
 „nur korrigiert". Deshalb kannst du den Knopf gefahrlos mehrfach drücken.
 
-Außen vor bleiben die Endstatus `abgesagt`, `keine antwort`, `beendet` und alles
-mit `karteileiche`. Dort nachzufassen hat keinen Zweck.
+Außen vor bleiben die Endstatus `abgesagt`, `ignore`, `keine antwort`, `beendet`
+und alles mit `karteileiche`. Dort nachzufassen hat keinen Zweck.
 
 Findet sich kein brauchbares Datum — kein Versand, kein Onboarding-Datum bei
 UpPromote, keine Nachricht —, bleibt der Task ohne Frist. Die Meldung am Ende
@@ -609,6 +627,15 @@ der Import würde brav „0 neu" melden.
 Wichtig vorher: Tasks, denen der Handle fehlt, kann der Import nicht
 wiedererkennen und legt sie doppelt an. Also erst die Liste „Handles
 nachtragen" abarbeiten.
+
+**Das gilt auch für Endstatus.** Zugeordnet wird über Handle und Mailadresse —
+der Status spielt dabei keine Rolle. Ein Task auf `ignore` mit Handle oder
+Mailadresse gilt als vergeben und bleibt in Ruhe. Fehlt ihm **beides**, kann
+der Import ihn nicht erkennen und legt die Person als neuen Task an, mit
+`ongeboardet` oder `hat sales`. Das ist kein Herausholen — der alte Task steht
+unverändert auf `ignore` —, es sieht in ClickUp aber genauso aus. Gegenmittel:
+Handle nachtragen oder den Tag `karteileiche` dranhängen. (Nachgemessen am
+13.11.2026.)
 
 **Nicht jeder bekommt einen Unterhaltungs-Link.** Viele Affiliates wurden nie
 über das Partner-Postfach angeworben — dann gibt es keine Unterhaltung, und

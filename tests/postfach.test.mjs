@@ -9,6 +9,25 @@ const pruefe = (name, bedingung, extra = '') => {
 };
 const gruppe = (t) => console.log('\n' + t);
 const MIT_CLICKUP = { 'clickup:token:v1': 'pk_geheim_123', 'clickup:list:v1': LISTE };
+// Die Status der Liste „Affiliate CRM", wie ClickUp sie am 13.11.2026 wirklich
+// liefert — samt Typ. Der Vorgabesatz im Prüfstand ist absichtlich kurz und
+// unsortiert; wo es auf die echten Stufen ankommt, gehört dieser hierhin.
+// Bemerkenswert: `beendet` ist Typ „closed", die anderen drei Endstatus sind
+// Typ „done". Ohne `include_closed=true` fiele `beendet` aus der Abfrage.
+const ECHTE_STATI = [
+  { status: 'recherchiert', color: '#656f7d', orderindex: 0, type: 'open' },
+  { status: 'angeschrieben', color: '#87909e', orderindex: 1, type: 'custom' },
+  { status: 'kommunikation', color: '#5f55ee', orderindex: 2, type: 'custom' },
+  { status: 'zugesagt', color: '#30a46c', orderindex: 3, type: 'custom' },
+  { status: 'ongeboardet', color: '#b660e0', orderindex: 4, type: 'custom' },
+  { status: 'erste ware versendet', color: '#b660e0', orderindex: 5, type: 'custom' },
+  { status: 'erster content', color: '#008844', orderindex: 6, type: 'custom' },
+  { status: 'hat sales', color: '#e16b16', orderindex: 7, type: 'custom' },
+  { status: 'abgesagt', color: '#e5484d', orderindex: 8, type: 'done' },
+  { status: 'ignore', color: '#e5484d', orderindex: 9, type: 'done' },
+  { status: 'keine antwort', color: '#8d8d8d', orderindex: 10, type: 'done' },
+  { status: 'beendet', color: '#008844', orderindex: 11, type: 'closed' },
+];
 const angelegte = (a) => a.filter((x) => x.methode === 'POST' && /^\/list\/[^/]+\/task$/.test(x.pfad));
 // Seit 9.5 gehen Markerwerte escaped nach ClickUp, damit ein Unterstrich dort
 // als Zeichen und nicht als Kursivschrift ankommt. Pruefungen, denen es um den
@@ -2499,6 +2518,143 @@ gruppe('Alle Endstatus bleiben stehen');
     await warte(w, 1200);
     pruefe('„' + status + '" bleibt stehen', serverTasks[0].status === status, serverTasks[0].status);
   }
+}
+
+gruppe('Ein Endstatus hält auch gegen einen veralteten Spiegel');
+{
+  // Das ist das Loch, das Josia mehrfach gemeldet hat — und der
+  // UpPromote-Abgleich war es nicht, der prüft seit 3.4 richtig. Die Schranke
+  // stand bei den Aufrufern und las `t.status` aus dem GM-Spiegel. Der
+  // überlebt das Neuladen: beim ersten Scan nach dem Öffnen stand dort noch
+  // „recherchiert", während Josia in ClickUp längst „ignore" gesetzt hatte.
+  // Der Auftrag „verbinden" lief gegen den alten Stand, darfSetzen sagte ja,
+  // und der Task stand wieder auf „angeschrieben".
+  const BILD = '900000777';
+  const IGID = '17843301684077280';
+  const imSpiegel = {
+    tid: '', tids: [], tidsIG: [], tidsBS: [], bild: BILD, nutzer: '', mail: '', ware: '',
+    handle: 'marakell.runs', notiz: '', taskId: 'a1', titel: 'marakell.runs',
+    status: 'recherchiert', farbe: '#87909e', tags: [], follow: false, adcode: false,
+    ohneHandle: false, leiche: false, prio: '', due: '', letzte: '',
+    url: 'https://app.clickup.com/t/a1',
+  };
+  const { w, serverTasks, aufrufe, store } = await starte({
+    speicher: {
+      ...MIT_CLICKUP,
+      'clickup:tasks:v1': {
+        stand: Date.now(), geladen: Date.now(),
+        tasks: {}, bilder: { [BILD]: imSpiegel }, nutzer: {}, ohneThread: [imSpiegel],
+      },
+    },
+    tasks: [{ id: 'a1', name: 'marakell.runs', status: 'ignore', farbe: '#e5484d',
+              beschreibung: 'Instagram: @marakell.runs\nigfu-bild: ' + BILD + '\nigfu-handle: marakell.runs' }],
+    ig: [{ id: IGID, titel: 'Mara Kell', vorschau: 'Hallo', zeit: '5m', bild: BILD }],
+  });
+  await warte(w, 4000);
+  pruefe('Der Status bleibt auf „ignore"', serverTasks[0].status === 'ignore', serverTasks[0].status);
+  pruefe('Kein Statuswechsel übertragen',
+    !aufrufe.some((a) => a.methode === 'PUT' && a.data && a.data.status),
+    JSON.stringify(aufrufe.filter((a) => a.methode === 'PUT').map((a) => a.data)));
+  // Die Verknüpfung selbst muss trotzdem durchlaufen: ein Auftrag, der
+  // scheitert, wird von scanRows sofort wieder vorgemerkt und dreht im Kreis.
+  pruefe('Die Unterhaltung wird trotzdem verknüpft',
+    new RegExp('igfu-ig:\\s*' + IGID).test(serverTasks[0].beschreibung || ''),
+    serverTasks[0].beschreibung);
+  pruefe('Die Warteschlange dreht nicht im Kreis',
+    (store.get('clickup:queue:v1') || []).length === 0,
+    JSON.stringify(store.get('clickup:queue:v1')));
+  // Und der Spiegel wird berichtigt, in jedem Register. Sonst fragt die
+  // nächste Runde mit demselben alten Status wieder an.
+  const gespiegelt = ((store.get('clickup:tasks:v1') || {}).tasks || {})[IGID] || {};
+  pruefe('Der Spiegel wird auf „ignore" berichtigt', gespiegelt.status === 'ignore', gespiegelt.status);
+}
+
+gruppe('Sortiert Josia während des Abgleichs ein, hält die Schranke trotzdem');
+{
+  // Der UpPromote-Abgleich liest die Liste zu Beginn und schreibt Sekunden
+  // später — bei fünfzig Tasks auch Minuten. Dazwischen passt eine Hand. Der
+  // Prüfstand bremst deshalb die Listen-Abfrage und stellt den Task um,
+  // nachdem sie beantwortet war: der Abgleich rechnet mit „ongeboardet",
+  // in ClickUp steht „ignore". Nur die Schranke in cuRequest kann das noch
+  // sehen, weil sie unmittelbar vor dem Schreiben ClickUp selbst fragt.
+  const { doc, w, serverTasks, aufrufe } = await starte({
+    speicher: MIT_UP,
+    verzoegerung: (methode, pfad) => (/^\/list\/[^/]+\/task\?/.test(pfad) ? 400 : 0),
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'ongeboardet', farbe: '#b660e0',
+              beschreibung: beschreibungMit('T1') + '\nigfu-handle: marakell.runs\nigfu-mail: a@b.de' }],
+    affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de',
+                   instagram: 'marakell.runs', approved_amount: '120.00' }],
+  });
+  // Erst den Start abwarten: dessen Listenabruf ist genauso gebremst, und
+  // solange er laeuft, lehnt upAbgleichen mit „Es läuft gerade eine
+  // Übertragung" ab — die Prüfung liefe dann leer durch.
+  await warte(w, 1500);
+  await klickKnopf(w, doc, 'UpPromote abgleichen');
+  await warte(w, 200);
+  serverTasks[0].status = 'ignore';     // Josia sortiert von Hand ein
+  await warte(w, 2500);
+  pruefe('„ignore" bleibt stehen', serverTasks[0].status === 'ignore', serverTasks[0].status);
+  pruefe('Kein Statuswechsel übertragen',
+    !aufrufe.some((a) => a.methode === 'PUT' && a.data && a.data.status),
+    JSON.stringify(aufrufe.filter((a) => a.methode === 'PUT').map((a) => a.data)));
+  const meldung = (doc.querySelector('#igfu-toast') || {}).textContent || '';
+  pruefe('Die Meldung nennt den liegen gebliebenen Endstatus',
+    /Endstatus unangetastet/.test(meldung), meldung);
+}
+
+gruppe('Auch die Leiter hält gegen einen veralteten Spiegel');
+{
+  // Dieselbe Schranke, dieselbe Ursache, eine Stufe weniger schlimm: der
+  // Abgleich rechnet mit „angeschrieben" und will auf „ongeboardet", während
+  // in ClickUp inzwischen „hat sales" steht. Ohne die Prüfung gegen ClickUp
+  // zieht er den Task zwei Stufen zurück — genau das, was „Automatik schiebt
+  // nur nach vorn" verhindern soll.
+  const { doc, w, serverTasks, aufrufe } = await starte({
+    speicher: MIT_UP,
+    verzoegerung: (methode, pfad) => (/^\/list\/[^/]+\/task\?/.test(pfad) ? 400 : 0),
+    tasks: [{ id: 'a1', name: 'marakell.runs — Mara Kell', status: 'angeschrieben', farbe: '#87909e',
+              beschreibung: beschreibungMit('T1') + '\nigfu-handle: marakell.runs\nigfu-mail: a@b.de' }],
+    affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'a@b.de', instagram: 'marakell.runs' }],
+  });
+  await warte(w, 1500);
+  await klickKnopf(w, doc, 'UpPromote abgleichen');
+  await warte(w, 200);
+  serverTasks[0].status = 'hat sales';   // Josia sortiert von Hand nach vorn
+  await warte(w, 2500);
+  pruefe('„hat sales" bleibt stehen', serverTasks[0].status === 'hat sales', serverTasks[0].status);
+  pruefe('Kein Statuswechsel übertragen',
+    !aufrufe.some((a) => a.methode === 'PUT' && a.data && a.data.status),
+    JSON.stringify(aufrufe.filter((a) => a.methode === 'PUT').map((a) => a.data)));
+  const meldung = (doc.querySelector('#igfu-toast') || {}).textContent || '';
+  pruefe('Die Meldung sagt, dass er schon weiter stand',
+    /stand(en)? schon weiter/.test(meldung), meldung);
+}
+
+gruppe('Von Hand kommt ein Task auch aus einem Endstatus heraus');
+{
+  // Die Schranke bremst die Automatik, nicht Josia. Ohne diesen Weg wäre die
+  // Regel ein Gefängnis: „ignore" ließe sich nur noch in ClickUp selbst
+  // auflösen, und das Statusmenü in der Kopfleiste wäre eine Falle.
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_CLICKUP,
+    stati: ECHTE_STATI,
+    ig: [{ id: '101925914541472', titel: 'Florian', vorschau: 'a', zeit: '2h' }],
+    igOffen: { tid: '101925914541472', handle: 'reichert_florian', titel: 'Florian Reichert' },
+    tasks: [{ id: 'a1', name: 'reichert_florian — Florian', status: 'ignore', farbe: '#e5484d',
+              beschreibung: 'x\nigfu-ig: 101925914541472\nigfu-handle: reichert_florian' }],
+  });
+  await warte(w, 3500);
+  const pille = doc.querySelector('.igfu-kopf [data-kind="crm"]');
+  pruefe('Die Pille steht auf „ignore"', pille && pille.textContent === 'ignore', pille && pille.textContent);
+  if (pille) klick(w, pille);
+  await warte(w, 300);
+  const menue = doc.querySelector('.igfu-menue');
+  const ziel = menue && [...menue.querySelectorAll('.igfu-menue-zeile')]
+    .find((z) => ((z.querySelector('.igfu-menue-text') || {}).textContent) === 'kommunikation');
+  if (ziel) klick(w, ziel);
+  await warte(w, 1200);
+  pruefe('Josia holt den Task wieder heraus',
+    serverTasks[0].status === 'kommunikation', serverTasks[0].status);
 }
 
 gruppe('Eine Vorschau mit Adresse ergibt keinen Handle');
