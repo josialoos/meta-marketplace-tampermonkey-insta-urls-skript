@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Postfach: eigene Markierungen
 // @namespace    local.inbox-followups
-// @version      9.6
+// @version      9.7
 // @description  Eigene Follow-up-Markierungen in den Instagram-Nachrichten, dazu die Anbindung an ClickUp und das Erfassen von Creatorn im Creator Marketing Hub.
 // @match        https://business.facebook.com/*
 // @match        https://www.instagram.com/*
@@ -432,7 +432,7 @@
   // Muss mit @version im Kopf uebereinstimmen; ein Test prueft das. Sie steht
   // im Panel, weil „habe ich eigentlich die neue Fassung?" sonst jedes Mal
   // Ratearbeit ist — und zweimal schon in die falsche Richtung gefuehrt hat.
-  const VERSION = '9.6';
+  const VERSION = '9.7';
   const INBOX_PATH = /^\/latest\/inbox(\/|$)/;
   // Seit Oktober 2026 wird auf instagram.com gearbeitet. Meta hat die
   // Partner-Nachrichten in den Creator Marketing Hub ausgelagert, und der kennt
@@ -2019,6 +2019,34 @@
     return !x || Number(x.stand || 0) < Date.now() - UP_LUECKE_FRISCH;
   };
 
+  // Die Gegenrichtung zur Luecke: Tasks, die beim Zuordnen gar nicht
+  // mitgezaehlt werden koennen, weil sie weder Handle noch Mailadresse tragen.
+  // Der Import sieht sie nicht — gleich auf welchem Status sie stehen — und
+  // legt die Person ein zweites Mal an. Fuer Josia sieht das aus, als waere ein
+  // abgeschlossener Task „wieder herausgeholt" worden, obwohl der alte
+  // unveraendert auf „ignore" steht. Am 13.11.2026 im Pruefstand nachgemessen:
+  // „Mara Kell" auf „ignore", dazu ein aktiver Affiliate „marakell.runs" —
+  // und der Import erzeugt einen zweiten Task.
+  //
+  // Ueber den Namen zuzuordnen loest das *nicht*; das ist seit 7.5 bewusst
+  // abgeschafft, siehe handleAusTaskname. Was bleibt, ist Sichtbarkeit: die
+  // Zahl nennen und die Faelle zeigen, damit jemand Handle oder Mail nachtraegt.
+  function ohneSchluessel() {
+    return alleTasks().filter((t) => !handleVonTask(t) && !t.mail);
+  }
+
+  // Davon die, die in keiner anderen Liste des Panels auftauchen: „Handles
+  // nachtragen" laesst Endstatus und Karteileichen bewusst aus — und genau
+  // dort richtet die Luecke den Schaden an. Ein karteileiche-Tag allein hilft
+  // uebrigens nicht: auch eine Leiche haelt den Affiliate nur zurueck, wenn sie
+  // einen Handle oder eine Mail traegt.
+  function ohneSchluesselStill() {
+    return ohneSchluessel()
+      .filter((t) => t.leiche
+        || STATUS_ENDE.includes(String(t.status || '').toLowerCase().trim()))
+      .sort((a, b) => String(a.titel || '').localeCompare(String(b.titel || '')));
+  }
+
   // Die Affiliates aus den gelesenen Programmen, die im CRM fehlen. Zugeordnet
   // ueber Handle *und* Mailadresse, und Karteileichen zaehlen als vergeben —
   // ein in UpPromote geloeschter Datensatz kommt beim Import sonst zurueck.
@@ -2033,7 +2061,15 @@
     }
     const neu = imProgramm.filter((a) => !(a.handle && handlesDa.has(a.handle))
       && !(a.email && mailsDa.has(a.email)));
-    return { imProgramm, neu, ohneHandle: neu.filter((a) => !a.handle).length };
+    return {
+      imProgramm,
+      neu,
+      ohneHandle: neu.filter((a) => !a.handle).length,
+      // Nicht Teil der Luecke, sondern ihre Ursache: so viele Tasks kann der
+      // Abgleich oben gar nicht sehen.
+      unsichtbar: ohneSchluessel().length,
+      unsichtbarStill: ohneSchluesselStill().length,
+    };
   }
 
   // Zaehlt im Hintergrund nach, ohne etwas anzulegen und ohne Meldung. Laeuft
@@ -2061,16 +2097,29 @@
     try {
       const alle = await upAktiveVoll(toast);
       await cuTasksLaden();
-      const { imProgramm, neu, ohneHandle: ohneH } = importLuecke(alle);
+      const { imProgramm, neu, ohneHandle: ohneH, unsichtbar, unsichtbarStill } = importLuecke(alle);
       lueckeMerken(neu.length, ohneH);
 
       if (!importVorschau || importVorschau.stand < Date.now() - 300000) {
         importVorschau = { stand: Date.now(), anzahl: neu.length };
+        // Die Zahl der unsichtbaren Tasks gehoert in dieselbe Meldung wie die
+        // Luecke, weil sie die Luecke erklaert: jeder dieser Tasks kann einen
+        // der „neuen" Affiliates in Wahrheit schon abdecken. Ohne die Zahl
+        // sieht der zweite Klick nach einer sauberen Zaehlung aus.
         toast(imProgramm.length + ' aktive Affiliates (' + upZaehlung(alle) + '), '
           + (imProgramm.length - neu.length) + ' schon im CRM, ' + neu.length + ' neu'
           + (ohneH ? ', davon ' + ohneH + ' ohne Handle' : '')
           + (alle.length - imProgramm.length
             ? '. Übersprungen: ' + upFremdZaehlung(alle) : '')
+          + (unsichtbar
+            ? '. Achtung: ' + unsichtbar + ' Task(s) im CRM tragen weder Handle noch Mail '
+              + 'und sind beim Zuordnen unsichtbar'
+              + (unsichtbarStill
+                ? ' — ' + unsichtbarStill + ' davon auf Endstatus oder Karteileiche, '
+                  + 'zu finden unter „Weder Handle noch Mail"'
+                : ', zu finden unter „Handles nachtragen"')
+              + '. Erst dort Handle oder Mail nachtragen, sonst entstehen Dubletten'
+            : '')
           + '. Nochmal klicken legt sie an.');
         return;
       }
@@ -4644,6 +4693,13 @@
       } else if (upToken()) {
         teile.push('Affiliates ohne Task: noch nicht gezählt.');
       }
+      // Dafuer braucht es keinen Zaehllauf — das steht im gespiegelten
+      // Task-Stand und ist der Grund, warum die Luecke oben zu gross aussehen
+      // kann. Deshalb auch ohne UpPromote-Token.
+      const blind = ohneSchluessel().length;
+      if (blind) {
+        teile.push(blind + ' Task(s) ohne Handle und ohne Mail — beim Zuordnen unsichtbar.');
+      }
       const offen = warteschlange().length;
       if (offen) teile.push(offen + ' Änderung(en) warten auf Übertragung.');
       hinweis.textContent = teile.join(' ');
@@ -5264,6 +5320,42 @@
   }
   }
 
+  // Direkt darunter: die Tasks, die beim Zuordnen unsichtbar sind und in
+  // keiner anderen Liste stehen. „Handles nachtragen" laesst Endstatus und
+  // Karteileichen bewusst aus — dort interessiert der Handle fuer die Arbeit
+  // nicht mehr. Fuer den Import interessiert er sehr wohl: ohne Handle und
+  // ohne Mail haelt auch ein Task auf „ignore" den Affiliate nicht zurueck,
+  // und der naechste Import legt ihn ein zweites Mal an.
+  //
+  // Bewusst nur eine Liste, kein Eingabefeld: diese Tasks sind abgeschlossen,
+  // und was dort nachgetragen wird, entscheidet Josia im Task selbst.
+  function zeigeOhneSchluessel() {
+    const still = ohneSchluesselStill();
+    if (!still.length) return;
+    bodyEl.appendChild(el('h3', 'igfu-section-title', 'Weder Handle noch Mail'));
+    bodyEl.appendChild(el('p', 'igfu-empty',
+      'Diese Tasks findet der Import weder über den Handle noch über die '
+      + 'Mailadresse. Taucht die Person in UpPromote auf, legt er sie ein zweites '
+      + 'Mal an. Handle oder Mail im Task nachtragen — ein karteileiche-Tag '
+      + 'allein genügt nicht.'));
+    const ul = el('ol', 'igfu-list');
+    for (const t of still.slice(0, 20)) {
+      const li = el('li', 'igfu-item');
+      const top = el('div', 'igfu-item-top');
+      top.append(
+        button('igfu-name', rohTitel(t.titel) || 'Ohne Namen',
+          () => window.open(t.url, '_blank', 'noopener'), 'Task in ClickUp öffnen'),
+        el('span', 'igfu-meta', t.leiche ? 'karteileiche' : (t.status || '')),
+      );
+      li.appendChild(top);
+      ul.appendChild(li);
+    }
+    if (still.length > 20) {
+      ul.appendChild(el('li', 'igfu-empty', 'und ' + (still.length - 20) + ' weitere.'));
+    }
+    bodyEl.appendChild(ul);
+  }
+
   function renderPanel() {
     bodyEl.textContent = '';
     const fEntries = sortedFollow();
@@ -5278,6 +5370,7 @@
     // isInbox-Schranke, weil dieser Abschnitt auch im Marketplace gebraucht
     // wird; dort war er vorher sichtbar und soll es bleiben.
     zeigeHandleLuecken();
+    zeigeOhneSchluessel();
 
     if (isInbox()) {
       zeigeHandleZweifel();
@@ -5288,7 +5381,7 @@
       zeigeOhneUnterhaltung();
     }
 
-    if (!fEntries.length && !ohneHandle().length) {
+    if (!fEntries.length && !ohneHandle().length && !ohneSchluesselStill().length) {
       bodyEl.appendChild(el('p', 'igfu-empty', 'Noch nichts markiert. Fahr mit der Maus über eine Unterhaltung und klick auf „Follow-up".'));
       return;
     }

@@ -1104,6 +1104,92 @@ gruppe('Import: ohne Handle gibt es den roten Tag');
     JSON.stringify((serverTasks[0] || {}).tags));
 }
 
+gruppe('Import: die Vorschau nennt die Tasks, die beim Zuordnen unsichtbar sind');
+{
+  // Der Befund vom 13.11.2026: „Mara Kell" steht auf „ignore", traegt aber
+  // weder Handle noch Mail. Der Import findet sie nicht und legt die Person
+  // ein zweites Mal an — fuer Josia sieht das aus, als waere ein erledigter
+  // Task wieder herausgeholt worden. Geraten wird deshalb nichts; der Name
+  // bleibt tabu (seit 7.5, siehe handleAusTaskname). Gesagt wird es trotzdem.
+  //
+  // Der zweite Task ist die Gegenprobe: er hat keinen Handle, aber eine Mail
+  // und ist damit sehr wohl zuzuordnen. Er darf nicht mitgezaehlt werden.
+  const { doc, w, serverTasks } = await starte({
+    speicher: MIT_UP,
+    stati: ECHTE_STATI,
+    tasks: [
+      { id: 'a1', name: 'Mara Kell', status: 'ignore', farbe: '#e5484d',
+        beschreibung: 'Von Hand angelegt, keine Markerzeilen.', tags: [] },
+      { id: 'a2', name: 'Nur per Mail', status: 'ongeboardet', farbe: '#b660e0',
+        beschreibung: 'x\nigfu-mail: nm@b.de', tags: [] },
+    ],
+    affiliates: [{ first_name: 'Mara', last_name: 'Kell', email: 'mk@b.de',
+                   instagram: 'marakell.runs', program_name: PROG }],
+  });
+  await klickKnopf(w, doc, 'Affiliates importieren');
+  await warte(w, 1500);
+  const t = (doc.querySelector('#igfu-toast') || {}).textContent || '';
+  pruefe('Die Vorschau nennt genau einen unsichtbaren Task',
+    /1 Task\(s\) im CRM tragen weder Handle noch Mail/.test(t), t);
+  pruefe('Und sagt, dass er auf einem Endstatus liegt',
+    /1 davon auf Endstatus oder Karteileiche/.test(t), t);
+  pruefe('Mit dem Hinweis, erst nachzutragen',
+    /Erst dort Handle oder Mail nachtragen/.test(t), t);
+  pruefe('Der Task mit Mail zaehlt nicht mit', !/2 Task\(s\) im CRM/.test(t), t);
+  pruefe('Und angelegt wurde beim ersten Klick nichts',
+    serverTasks.length === 2, String(serverTasks.length));
+}
+
+gruppe('Panel: unsichtbare Tasks auf Endstatus stehen in einer eigenen Liste');
+{
+  // „Handles nachtragen" laesst Endstatus und Karteileichen bewusst aus. Genau
+  // die sind beim Import aber gefaehrlich, also brauchen sie eine eigene
+  // Liste — sonst stehen sie nirgends.
+  const { doc, w } = await starte({
+    speicher: MIT_UP,
+    stati: ECHTE_STATI,
+    tasks: [
+      { id: 'a1', name: 'Mara Kell', status: 'ignore', farbe: '#e5484d',
+        beschreibung: 'Von Hand angelegt, keine Markerzeilen.', tags: [] },
+      { id: 'a2', name: 'Eine Leiche', status: 'ongeboardet', farbe: '#b660e0',
+        beschreibung: 'ohne Marker', tags: [{ name: 'karteileiche' }] },
+      { id: 'a3', name: 'Nur per Mail', status: 'ongeboardet', farbe: '#b660e0',
+        beschreibung: 'x\nigfu-mail: nm@b.de', tags: [] },
+    ],
+  });
+  await warte(w, 900);
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 600);
+  const titel = [...doc.querySelectorAll('.igfu-section-title')].map((x) => x.textContent);
+  const panel = (doc.querySelector('#igfu-panel') || {}).textContent || '';
+  pruefe('Der Abschnitt ist da', titel.includes('Weder Handle noch Mail'), JSON.stringify(titel));
+  pruefe('Mara Kell steht darin', /Mara Kell/.test(panel), panel.slice(0, 300));
+  pruefe('Die Karteileiche auch', /Eine Leiche/.test(panel), panel.slice(0, 300));
+  pruefe('Der Task mit Mail nicht', !/Nur per Mail/.test(panel), panel.slice(0, 300));
+  pruefe('Und der Hinweis sagt, dass karteileiche allein nicht reicht',
+    /karteileiche-Tag allein genügt nicht/.test(panel), panel.slice(0, 400));
+}
+
+gruppe('Panel: die Standzeile nennt die unsichtbaren Tasks ohne Zähllauf');
+{
+  // Ohne jeden Aufruf an UpPromote: die Zahl steht im gespiegelten Stand.
+  const { doc, w } = await starte({
+    speicher: MIT_UP,
+    stati: ECHTE_STATI,
+    tasks: [{ id: 'a1', name: 'Mara Kell', status: 'ignore', farbe: '#e5484d',
+              beschreibung: 'Von Hand angelegt, keine Markerzeilen.', tags: [] }],
+  });
+  await warte(w, 900);
+  klick(w, doc.querySelector('#igfu-launch'));
+  await warte(w, 600);
+  const h = doc.querySelector('.igfu-form-hinweis');
+  pruefe('Die Standzeile nennt sie',
+    !!h && /1 Task\(s\) ohne Handle und ohne Mail/.test(h.textContent || ''),
+    h && h.textContent);
+  pruefe('Mit der Begruendung, dass sie beim Zuordnen unsichtbar sind',
+    !!h && /beim Zuordnen unsichtbar/.test(h.textContent || ''), h && h.textContent);
+}
+
 gruppe('Ein Task ohne Unterhaltung wird später über den Handle verbunden');
 {
   // T1 = Anna, Vorschau nennt marakell.runs. Der Task kennt den Handle, aber
